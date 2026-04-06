@@ -20,6 +20,8 @@ export type Venue = {
   last_verified: string | null
   photo_count: number
   created_at: string
+  menu_text: string | null
+  menu_text_updated_at: string | null
 }
 
 export type Photo = {

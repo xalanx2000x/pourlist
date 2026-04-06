@@ -16,7 +16,7 @@ interface MapProps {
 export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map())
+  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map())
   const [mapLoaded, setMapLoaded] = useState(false)
 
   useEffect(() => {

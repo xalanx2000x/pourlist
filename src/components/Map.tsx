@@ -16,7 +16,7 @@ interface MapProps {
 export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-  const markersRef = useRef<mapboxgl.Marker[]>([])
+  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map())
   const [mapLoaded, setMapLoaded] = useState(false)
 
   useEffect(() => {
@@ -44,13 +44,13 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
     }
   }, [])
 
-  // Update markers when venues change
+  // Update markers when venues or map load status changes
   useEffect(() => {
     if (!map.current || !mapLoaded) return
 
-    // Clear existing markers
+    // Remove old markers
     markersRef.current.forEach(m => m.remove())
-    markersRef.current = []
+    markersRef.current.clear()
 
     // Add new markers
     venues.forEach(venue => {
@@ -58,34 +58,68 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
 
       const el = document.createElement('div')
       el.className = 'venue-marker'
-      el.innerHTML = `
-        <div class="marker-pin ${venue.status === 'unverified' ? 'unverified' : ''}">
-          <span>${venue.name.charAt(0)}</span>
-        </div>
-      `
-
       el.style.cssText = `
         cursor: pointer;
-        transition: transform 0.2s;
+        width: 36px;
+        height: 36px;
+        position: relative;
       `
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([venue.lng, venue.lat])
-        .addTo(map.current!)
+      const inner = document.createElement('div')
+      inner.style.cssText = `
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #f59e0b;
+        border: 3px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 700;
+        color: white;
+        transition: transform 150ms ease, background 150ms ease;
+        transform-origin: center center;
+      `
+
+      // Show first letter of venue name
+      const letter = venue.name.charAt(0).toUpperCase()
+      inner.textContent = letter
+
+      if (venue.status === 'unverified') {
+        inner.style.background = '#fbbf24'
+        inner.style.borderColor = '#fef3c7'
+      } else if (venue.status === 'stale') {
+        inner.style.background = '#f97316'
+        inner.style.borderColor = '#fed7aa'
+      }
+
+      el.appendChild(inner)
+
+      // Hover with pointer-events on the inner element only
+      el.addEventListener('mouseenter', () => {
+        inner.style.transform = 'scale(1.15)'
+        el.style.zIndex = '10'
+      })
+
+      el.addEventListener('mouseleave', () => {
+        inner.style.transform = 'scale(1)'
+        el.style.zIndex = '1'
+      })
 
       el.addEventListener('click', () => {
         onVenueSelect(venue)
       })
 
-      el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.2)'
-      })
+      // Prevent pointer events on inner from interfering with click
+      inner.style.pointerEvents = 'none'
 
-      el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)'
-      })
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([venue.lng, venue.lat])
+        .addTo(map.current!)
 
-      markersRef.current.push(marker)
+      markersRef.current.set(venue.id, marker)
     })
   }, [venues, mapLoaded, onVenueSelect])
 

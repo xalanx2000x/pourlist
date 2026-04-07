@@ -21,13 +21,21 @@ export async function POST(req: NextRequest) {
     // Fetch the image and convert to base64 so OpenAI can process it
     // (Passing a URL doesn't work reliably since OpenAI's servers may not be able to reach Supabase Storage)
     let imageData: ArrayBuffer | null = null
+    let fetchFailed = false
     try {
+      console.log('[parse-menu] Fetching image from:', imageUrl)
       const fetchRes = await fetch(imageUrl)
+      console.log('[parse-menu] Fetch status:', fetchRes.status, fetchRes.statusText)
       if (fetchRes.ok) {
         imageData = await fetchRes.arrayBuffer()
+        console.log('[parse-menu] Image data size:', imageData.byteLength)
+      } else {
+        fetchFailed = true
+        console.log('[parse-menu] Fetch failed with status:', fetchRes.status)
       }
-    } catch {
-      // If fetch fails, fall back to passing the URL anyway
+    } catch (err) {
+      fetchFailed = true
+      console.log('[parse-menu] Fetch threw:', err)
     }
 
     const content: (OpenAI.Chat.ChatCompletionContentPartText | OpenAI.Chat.ChatCompletionContentPartImage)[] = [
@@ -47,9 +55,11 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
 
     if (imageData) {
       const base64 = Buffer.from(imageData).toString('base64')
-      // Determine MIME type from URL
-      const ext = imageUrl.split('.').pop()?.split('?')[0].toLowerCase()
+      // Determine MIME type from URL path
+      const pathPart = imageUrl.split('?')[0].toLowerCase()
+      const ext = pathPart.split('.').pop() || 'jpg'
       const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg'
+      console.log('[parse-menu] MIME type:', mimeType, 'from URL:', pathPart)
       content.push({
         type: 'image_url',
         image_url: { url: `data:${mimeType};base64,${base64}` }
@@ -68,6 +78,7 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
     })
 
     const text = completion.choices[0]?.message?.content || ''
+    console.log('[parse-menu] OpenAI response, text length:', text.length, 'first 200 chars:', text.slice(0, 200))
 
     return NextResponse.json({ text })
   } catch (err: unknown) {

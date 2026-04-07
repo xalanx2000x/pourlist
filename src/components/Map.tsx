@@ -16,7 +16,6 @@ interface MapProps {
 export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map())
   const [mapLoaded, setMapLoaded] = useState(false)
 
   useEffect(() => {
@@ -27,7 +26,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-122.6819, 45.5231], // Pearl District, Portland
+      center: [-122.6819, 45.5231],
       zoom: 15
     })
 
@@ -38,89 +37,125 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
     })
 
     return () => {
-      markersRef.current.forEach(m => m.remove())
       map.current?.remove()
       map.current = null
     }
   }, [])
 
-  // Update markers when venues or map load status changes
+  // Set up GeoJSON source with clustering
   useEffect(() => {
     if (!map.current || !mapLoaded) return
 
-    // Remove old markers
-    markersRef.current.forEach(m => m.remove())
-    markersRef.current.clear()
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: venues
+        .filter(v => v.lat && v.lng)
+        .map(venue => ({
+          type: 'Feature',
+          properties: {
+            id: venue.id,
+            name: venue.name,
+            address: venue.address || '',
+            status: venue.status || 'unverified'
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [venue.lng!, venue.lat!]
+          }
+        }))
+    }
 
-    // Add new markers
-    venues.forEach(venue => {
-      if (!venue.lat || !venue.lng) return
+    // Remove existing source/layers if they exist
+    if (map.current.getLayer('clusters')) map.current.removeLayer('clusters')
+    if (map.current.getLayer('cluster-count')) map.current.removeLayer('cluster-count')
+    if (map.current.getLayer('unclustered-point')) map.current.removeLayer('unclustered-point')
+    if (map.current.getSource('venues')) map.current.removeSource('venues')
 
-      const el = document.createElement('div')
-      el.className = 'venue-marker'
-      el.style.cssText = `
-        cursor: pointer;
-        width: 36px;
-        height: 36px;
-        position: relative;
-      `
-
-      const inner = document.createElement('div')
-      inner.style.cssText = `
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: #f59e0b;
-        border: 3px solid white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        font-weight: 700;
-        color: white;
-        transition: transform 150ms ease, background 150ms ease;
-        transform-origin: center center;
-      `
-
-      // Show first letter of venue name
-      const letter = venue.name.charAt(0).toUpperCase()
-      inner.textContent = letter
-
-      if (venue.status === 'unverified') {
-        inner.style.background = '#fbbf24'
-        inner.style.borderColor = '#fef3c7'
-      } else if (venue.status === 'stale') {
-        inner.style.background = '#f97316'
-        inner.style.borderColor = '#fed7aa'
-      }
-
-      el.appendChild(inner)
-
-      // Hover with pointer-events on the inner element only
-      el.addEventListener('mouseenter', () => {
-        inner.style.transform = 'scale(1.15)'
-        el.style.zIndex = '10'
-      })
-
-      el.addEventListener('mouseleave', () => {
-        inner.style.transform = 'scale(1)'
-        el.style.zIndex = '1'
-      })
-
-      el.addEventListener('click', () => {
-        onVenueSelect(venue)
-      })
-
-      // Prevent pointer events on inner from interfering with click
-      inner.style.pointerEvents = 'none'
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([venue.lng, venue.lat])
-        .addTo(map.current!)
-
-      markersRef.current.set(venue.id, marker)
+    // Add source with clustering enabled
+    map.current.addSource('venues', {
+      type: 'geojson',
+      data: geojson,
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 50
     })
+
+    // Cluster circles
+    map.current.addLayer({
+      id: 'clusters',
+      type: 'circle',
+      source: 'venues',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#f59e0b',
+        'circle-radius': ['step', ['get', 'point_count'], 20, 10, 25, 50, 30],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff'
+      }
+    })
+
+    // Cluster count labels
+    map.current.addLayer({
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'venues',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+        'text-size': 12
+      },
+      paint: {
+        'text-color': '#ffffff'
+      }
+    })
+
+    // Individual venue dots
+    map.current.addLayer({
+      id: 'unclustered-point',
+      type: 'circle',
+      source: 'venues',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': ['match', ['get', 'status'],
+          'unverified', '#fbbf24',
+          'stale', '#f97316',
+          '#f59e0b'
+        ],
+        'circle-radius': 8,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff'
+      }
+    })
+
+    // Click on cluster → zoom in
+    map.current.on('click', 'clusters', (e) => {
+      const features = map.current!.queryRenderedFeatures(e.point, { layers: ['clusters'] })
+      if (!features.length) return
+      const clusterId = features[0].properties!.cluster_id
+      const source = map.current!.getSource('venues') as mapboxgl.GeoJSONSource
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err || !zoom) return
+        const geometry = features[0].geometry as GeoJSON.Point
+        map.current!.easeTo({ center: geometry.coordinates as [number, number], zoom })
+      })
+    })
+
+    // Click on individual dot → select venue
+    map.current.on('click', 'unclustered-point', (e) => {
+      if (!e.features?.length) return
+      const props = e.features[0].properties!
+      const geometry = e.features[0].geometry as GeoJSON.Point
+      const venue = venues.find(v => v.id === props.id)
+      if (venue) onVenueSelect(venue)
+    })
+
+    // Cursor changes
+    map.current.on('mouseenter', 'clusters', () => { map.current!.getCanvas().style.cursor = 'pointer' })
+    map.current.on('mouseleave', 'clusters', () => { map.current!.getCanvas().style.cursor = '' })
+    map.current.on('mouseenter', 'unclustered-point', () => { map.current!.getCanvas().style.cursor = 'pointer' })
+    map.current.on('mouseleave', 'unclustered-point', () => { map.current!.getCanvas().style.cursor = '' })
+
   }, [venues, mapLoaded, onVenueSelect])
 
   // Fly to selected venue

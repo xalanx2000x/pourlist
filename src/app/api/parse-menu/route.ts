@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 /**
  * POST /api/parse-menu
- * Body: { imageUrl: string }
+ * Body: { imageUrl: string } — public URL to the image in Supabase Storage
  * Returns: { text: string } — the extracted menu text
  */
 export async function POST(req: NextRequest) {
@@ -18,16 +18,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 })
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 2048,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `You are a menu extraction assistant. The user has uploaded a photo of a happy hour menu. 
+    // Fetch the image and convert to base64 so OpenAI can process it
+    // (Passing a URL doesn't work reliably since OpenAI's servers may not be able to reach Supabase Storage)
+    let imageData: ArrayBuffer | null = null
+    try {
+      const fetchRes = await fetch(imageUrl)
+      if (fetchRes.ok) {
+        imageData = await fetchRes.arrayBuffer()
+      }
+    } catch {
+      // If fetch fails, fall back to passing the URL anyway
+    }
+
+    const content: (OpenAI.Chat.ChatCompletionContentPartText | OpenAI.Chat.ChatCompletionContentPartImage)[] = [
+      {
+        type: 'text',
+        text: `You are a menu extraction assistant. The user has uploaded a photo of a happy hour menu. 
 Extract ALL text from this menu exactly as it appears. Preserve:
 - Drink names and prices
 - Food items and prices  
@@ -36,14 +42,29 @@ Extract ALL text from this menu exactly as it appears. Preserve:
 
 Format the output as clean text. If something is illegible, mark it as [illegible]. 
 Do NOT add, interpret, or correct anything. Just extract what's there.`
-            },
-            {
-              type: 'image_url',
-              image_url: { url: imageUrl }
-            }
-          ]
-        }
-      ]
+      }
+    ]
+
+    if (imageData) {
+      const base64 = Buffer.from(imageData).toString('base64')
+      // Determine MIME type from URL
+      const ext = imageUrl.split('.').pop()?.split('?')[0].toLowerCase()
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg'
+      content.push({
+        type: 'image_url',
+        image_url: { url: `data:${mimeType};base64,${base64}` }
+      })
+    } else {
+      content.push({
+        type: 'image_url',
+        image_url: { url: imageUrl }
+      })
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content }]
     })
 
     const text = completion.choices[0]?.message?.content || ''

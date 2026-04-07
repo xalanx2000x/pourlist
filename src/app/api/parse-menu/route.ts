@@ -7,35 +7,18 @@ const openai = new OpenAI({
 
 /**
  * POST /api/parse-menu
- * Body: { imageUrl: string } — public URL to the image in Supabase Storage
+ * Body: { imageUrl?: string, imageData?: string }
+ * imageUrl = public URL to fetch ( Supabase Storage )
+ * imageData = base64 encoded image data URL (sent directly from browser )
  * Returns: { text: string } — the extracted menu text
  */
 export async function POST(req: NextRequest) {
   try {
-    const { imageUrl } = await req.json()
+    const body = await req.json()
+    const { imageUrl, imageData } = body
 
-    if (!imageUrl) {
-      return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 })
-    }
-
-    // Fetch the image and convert to base64 so OpenAI can process it
-    // (Passing a URL doesn't work reliably since OpenAI's servers may not be able to reach Supabase Storage)
-    let imageData: ArrayBuffer | null = null
-    let fetchFailed = false
-    try {
-      console.log('[parse-menu] Fetching image from:', imageUrl)
-      const fetchRes = await fetch(imageUrl)
-      console.log('[parse-menu] Fetch status:', fetchRes.status, fetchRes.statusText)
-      if (fetchRes.ok) {
-        imageData = await fetchRes.arrayBuffer()
-        console.log('[parse-menu] Image data size:', imageData.byteLength)
-      } else {
-        fetchFailed = true
-        console.log('[parse-menu] Fetch failed with status:', fetchRes.status)
-      }
-    } catch (err) {
-      fetchFailed = true
-      console.log('[parse-menu] Fetch threw:', err)
+    if (!imageUrl && !imageData) {
+      return NextResponse.json({ error: 'imageUrl or imageData is required' }, { status: 400 })
     }
 
     const content: (OpenAI.Chat.ChatCompletionContentPartText | OpenAI.Chat.ChatCompletionContentPartImage)[] = [
@@ -54,21 +37,34 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
     ]
 
     if (imageData) {
-      const base64 = Buffer.from(imageData).toString('base64')
-      // Determine MIME type from URL path
-      const pathPart = imageUrl.split('?')[0].toLowerCase()
-      const ext = pathPart.split('.').pop() || 'jpg'
-      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'heic' ? 'image/heic' : 'image/jpeg'
-      console.log('[parse-menu] MIME type:', mimeType, 'from URL:', pathPart)
+      // base64 data URL sent directly from browser — use as-is
       content.push({
         type: 'image_url',
-        image_url: { url: `data:${mimeType};base64,${base64}` }
+        image_url: { url: imageData }
       })
-    } else {
-      content.push({
-        type: 'image_url',
-        image_url: { url: imageUrl }
-      })
+    } else if (imageUrl) {
+      // Fetch from URL and convert to base64 for OpenAI
+      try {
+        const fetchRes = await fetch(imageUrl, {
+          headers: {
+            // Supabase Storage public URLs
+            'Accept': 'image/*'
+          }
+        })
+        if (!fetchRes.ok) {
+          return NextResponse.json({ error: `Failed to fetch image: ${fetchRes.status}` }, { status: 400 })
+        }
+        const buffer = await fetchRes.arrayBuffer()
+        const base64 = Buffer.from(buffer).toString('base64')
+        // Detect MIME from Content-Type header
+        const contentType = fetchRes.headers.get('content-type') || 'image/jpeg'
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${contentType};base64,${base64}` }
+        })
+      } catch (fetchErr) {
+        return NextResponse.json({ error: `Failed to fetch image: ${fetchErr}` }, { status: 400 })
+      }
     }
 
     const completion = await openai.chat.completions.create({
@@ -78,7 +74,6 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
     })
 
     const text = completion.choices[0]?.message?.content || ''
-    console.log('[parse-menu] OpenAI response, text length:', text.length, 'first 200 chars:', text.slice(0, 200))
 
     return NextResponse.json({ text })
   } catch (err: unknown) {

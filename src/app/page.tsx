@@ -96,30 +96,16 @@ export default function Home() {
     setScanError('')
 
     try {
-      // Step 1: Upload all photos and collect their URLs + hashes
-      const uploadedData: { url: string; hash: string }[] = []
+      // Read files as base64 data URLs — no upload step needed for parsing
+      const imageDataUrls: string[] = []
       for (const file of files) {
-        const formData = new FormData()
-        formData.append('photo', file)
-        formData.append('fingerprint', fingerprintFile(file))
-        if (gps) {
-          formData.append('lat', String(gps.lat))
-          formData.append('lng', String(gps.lng))
-        }
-
-        const uploadRes = await fetch('/api/upload-photo', {
-          method: 'POST',
-          body: formData
-        })
-
-        if (!uploadRes.ok) {
-          throw new Error('Failed to upload photo')
-        }
-
-        uploadedData.push(await uploadRes.json())
+        const buffer = await file.arrayBuffer()
+        const base64 = Buffer.from(buffer).toString('base64')
+        const mimeType = file.type || 'image/jpeg'
+        imageDataUrls.push(`data:${mimeType};base64,${base64}`)
       }
 
-      // Step 2: Find nearby venue by GPS
+      // Step 1: Find nearby venue by GPS
       let nearbyVenue: Venue | null = null
       if (gps) {
         const allVenues = await getVenuesByZip('97209')
@@ -138,39 +124,30 @@ export default function Home() {
 
       setMatchedVenue(nearbyVenue)
 
-      // Step 3: Check for duplicate photo if we have a venue
-      if (nearbyVenue) {
-        for (const { hash } of uploadedData) {
-          try {
-            const dupRes = await fetch('/api/check-duplicate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                venueId: nearbyVenue.id,
-                photoHash: hash,
-                fileSize: files[0].size
-              })
-            })
-            const dupData = await dupRes.json()
-            if (dupData.isDuplicate) {
-              setIsDuplicate(true)
-              setParsedText(dupData.existingMenuText || '[Existing menu on file]')
-              setScanLoading(false)
-              return
-            }
-          } catch {
-            // Proceed without duplicate check
-          }
+      // Step 2: Upload photos to Supabase for storage (in parallel with parsing)
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData()
+        formData.append('photo', file)
+        formData.append('fingerprint', fingerprintFile(file))
+        if (gps) {
+          formData.append('lat', String(gps.lat))
+          formData.append('lng', String(gps.lng))
         }
-      }
+        const uploadRes = await fetch('/api/upload-photo', {
+          method: 'POST',
+          body: formData
+        })
+        if (!uploadRes.ok) throw new Error('Failed to upload photo')
+        return uploadRes.json()
+      })
 
-      // Step 4: Parse all pages and combine text
+      // Step 3: Parse all pages and combine text (sends base64 directly — no URL fetch needed)
       const texts: string[] = []
-      for (const { url } of uploadedData) {
+      for (const imageData of imageDataUrls) {
         const parseRes = await fetch('/api/parse-menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageUrl: url })
+          body: JSON.stringify({ imageData })
         })
 
         if (parseRes.ok) {
@@ -182,9 +159,14 @@ export default function Home() {
       const combined = texts.join('\n\n--- Page ---\n\n')
       setParsedText(combined || '[No menu text extracted]')
 
-      // Step 5: HH screening — flag if no HH signals detected
+      // Step 4: HH screening — flag if no HH signals detected
       const hh = checkHappyHour(combined)
       setIsNotHH(!hh.isHappyHour)
+
+      // Step 5: Wait for uploads to finish (fire and forget for now)
+      Promise.all(uploadPromises).catch(() => {
+        // Non-critical — menu text was the main thing
+      })
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
       setParsedText('[Could not extract menu text. Please try again.]')

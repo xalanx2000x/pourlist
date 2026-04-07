@@ -49,6 +49,7 @@ export default function AdminPage() {
     const { data } = await supabase
       .from('venues')
       .select('*')
+      .in('status', ['unverified', 'verified', 'stale', 'closed'])
       .order('created_at', { ascending: false })
       .limit(50)
     setVenues((data as Venue[]) || [])
@@ -57,7 +58,7 @@ export default function AdminPage() {
 
   async function handleAction(id: string, action: ReviewAction) {
     setActioning(id)
-    const newStatus = action === 'approve' ? 'approved' : 'rejected'
+    const newStatus = action === 'approve' ? 'verified' : 'stale'
     await supabase
       .from('venues')
       .update({ status: newStatus })
@@ -68,8 +69,8 @@ export default function AdminPage() {
 
   const filtered = venues.filter(v => {
     if (activeTab === 'pending') return v.status === 'unverified'
-    if (activeTab === 'approved') return v.status === 'approved'
-    if (activeTab === 'rejected') return v.status === 'rejected'
+    if (activeTab === 'approved') return v.status === 'verified'
+    if (activeTab === 'rejected') return v.status === 'stale'
     return true
   })
 
@@ -163,11 +164,11 @@ export default function AdminPage() {
                       </p>
                     </div>
                     <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-medium ${
-                      venue.status === 'approved' ? 'bg-green-100 text-green-700' :
-                      venue.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                      venue.status === 'verified' ? 'bg-green-100 text-green-700' :
+                      venue.status === 'closed' ? 'bg-red-100 text-red-700' :
                       'bg-yellow-100 text-yellow-700'
                     }`}>
-                      {venue.status}
+                      {venue.status === 'verified' ? 'approved' : venue.status}
                     </span>
                   </div>
 

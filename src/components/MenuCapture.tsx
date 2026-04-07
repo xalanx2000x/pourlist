@@ -28,8 +28,15 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         setError('All files must be images.')
         return
       }
-      if (f.size > 20 * 1024 * 1024) {
+      // 10MB client-side limit — canvas resize in page.tsx will handle anything over ~3MB
+      if (f.size > 10 * 1024 * 1024) {
         setError('One or more photos is too large. Please use smaller files.')
+        return
+      }
+      // Total batch should be under ~15MB to avoid memory issues
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0)
+      if (totalSize > 15 * 1024 * 1024) {
+        setError('Total size of all photos is too large. Please select fewer photos.')
         return
       }
     }

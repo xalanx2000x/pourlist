@@ -8,16 +8,21 @@ const openai = new OpenAI({
 /**
  * POST /api/parse-menu
  * Body: { imageUrl?: string, imageData?: string }
- * imageUrl = public URL to fetch ( Supabase Storage )
- * imageData = base64 encoded image data URL (sent directly from browser )
+ * imageData = base64 data URL sent directly from browser (preferred)
+ * imageUrl = public URL to fetch (fallback)
  * Returns: { text: string } — the extracted menu text
  */
 export async function POST(req: NextRequest) {
+  // 30-second timeout for the whole request
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30_000)
+
   try {
     const body = await req.json()
     const { imageUrl, imageData } = body
 
     if (!imageUrl && !imageData) {
+      clearTimeout(timeout)
       return NextResponse.json({ error: 'imageUrl or imageData is required' }, { status: 400 })
     }
 
@@ -43,42 +48,50 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
         image_url: { url: imageData }
       })
     } else if (imageUrl) {
-      // Fetch from URL and convert to base64 for OpenAI
+      // Fallback: fetch from URL
       try {
         const fetchRes = await fetch(imageUrl, {
-          headers: {
-            // Supabase Storage public URLs
-            'Accept': 'image/*'
-          }
+          headers: { 'Accept': 'image/*' },
+          signal: controller.signal
         })
         if (!fetchRes.ok) {
+          clearTimeout(timeout)
           return NextResponse.json({ error: `Failed to fetch image: ${fetchRes.status}` }, { status: 400 })
         }
         const buffer = await fetchRes.arrayBuffer()
+        clearTimeout(timeout)
         const base64 = Buffer.from(buffer).toString('base64')
-        // Detect MIME from Content-Type header
         const contentType = fetchRes.headers.get('content-type') || 'image/jpeg'
         content.push({
           type: 'image_url',
           image_url: { url: `data:${contentType};base64,${base64}` }
         })
-      } catch (fetchErr) {
-        return NextResponse.json({ error: `Failed to fetch image: ${fetchErr}` }, { status: 400 })
+      } catch (fetchErr: unknown) {
+        clearTimeout(timeout)
+        const msg = fetchErr instanceof Error ? fetchErr.message : 'Unknown'
+        return NextResponse.json({ error: `Failed to fetch image: ${msg}` }, { status: 400 })
       }
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content }]
-    })
+    const completion = await openai.chat.completions.create(
+      {
+        model: 'gpt-4o-mini',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content }]
+      },
+      { signal: controller.signal }
+    )
 
+    clearTimeout(timeout)
     const text = completion.choices[0]?.message?.content || ''
-
     return NextResponse.json({ text })
   } catch (err: unknown) {
-    console.error('Menu parse error:', err)
+    clearTimeout(timeout)
     const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('Menu parse error:', err)
+    if (message.includes('aborted')) {
+      return NextResponse.json({ error: 'Request timed out. Please try again.' }, { status: 504 })
+    }
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

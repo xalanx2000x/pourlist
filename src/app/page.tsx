@@ -96,16 +96,15 @@ export default function Home() {
     setScanError('')
 
     try {
-      // Read files as base64 data URLs — no upload step needed for parsing
+      // Step 1: Convert all files to base64 (with resize for large files)
+      const { fileToBase64 } = await import('@/lib/imageResize')
       const imageDataUrls: string[] = []
       for (const file of files) {
-        const buffer = await file.arrayBuffer()
-        const base64 = Buffer.from(buffer).toString('base64')
-        const mimeType = file.type || 'image/jpeg'
-        imageDataUrls.push(`data:${mimeType};base64,${base64}`)
+        const dataUrl = await fileToBase64(file, 3) // max 3MB after base64 encoding
+        imageDataUrls.push(dataUrl)
       }
 
-      // Step 1: Find nearby venue by GPS
+      // Step 2: Find nearby venue by GPS
       let nearbyVenue: Venue | null = null
       if (gps) {
         const allVenues = await getVenuesByZip('97209')
@@ -121,27 +120,9 @@ export default function Home() {
           }
         }
       }
-
       setMatchedVenue(nearbyVenue)
 
-      // Step 2: Upload photos to Supabase for storage (in parallel with parsing)
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData()
-        formData.append('photo', file)
-        formData.append('fingerprint', fingerprintFile(file))
-        if (gps) {
-          formData.append('lat', String(gps.lat))
-          formData.append('lng', String(gps.lng))
-        }
-        const uploadRes = await fetch('/api/upload-photo', {
-          method: 'POST',
-          body: formData
-        })
-        if (!uploadRes.ok) throw new Error('Failed to upload photo')
-        return uploadRes.json()
-      })
-
-      // Step 3: Parse all pages and combine text (sends base64 directly — no URL fetch needed)
+      // Step 3: Parse all pages (sends base64 directly — no Supabase URL needed)
       const texts: string[] = []
       for (const imageData of imageDataUrls) {
         const parseRes = await fetch('/api/parse-menu', {
@@ -151,22 +132,20 @@ export default function Home() {
         })
 
         if (parseRes.ok) {
-          const { text } = await parseRes.json()
-          if (text) texts.push(text)
+          const data = await parseRes.json()
+          if (data.text) texts.push(data.text)
+        } else {
+          const errText = await parseRes.text()
+          console.error('Parse API error:', parseRes.status, errText)
         }
       }
 
       const combined = texts.join('\n\n--- Page ---\n\n')
       setParsedText(combined || '[No menu text extracted]')
 
-      // Step 4: HH screening — flag if no HH signals detected
+      // Step 4: HH screening
       const hh = checkHappyHour(combined)
       setIsNotHH(!hh.isHappyHour)
-
-      // Step 5: Wait for uploads to finish (fire and forget for now)
-      Promise.all(uploadPromises).catch(() => {
-        // Non-critical — menu text was the main thing
-      })
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
       setParsedText('[Could not extract menu text. Please try again.]')

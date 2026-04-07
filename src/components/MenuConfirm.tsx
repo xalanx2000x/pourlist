@@ -9,6 +9,7 @@ interface MenuConfirmProps {
   parsedText: string
   matchedVenue: Venue | null
   isDuplicate: boolean
+  isNotHH: boolean
   existingMenuText?: string | null
   onConfirm: (menuText: string, venueId?: string) => void
   onReject: () => void
@@ -21,6 +22,7 @@ export default function MenuConfirm({
   parsedText,
   matchedVenue,
   isDuplicate,
+  isNotHH,
   existingMenuText,
   onConfirm,
   onReject,
@@ -52,6 +54,16 @@ export default function MenuConfirm({
 
       <div className="flex-1 overflow-y-auto p-4">
         {/* Venue match status */}
+        {isNotHH && !matchedVenue && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+            <p className="text-sm font-medium text-amber-800">⚠️ This may not be a happy hour menu</p>
+            <p className="text-xs text-amber-600 mt-1">
+              No happy hour indicators found (time windows, discounts, HH language).
+              Does this venue have a happy hour? You can still submit if it does.
+            </p>
+          </div>
+        )}
+
         {matchedVenue ? (
           <div className="mb-4">
             {isDuplicate ? (

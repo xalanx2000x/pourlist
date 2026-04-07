@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { getVenuesByZip } from '@/lib/venues'
 import { fingerprintFile } from '@/lib/imageHash'
+import { checkHappyHour } from '@/lib/happyHourCheck'
 import type { Venue } from '@/lib/supabase'
 import VenueList from '@/components/VenueList'
 import VenueDetail from '@/components/VenueDetail'
@@ -43,6 +44,7 @@ export default function Home() {
   const [parsedText, setParsedText] = useState('')
   const [matchedVenue, setMatchedVenue] = useState<Venue | null>(null)
   const [isDuplicate, setIsDuplicate] = useState(false)
+  const [isNotHH, setIsNotHH] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [scanError, setScanError] = useState('')
 
@@ -179,6 +181,10 @@ export default function Home() {
 
       const combined = texts.join('\n\n--- Page ---\n\n')
       setParsedText(combined || '[No menu text extracted]')
+
+      // Step 5: HH screening — flag if no HH signals detected
+      const hh = checkHappyHour(combined)
+      setIsNotHH(!hh.isHappyHour)
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
       setParsedText('[Could not extract menu text. Please try again.]')
@@ -213,6 +219,7 @@ export default function Home() {
       setParsedText('')
       setMatchedVenue(null)
       setIsDuplicate(false)
+      setIsNotHH(false)
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Failed to submit')
     }
@@ -360,12 +367,14 @@ export default function Home() {
           parsedText={parsedText}
           matchedVenue={matchedVenue}
           isDuplicate={isDuplicate}
+          isNotHH={isNotHH}
           existingMenuText={matchedVenue?.menu_text}
           onConfirm={handleMenuConfirm}
           onReject={() => {
             setScanStep('idle')
             setScanFiles([])
             setScanGps(null)
+            setIsNotHH(false)
           }}
           onClose={() => {
             setScanStep('idle')
@@ -374,6 +383,7 @@ export default function Home() {
             setParsedText('')
             setMatchedVenue(null)
             setIsDuplicate(false)
+            setIsNotHH(false)
           }}
         />
       )}

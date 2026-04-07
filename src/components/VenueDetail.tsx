@@ -87,6 +87,29 @@ export default function VenueDetail({ venue, onClose, onPhotoSubmitted }: VenueD
           </span>
         )}
 
+        {/* Menu text */}
+        {venue.menu_text ? (
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700">Happy Hour Menu</h3>
+              <span className="text-xs text-gray-400">
+                {venue.menu_text_updated_at
+                  ? `Updated ${new Date(venue.menu_text_updated_at).toLocaleDateString()}`
+                  : ''}
+              </span>
+            </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap font-mono max-h-60 overflow-y-auto">
+              {venue.menu_text}
+            </div>
+          </div>
+        ) : (
+          <div className="mb-5">
+            <p className="text-sm text-gray-400 italic text-center py-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              No menu on file yet. Be the first to scan it!
+            </p>
+          </div>
+        )}
+
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">
           <a

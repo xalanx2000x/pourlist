@@ -104,22 +104,24 @@ export default function MenuConfirm({
             </button>
           </div>
 
-          {editing ? (
+          {editing || text === '[No menu text extracted]' || !text ? (
             <textarea
-              value={text}
+              value={text === '[No menu text extracted]' ? '' : text}
               onChange={e => setText(e.target.value)}
               className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none min-h-[200px]"
-              placeholder="Edit the menu text here..."
+              placeholder="Type the happy hour menu items here..."
             />
           ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm leading-relaxed whitespace-pre-wrap font-mono max-h-80 overflow-y-auto">
-              {text || <span className="text-gray-400 italic">No menu text extracted</span>}
+              {text}
             </div>
           )}
 
-          <p className="text-xs text-gray-400 mt-2">
-            Tap Edit to correct any parsing errors before submitting.
-          </p>
+          {text === '[No menu text extracted]' && (
+            <p className="text-xs text-amber-600 mt-2">
+              Couldn't read the menu. Please type the happy hour items manually.
+            </p>
+          )}
         </div>
 
         {/* Existing menu comparison (if duplicate) */}
@@ -160,7 +162,7 @@ export default function MenuConfirm({
       <div className="shrink-0 p-4 border-t border-gray-100 bg-white">
         <button
           onClick={handleSubmit}
-          disabled={submitting || !text.trim()}
+          disabled={submitting}
           className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors"
         >
           {submitting ? 'Submitting...' : 'Save Menu'}

@@ -25,9 +25,7 @@ export async function POST(req: NextRequest) {
       deviceHash
     } = await req.json()
 
-    if (!menuText?.trim()) {
-      return NextResponse.json({ error: 'Menu text is required' }, { status: 400 })
-    }
+    // Allow submission even without extracted text (user can edit later or AI failed to read image)
 
     let targetVenueId = venueId
 
@@ -64,7 +62,7 @@ export async function POST(req: NextRequest) {
           address: finalAddress,
           lat: lat || null,
           lng: lng || null,
-          zip: '97209', // Default — should extract from geocoded address
+          zip: '97209',
           status: 'unverified',
           contributor_trust: deviceHash ? 'new' : 'anonymous',
           menu_text: menuText.trim(),

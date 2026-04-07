@@ -38,7 +38,7 @@ export default function Home() {
 
   // Menu scan workflow state
   const [scanStep, setScanStep] = useState<'idle' | 'capture' | 'confirm'>('idle')
-  const [scanFile, setScanFile] = useState<File | null>(null)
+  const [scanFiles, setScanFiles] = useState<File[]>([])
   const [scanGps, setScanGps] = useState<{ lat: number; lng: number } | null>(null)
   const [parsedText, setParsedText] = useState('')
   const [matchedVenue, setMatchedVenue] = useState<Venue | null>(null)
@@ -86,33 +86,36 @@ export default function Home() {
   }
 
   // Menu scan workflow
-  async function handleCapture(file: File, gps: { lat: number; lng: number } | null) {
-    setScanFile(file)
+  async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
+    setScanFiles(files)
     setScanGps(gps)
     setScanStep('confirm')
     setScanLoading(true)
     setScanError('')
 
     try {
-      // Step 1: Upload photo first
-      const formData = new FormData()
-      formData.append('photo', file)
-      formData.append('fingerprint', fingerprintFile(file))
-      if (gps) {
-        formData.append('lat', String(gps.lat))
-        formData.append('lng', String(gps.lng))
+      // Step 1: Upload all photos and collect their URLs + hashes
+      const uploadedData: { url: string; hash: string }[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('photo', file)
+        formData.append('fingerprint', fingerprintFile(file))
+        if (gps) {
+          formData.append('lat', String(gps.lat))
+          formData.append('lng', String(gps.lng))
+        }
+
+        const uploadRes = await fetch('/api/upload-photo', {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!uploadRes.ok) {
+          throw new Error('Failed to upload photo')
+        }
+
+        uploadedData.push(await uploadRes.json())
       }
-
-      const uploadRes = await fetch('/api/upload-photo', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!uploadRes.ok) {
-        throw new Error('Failed to upload photo')
-      }
-
-      const { url: imageUrl, hash } = await uploadRes.json()
 
       // Step 2: Find nearby venue by GPS
       let nearbyVenue: Venue | null = null
@@ -134,42 +137,48 @@ export default function Home() {
       setMatchedVenue(nearbyVenue)
 
       // Step 3: Check for duplicate photo if we have a venue
-      if (nearbyVenue && hash) {
-        try {
-          const dupRes = await fetch('/api/check-duplicate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              venueId: nearbyVenue.id,
-              photoHash: hash,
-              fileSize: file.size
+      if (nearbyVenue) {
+        for (const { hash } of uploadedData) {
+          try {
+            const dupRes = await fetch('/api/check-duplicate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                venueId: nearbyVenue.id,
+                photoHash: hash,
+                fileSize: files[0].size
+              })
             })
-          })
-          const dupData = await dupRes.json()
-          if (dupData.isDuplicate) {
-            setIsDuplicate(true)
-            setParsedText(dupData.existingMenuText || '[Existing menu on file]')
-            setScanLoading(false)
-            return
+            const dupData = await dupRes.json()
+            if (dupData.isDuplicate) {
+              setIsDuplicate(true)
+              setParsedText(dupData.existingMenuText || '[Existing menu on file]')
+              setScanLoading(false)
+              return
+            }
+          } catch {
+            // Proceed without duplicate check
           }
-        } catch {
-          // Proceed without duplicate check
         }
       }
 
-      // Step 4: Parse menu from uploaded image
-      const parseRes = await fetch('/api/parse-menu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl })
-      })
+      // Step 4: Parse all pages and combine text
+      const texts: string[] = []
+      for (const { url } of uploadedData) {
+        const parseRes = await fetch('/api/parse-menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: url })
+        })
 
-      if (!parseRes.ok) {
-        throw new Error('Failed to parse menu')
+        if (parseRes.ok) {
+          const { text } = await parseRes.json()
+          if (text) texts.push(text)
+        }
       }
 
-      const { text } = await parseRes.json()
-      setParsedText(text || '[No menu text extracted]')
+      const combined = texts.join('\n\n--- Page ---\n\n')
+      setParsedText(combined || '[No menu text extracted]')
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
       setParsedText('[Could not extract menu text. Please try again.]')
@@ -199,7 +208,7 @@ export default function Home() {
       // Refresh venues
       await loadVenues()
       setScanStep('idle')
-      setScanFile(null)
+      setScanFiles([])
       setScanGps(null)
       setParsedText('')
       setMatchedVenue(null)
@@ -344,9 +353,9 @@ export default function Home() {
         />
       )}
 
-      {scanStep === 'confirm' && scanFile && (
+      {scanStep === 'confirm' && scanFiles.length > 0 && (
         <MenuConfirm
-          file={scanFile}
+          files={scanFiles}
           gps={scanGps}
           parsedText={parsedText}
           matchedVenue={matchedVenue}
@@ -355,12 +364,12 @@ export default function Home() {
           onConfirm={handleMenuConfirm}
           onReject={() => {
             setScanStep('idle')
-            setScanFile(null)
+            setScanFiles([])
             setScanGps(null)
           }}
           onClose={() => {
             setScanStep('idle')
-            setScanFile(null)
+            setScanFiles([])
             setScanGps(null)
             setParsedText('')
             setMatchedVenue(null)

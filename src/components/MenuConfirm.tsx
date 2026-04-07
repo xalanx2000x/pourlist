@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { Venue } from '@/lib/supabase'
 
 interface MenuConfirmProps {
-  file: File
+  files: File[]
   gps: { lat: number; lng: number } | null
   parsedText: string
   matchedVenue: Venue | null
@@ -16,7 +16,7 @@ interface MenuConfirmProps {
 }
 
 export default function MenuConfirm({
-  file,
+  files,
   gps,
   parsedText,
   matchedVenue,
@@ -125,13 +125,22 @@ export default function MenuConfirm({
         {/* Photo reference */}
         <div className="mb-4">
           <label className="text-sm font-semibold text-gray-700 mb-2 block">
-            Source photo (reference only)
+            Source photo{files.length > 1 ? 's' : ''} (reference only)
           </label>
-          <img
-            src={URL.createObjectURL(file)}
-            alt="Menu photo"
-            className="w-full max-h-48 object-contain rounded-xl bg-gray-100"
-          />
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {files.map((file, i) => (
+              <div key={i} className="shrink-0">
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt={`Menu page ${i + 1}`}
+                  className="h-32 w-auto object-contain rounded-xl bg-gray-100"
+                />
+                {files.length > 1 && (
+                  <p className="text-xs text-gray-400 text-center mt-1">Page {i + 1}</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -145,7 +154,7 @@ export default function MenuConfirm({
           {submitting ? 'Submitting...' : 'Save Menu'}
         </button>
         <p className="text-xs text-gray-400 text-center mt-2">
-          Only the menu text is saved — photo is not stored permanently
+          Only the menu text is saved — photo{files.length > 1 ? 's are' : ' is'} not stored permanently
         </p>
       </div>
     </div>

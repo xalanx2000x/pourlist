@@ -147,7 +147,7 @@ export default function VenueDetail({ venue, onClose, onPhotoSubmitted }: VenueD
             <label className="cursor-pointer">
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,image/heic,image/heif,image/heif-compressed"
                 capture="environment"
                 onChange={handlePhotoUpload}
                 disabled={uploading}

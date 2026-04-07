@@ -21,11 +21,14 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
 
     // Validate all files
     for (const f of files) {
-      if (!f.type.startsWith('image/')) {
+      const type = f.type.toLowerCase()
+      const isImage = type.startsWith('image/')
+      const isHeic = type === 'image/heic' || type === 'image/heif' || type === 'image/heif-compressed'
+      if (!isImage && !isHeic) {
         setError('All files must be images.')
         return
       }
-      if (f.size > 10 * 1024 * 1024) {
+      if (f.size > 20 * 1024 * 1024) {
         setError('One or more photos is too large. Please use smaller files.')
         return
       }
@@ -104,7 +107,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,image/heic,image/heif,image/heif-compressed"
               multiple
               onChange={onFileInput}
               className="hidden"

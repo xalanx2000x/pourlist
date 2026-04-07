@@ -31,6 +31,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No photo provided' }, { status: 400 })
     }
 
+    // 20MB limit
+    if (photo.size > 20 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 20MB.' }, { status: 400 })
+    }
+
     const fileExt = photo.name.split('.').pop() || 'jpg'
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
     const filePath = `venue-photos/${fileName}`
@@ -39,7 +44,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await photo.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage — pass through original MIME type
     const { error: uploadError } = await supabase.storage
       .from('venue-photos')
       .upload(filePath, buffer, {

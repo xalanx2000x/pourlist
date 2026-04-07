@@ -326,7 +326,6 @@ export default function Home() {
           <VenueDetail
             venue={selectedVenue}
             onClose={() => setSelectedVenue(null)}
-            onPhotoSubmitted={loadVenues}
           />
         )}
 

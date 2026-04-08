@@ -7,8 +7,8 @@ export function checkHappyHour(text: string): { isHappyHour: boolean; signals: s
 
   const signals: string[] = []
 
-  // Explicit happy hour mentions
-  if (/\bhh\b|\bh\.?h\.?\b|happy\s*hour/i.test(lower)) {
+  // Explicit happy hour mentions (including common variations/spellings)
+  if (/\bhh\b|\bh\.?h\.?\b|happy\s*hour|angry\s*hour|happy\s*hr\b|angry\s*hr\b/i.test(lower)) {
     signals.push('Happy Hour explicitly mentioned')
   }
 

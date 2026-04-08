@@ -55,6 +55,28 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
           </span>
         )}
 
+        {/* Menu image (if available) */}
+        {venue.latest_menu_image_url && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700">Menu Photo</h3>
+              <span className="text-xs text-gray-400">Reference</span>
+            </div>
+            <a
+              href={venue.latest_menu_image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-xl overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors"
+            >
+              <img
+                src={venue.latest_menu_image_url}
+                alt="Happy hour menu"
+                className="w-full max-h-52 object-contain bg-gray-50"
+              />
+            </a>
+          </div>
+        )}
+
         {/* Menu text */}
         {venue.menu_text ? (
           <div className="mb-5">

@@ -11,6 +11,8 @@ interface MenuConfirmProps {
   isDuplicate: boolean
   isNotHH: boolean
   existingMenuText?: string | null
+  isLoading?: boolean
+  saveError?: string
   onConfirm: (menuText: string, venueId?: string) => void
   onReject: () => void
   onClose: () => void
@@ -24,21 +26,17 @@ export default function MenuConfirm({
   isDuplicate,
   isNotHH,
   existingMenuText,
+  isLoading,
+  saveError,
   onConfirm,
   onReject,
   onClose
 }: MenuConfirmProps) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(parsedText)
-  const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit() {
-    setSubmitting(true)
-    try {
-      onConfirm(text.trim(), matchedVenue?.id)
-    } finally {
-      setSubmitting(false)
-    }
+    onConfirm(text.trim(), matchedVenue?.id)
   }
 
   return (
@@ -160,15 +158,31 @@ export default function MenuConfirm({
 
       {/* Submit */}
       <div className="shrink-0 p-4 border-t border-gray-100 bg-white">
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-3">
+            <p className="text-sm font-medium text-red-700">Save failed</p>
+            <p className="text-xs text-red-600 mt-0.5">{saveError}</p>
+          </div>
+        )}
+
         <button
           onClick={handleSubmit}
-          disabled={submitting}
-          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors"
+          disabled={isLoading}
+          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-400 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
         >
-          {submitting ? 'Submitting...' : 'Save Menu'}
+          {isLoading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Uploading & Saving...
+            </>
+          ) : (
+            '💾 Save Menu'
+          )}
         </button>
         <p className="text-xs text-gray-400 text-center mt-2">
-          Only the menu text is saved — photo{files.length > 1 ? 's are' : ' is'} not stored permanently
+          {files.length > 0
+            ? 'The menu photo will be saved as a reference image'
+            : 'Only the menu text will be saved'}
         </p>
       </div>
     </div>

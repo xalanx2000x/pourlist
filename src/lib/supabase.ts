@@ -22,6 +22,7 @@ export type Venue = {
   created_at: string
   menu_text: string | null
   menu_text_updated_at: string | null
+  latest_menu_image_url: string | null
 }
 
 export type Photo = {

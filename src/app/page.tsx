@@ -47,6 +47,8 @@ export default function Home() {
   const [isNotHH, setIsNotHH] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [scanError, setScanError] = useState('')
+  const [submitLoading, setSubmitLoading] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const loadVenues = useCallback(async () => {
     try {
@@ -155,7 +157,42 @@ export default function Home() {
   }
 
   async function handleMenuConfirm(menuText: string, venueId?: string) {
+    setSubmitLoading(true)
+    setSaveError('')
+
     try {
+      // Step 1: Upload the first photo to Supabase Storage (reference image)
+      let imageUrl: string | null = null
+      if (scanFiles.length > 0) {
+        const formData = new FormData()
+        formData.append('photo', scanFiles[0])
+        if (venueId) formData.append('venueId', venueId)
+        if (scanGps) {
+          formData.append('lat', String(scanGps.lat))
+          formData.append('lng', String(scanGps.lng))
+        }
+        formData.append('deviceHash', 'anonymous')
+
+        try {
+          const uploadRes = await fetch('/api/upload-photo', {
+            method: 'POST',
+            body: formData
+          })
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json()
+            imageUrl = uploadData.url
+          } else {
+            const errText = await uploadRes.text()
+            console.error('Photo upload failed:', uploadRes.status, errText)
+            // Non-fatal — continue without image
+          }
+        } catch (uploadErr) {
+          console.error('Photo upload error:', uploadErr)
+          // Non-fatal — continue without image
+        }
+      }
+
+      // Step 2: Submit the menu
       const res = await fetch('/api/submit-menu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,14 +203,25 @@ export default function Home() {
           address: matchedVenue?.address || '',
           lat: scanGps?.lat,
           lng: scanGps?.lng,
-          deviceHash: 'anonymous'
+          deviceHash: 'anonymous',
+          imageUrl
         })
       })
 
-      if (!res.ok) throw new Error('Failed to submit')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed to save menu')
+      }
 
       // Refresh venues
       await loadVenues()
+
+      // If we found a matched venue, refresh its detail view too
+      if (matchedVenue) {
+        setSelectedVenue(prev => prev ? { ...prev, menu_text: menuText, latest_menu_image_url: imageUrl || prev.latest_menu_image_url } : prev)
+      }
+
+      // Reset scan workflow
       setScanStep('idle')
       setScanFiles([])
       setScanGps(null)
@@ -182,7 +230,9 @@ export default function Home() {
       setIsDuplicate(false)
       setIsNotHH(false)
     } catch (err) {
-      setScanError(err instanceof Error ? err.message : 'Failed to submit')
+      setSaveError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
+    } finally {
+      setSubmitLoading(false)
     }
   }
 
@@ -329,6 +379,8 @@ export default function Home() {
           isDuplicate={isDuplicate}
           isNotHH={isNotHH}
           existingMenuText={matchedVenue?.menu_text}
+          isLoading={submitLoading}
+          saveError={saveError}
           onConfirm={handleMenuConfirm}
           onReject={() => {
             setScanStep('idle')
@@ -344,6 +396,7 @@ export default function Home() {
             setMatchedVenue(null)
             setIsDuplicate(false)
             setIsNotHH(false)
+            setSaveError('')
           }}
         />
       )}

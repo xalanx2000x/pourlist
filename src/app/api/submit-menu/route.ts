@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
       lat,
       lng,
       photoHash,
-      deviceHash
+      deviceHash,
+      imageUrl
     } = await req.json()
 
     // Allow submission even without extracted text (user can edit later or AI failed to read image)
@@ -66,7 +67,8 @@ export async function POST(req: NextRequest) {
           status: 'unverified',
           contributor_trust: deviceHash ? 'new' : 'anonymous',
           menu_text: menuText.trim(),
-          menu_text_updated_at: new Date().toISOString()
+          menu_text_updated_at: new Date().toISOString(),
+          latest_menu_image_url: imageUrl || null
         })
         .select('id')
         .single()
@@ -83,7 +85,8 @@ export async function POST(req: NextRequest) {
         .from('venues')
         .update({
           menu_text: menuText.trim(),
-          menu_text_updated_at: new Date().toISOString()
+          menu_text_updated_at: new Date().toISOString(),
+          ...(imageUrl && { latest_menu_image_url: imageUrl })
         })
         .eq('id', targetVenueId)
 

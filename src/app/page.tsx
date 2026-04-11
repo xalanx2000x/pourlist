@@ -126,24 +126,35 @@ export default function Home() {
 
       // Step 3: Parse all pages (sends base64 directly — no Supabase URL needed)
       const texts: string[] = []
-      for (const imageData of imageDataUrls) {
+      for (let i = 0; i < imageDataUrls.length; i++) {
+        console.log(`[PourList] Parsing page ${i+1}/${imageDataUrls.length}, size: ${imageDataUrls[i].length} chars`)
         const parseRes = await fetch('/api/parse-menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageData })
+          body: JSON.stringify({ imageData: imageDataUrls[i] })
         })
 
         if (parseRes.ok) {
           const data = await parseRes.json()
+          console.log(`[PourList] Parse page ${i+1} result:`, data.text ? `got ${data.text.length} chars` : 'EMPTY — no text')
           if (data.text) texts.push(data.text)
+          else console.warn('[PourList] Parse page returned no text field or empty text')
         } else {
           const errText = await parseRes.text()
-          console.error('Parse API error:', parseRes.status, errText)
+          console.error(`[PourList] Parse page ${i+1} API error:`, parseRes.status, errText)
+          // Surface the error to the user
+          setScanError(`Page ${i+1} parse failed (${parseRes.status}): ${errText.slice(0, 200)}`)
         }
       }
 
       const combined = texts.join('\n\n--- Page ---\n\n')
-      setParsedText(combined || '[No menu text extracted]')
+      if (texts.length === 0) {
+        setScanError('No menu text could be extracted. Please try again with better lighting or a clearer photo.')
+        setParsedText('')
+      } else {
+        setScanError('')
+        setParsedText(combined)
+      }
 
       // Step 4: HH screening
       const hh = checkHappyHour(combined)

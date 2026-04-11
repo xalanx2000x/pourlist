@@ -67,8 +67,7 @@ export async function POST(req: NextRequest) {
           status: 'unverified',
           contributor_trust: deviceHash ? 'new' : 'anonymous',
           menu_text: menuText.trim(),
-          menu_text_updated_at: new Date().toISOString(),
-          latest_menu_image_url: imageUrl || null
+          menu_text_updated_at: new Date().toISOString()
         })
         .select('id')
         .single()
@@ -81,13 +80,14 @@ export async function POST(req: NextRequest) {
       targetVenueId = newVenue.id
     } else {
       // Update existing venue with new menu text
+      const updateFields: Record<string, unknown> = {
+        menu_text: menuText.trim(),
+        menu_text_updated_at: new Date().toISOString()
+      }
+
       const { error: updateError } = await supabase
         .from('venues')
-        .update({
-          menu_text: menuText.trim(),
-          menu_text_updated_at: new Date().toISOString(),
-          ...(imageUrl && { latest_menu_image_url: imageUrl })
-        })
+        .update(updateFields)
         .eq('id', targetVenueId)
 
       if (updateError) {

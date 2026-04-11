@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Venue } from '@/lib/supabase'
 
 interface MenuConfirmProps {
@@ -12,6 +12,7 @@ interface MenuConfirmProps {
   isNotHH: boolean
   existingMenuText?: string | null
   isLoading?: boolean
+  isParsing?: boolean  // NEW: true while parent is parsing images
   saveError?: string
   onConfirm: (menuText: string, venueId?: string) => void
   onReject: () => void
@@ -27,6 +28,7 @@ export default function MenuConfirm({
   isNotHH,
   existingMenuText,
   isLoading,
+  isParsing,
   saveError,
   onConfirm,
   onReject,
@@ -34,6 +36,11 @@ export default function MenuConfirm({
 }: MenuConfirmProps) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(parsedText)
+  // Keep text in sync when parent finishes parsing
+  useEffect(() => { setText(parsedText) }, [parsedText])
+
+  const isConfirmed = Boolean(text.trim())
+  const isEmpty = !text.trim() || text === '[No menu text extracted]'
 
   async function handleSubmit() {
     onConfirm(text.trim(), matchedVenue?.id)
@@ -165,20 +172,47 @@ export default function MenuConfirm({
           </div>
         )}
 
-        <button
-          onClick={handleSubmit}
-          disabled={isLoading}
-          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-400 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
-        >
-          {isLoading ? (
-            <>
+        {isParsing ? (
+          <>
+            <div className="w-full bg-amber-400 text-white py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Uploading & Saving...
-            </>
-          ) : (
-            '💾 Save Menu'
-          )}
-        </button>
+              Extracting menu text...
+            </div>
+            <p className="text-xs text-gray-400 text-center mt-2">
+              Analyzing photo — this takes a few seconds
+            </p>
+          </>
+        ) : isEmpty ? (
+          <>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
+              <p className="text-sm font-medium text-amber-700">⚠️ No menu text detected</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                Try a clearer photo with better lighting, or tap Edit below to type the menu manually.
+              </p>
+            </div>
+            <button
+              onClick={() => setEditing(true)}
+              className="w-full bg-gray-800 hover:bg-gray-900 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors"
+            >
+              ✏️ Type Menu Manually
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-400 text-white py-3.5 px-6 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Uploading & Saving...
+              </>
+            ) : (
+              '💾 Save Menu'
+            )}
+          </button>
+        )}
         <p className="text-xs text-gray-400 text-center mt-2">
           {files.length > 0
             ? 'The menu photo will be saved as a reference image'

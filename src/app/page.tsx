@@ -391,6 +391,7 @@ export default function Home() {
           isNotHH={isNotHH}
           existingMenuText={matchedVenue?.menu_text}
           isLoading={submitLoading}
+          isParsing={scanLoading}
           saveError={saveError}
           onConfirm={handleMenuConfirm}
           onReject={() => {

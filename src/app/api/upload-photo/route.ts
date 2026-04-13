@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
               )
               .filter((p: string) => p.length > 0)
 
-            const uniquePaths = [...new Set(storagePaths)]
+            const uniquePaths = [...new Set(storagePaths)] as string[]
             if (uniquePaths.length > 0) {
               const { error: storageDeleteError } = await supabaseAdmin.storage
                 .from('venue-photos')

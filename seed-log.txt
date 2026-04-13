@@ -1,0 +1,4 @@
+  File "/Users/livingroom/.openclaw/workspace/pourlist/scripts/seed-python.py", line 62
+    addr = ' '.join(filter(None,[t.get('addr:housenumber',''),t.get('addr:street','')]) or nm
+                   ^
+SyntaxError: '(' was never closed

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { createHash } from 'crypto'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -7,9 +8,10 @@ const openai = new OpenAI({
 
 /**
  * POST /api/parse-menu
- * Body: { imageUrl?: string, imageData?: string }
+ * Body: { imageUrl?: string, imageData?: string, deviceHash?: string }
  * imageData = base64 data URL sent directly from browser (preferred)
  * imageUrl = public URL to fetch (fallback)
+ * deviceHash = client-provided device fingerprint (optional, used for rate limiting)
  * Returns: { text: string } — the extracted menu text
  */
 export async function POST(req: NextRequest) {
@@ -19,11 +21,43 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { imageUrl, imageData } = body
+    const { imageUrl, imageData, deviceHash } = body
 
     if (!imageUrl && !imageData) {
       clearTimeout(timeout)
       return NextResponse.json({ error: 'imageUrl or imageData is required' }, { status: 400 })
+    }
+
+    // Derive a device hash: use provided deviceHash, or hash the imageUrl/data as fallback
+    const effectiveHash =
+      deviceHash ||
+      (imageUrl ? createHash('sha256').update(imageUrl).digest('hex') : null) ||
+      (imageData ? createHash('sha256').update(imageData.slice(0, 200)).digest('hex') : null)
+
+    // Server-side rate limit check (fail-open)
+    if (effectiveHash) {
+      try {
+        const rateLimitRes = await fetch(
+          `${process.env.NEXT_PUBLIC_BASE_URL}/api/rate-limit-check`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'parse-menu', deviceHash: effectiveHash })
+          }
+        )
+        if (rateLimitRes.ok) {
+          const { allowed } = await rateLimitRes.json() as { allowed: boolean }
+          if (!allowed) {
+            clearTimeout(timeout)
+            return NextResponse.json(
+              { error: 'Rate limit exceeded. Please wait before parsing another menu.' },
+              { status: 429 }
+            )
+          }
+        }
+      } catch {
+        // Fail open — don't block parsing if rate-limit service is unreachable
+      }
     }
 
     const content: (OpenAI.Chat.ChatCompletionContentPartText | OpenAI.Chat.ChatCompletionContentPartImage)[] = [

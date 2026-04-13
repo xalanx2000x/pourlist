@@ -8,46 +8,72 @@ const supabase = createClient(
 
 /**
  * POST /api/check-duplicate
- * Body: { venueId: string; fingerprint: string }
- * Returns: { isDuplicate: boolean; existingMenuText?: string }
+ * Body: { deviceHash: string; fingerprint: string }
+ *         Optional: venueId (if provided, check within that venue specifically)
  *
- * Uses file size + name as the duplicate signal.
- * If a photo with the same fingerprint was recently uploaded to this venue,
- * we skip parsing since it's likely the same menu.
+ * Returns: { isDuplicate: boolean; venueId?: string; existingMenuText?: string }
+ *
+ * Uses fingerprint (file size + name) to detect duplicate uploads from the same
+ * device within the last 24 hours. If found, returns the venue so we can skip
+ * re-parsing the same menu image.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { venueId, fingerprint } = await req.json()
+    const { deviceHash, fingerprint, venueId } = await req.json()
 
-    if (!venueId || !fingerprint) {
+    if (!deviceHash || !fingerprint) {
       return NextResponse.json({ isDuplicate: false })
     }
 
-    // Parse the fingerprint
-    const [fileSize] = fingerprint.split('-')
+    if (!fingerprint || fingerprint.trim() === '') {
+      return NextResponse.json({ isDuplicate: false })
+    }
 
-    // Look for a recent photo at this venue with same file size (proxy for duplicate)
-    const { data: photos, error } = await supabase
+    // 24-hour window
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    // Build query: same device + same fingerprint (photo_hash) in last 24h
+    let query = supabase
       .from('photos')
-      .select('id, url, created_at')
-      .eq('venue_id', venueId)
-      .eq('status', 'approved')
-      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
+      .select('id, venue_id, photo_hash, created_at')
+      .eq('uploader_device_hash', deviceHash)
+      .eq('photo_hash', fingerprint)
+      .gte('created_at', since)
       .limit(10)
+
+    const { data: photos, error } = await query
 
     if (error) {
       console.error('Duplicate check error:', error)
       return NextResponse.json({ isDuplicate: false })
     }
 
-    for (const photo of photos || []) {
-      // We'd need to store fingerprints in the DB to do this properly
-      // For now, this is a placeholder that always returns false
-      // Real duplicate detection happens via GPS proximity + same venue
+    const match = (photos || []).find(p => p.photo_hash === fingerprint)
+
+    if (!match) {
+      return NextResponse.json({ isDuplicate: false })
     }
 
-    return NextResponse.json({ isDuplicate: false })
+    // Found a recent duplicate — fetch venue info for response
+    const matchedVenueId = match.venue_id
+
+    // If caller passed a venueId and it doesn't match, not actually a duplicate for that venue
+    if (venueId && matchedVenueId !== venueId) {
+      return NextResponse.json({ isDuplicate: false })
+    }
+
+    const { data: venue } = await supabase
+      .from('venues')
+      .select('id, menu_text')
+      .eq('id', matchedVenueId)
+      .single()
+
+    return NextResponse.json({
+      isDuplicate: true,
+      venueId: matchedVenueId,
+      existingMenuText: venue?.menu_text ?? null
+    })
+
   } catch (err) {
     console.error('Check duplicate error:', err)
     return NextResponse.json({ isDuplicate: false })

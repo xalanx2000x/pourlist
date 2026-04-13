@@ -41,7 +41,7 @@ export function getBrowserLocation(): Promise<GpsCoords> {
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       (err) => reject(err),
-      { timeout: 5000, maximumAge: 60000 }
+      { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
     )
   })
 }

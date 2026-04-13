@@ -39,7 +39,7 @@ export default function Home() {
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('map')
   const [showAddVenue, setShowAddVenue] = useState(false)
-  const [radius, setRadius] = useState(1)
+  const [radius, setRadius] = useState(5)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const showOnboarding = useOnboarding()
   const [onboardingOpen, setOnboardingOpen] = useState(false)
@@ -361,6 +361,7 @@ export default function Home() {
                 venues={venues}
                 selectedVenue={selectedVenue}
                 onVenueSelect={handleVenueSelect}
+                flyToUserLocation={userLocation}
               />
             </div>
             <div className="hidden md:block w-80 bg-white border-l border-gray-200 overflow-y-auto">

@@ -12,6 +12,8 @@ interface MapProps {
   venues: Venue[]
   selectedVenue: Venue | null
   onVenueSelect: (venue: Venue) => void
+  center?: [number, number] // [lng, lat]
+  flyToUserLocation?: { lat: number; lng: number } | null
 }
 
 // Pre-compute which venues have active HH once
@@ -37,7 +39,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -178,6 +180,16 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
       duration: 1000
     })
   }, [selectedVenue])
+
+  // Fly to user's location on first load
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !flyToUserLocation) return
+    map.current.flyTo({
+      center: [flyToUserLocation.lng, flyToUserLocation.lat],
+      zoom: 14,
+      duration: 1500
+    })
+  }, [flyToUserLocation, mapLoaded])
 
   return (
     <div ref={mapContainer} className="w-full h-full min-h-[300px]" />

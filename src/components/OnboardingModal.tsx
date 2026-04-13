@@ -12,7 +12,7 @@ const STEPS = [
   {
     emoji: '📍',
     title: 'Find happy hour venues',
-    body: 'Browse the map or list to discover Pearl District bars and restaurants with active happy hour deals.',
+    body: 'Browse the map or list to discover bars and restaurants with active happy hour deals near you.',
   },
   {
     emoji: '📷',

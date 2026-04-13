@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { getVenuesByZip } from '@/lib/venues'
+import { getVenuesByProximity } from '@/lib/venues'
 import { fingerprintFile } from '@/lib/imageHash'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import type { Venue } from '@/lib/supabase'
@@ -67,21 +67,13 @@ export default function Home() {
 
   const loadVenues = useCallback(async () => {
     try {
-      const data = await getVenuesByZip('97209')
-      // Filter by radius from user location if available
-      let filtered = data
-      if (userLocation) {
-        filtered = data.filter(v => {
-          if (!v.lat || !v.lng) return true
-          const km = Math.sqrt(
-            Math.pow((v.lat - userLocation.lat) * 111, 2) +
-            Math.pow((v.lng - userLocation.lng) * 85, 2)
-          )
-          const miles = km * 0.621371
-          return miles <= radius
-        })
-      }
-      setVenues(filtered)
+      // Default to Pearl District if no user location
+      const searchLat = userLocation?.lat ?? 45.523
+      const searchLng = userLocation?.lng ?? -122.676
+      const radiusMeters = radius * 1609.34
+
+      const data = await getVenuesByProximity(searchLat, searchLng, radiusMeters)
+      setVenues(data)
     } catch (err) {
       console.error('Failed to load venues:', err)
     } finally {
@@ -125,18 +117,8 @@ export default function Home() {
       // Step 2: Find nearby venue by GPS
       let nearbyVenue: Venue | null = null
       if (gps) {
-        const allVenues = await getVenuesByZip('97209')
-        for (const v of allVenues) {
-          if (!v.lat || !v.lng) continue
-          const km = Math.sqrt(
-            Math.pow((v.lat - gps.lat) * 111, 2) +
-            Math.pow((v.lng - gps.lng) * 85, 2)
-          )
-          if (km < 0.05) { // ~50 meters
-            nearbyVenue = v
-            break
-          }
-        }
+        const nearbyVenues = await getVenuesByProximity(gps.lat, gps.lng, 50)
+        nearbyVenue = nearbyVenues[0] || null
       }
       setMatchedVenue(nearbyVenue)
 

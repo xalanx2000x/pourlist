@@ -12,6 +12,39 @@ export async function getVenuesByZip(zip: string): Promise<Venue[]> {
   return data || []
 }
 
+export async function getVenuesByProximity(
+  lat: number,
+  lng: number,
+  radiusMeters: number
+): Promise<Venue[]> {
+  const { data, error } = await supabase
+    .from('venues')
+    .select('*')
+    .neq('status', 'closed')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
+    .gte('lat', lat - (radiusMeters / 111320))
+    .lte('lat', lat + (radiusMeters / 111320))
+    .gte('lng', lng - (radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))))
+    .lte('lng', lng + (radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))))
+
+  if (error) throw error
+
+  // Filter by exact Haversine distance (rectangular bbox is wider than radius)
+  const filtered = (data || []).filter(v => {
+    const R = 6371000
+    const dLat = (v.lat - lat) * Math.PI / 180
+    const dLng = (v.lng - lng) * Math.PI / 180
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat * Math.PI/180) * Math.cos(v.lat * Math.PI/180) *
+              Math.sin(dLng/2)**2
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    return R * c <= radiusMeters
+  })
+
+  return filtered.sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export async function getVenueById(id: string): Promise<Venue | null> {
   const { data, error } = await supabase
     .from('venues')

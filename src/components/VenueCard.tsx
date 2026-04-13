@@ -1,6 +1,7 @@
 'use client'
 
 import type { Venue } from '@/lib/supabase'
+import { hasActiveHappyHour } from '@/lib/activeHH'
 
 interface VenueCardProps {
   venue: Venue
@@ -9,6 +10,8 @@ interface VenueCardProps {
 }
 
 export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps) {
+  const isActiveHH = hasActiveHappyHour(venue.menu_text)
+
   return (
     <button
       onClick={onClick}
@@ -26,16 +29,23 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
             </span>
           )}
         </div>
-        {venue.status === 'unverified' && (
-          <span className="shrink-0 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
-            New
-          </span>
-        )}
-        {venue.status === 'stale' && (
-          <span className="shrink-0 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-            Needs Update
-          </span>
-        )}
+        <div className="shrink-0 flex flex-col items-end gap-1">
+          {isActiveHH && (
+            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
+              HH Active
+            </span>
+          )}
+          {venue.status === 'unverified' && (
+            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+              New
+            </span>
+          )}
+          {venue.status === 'stale' && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+              Needs Update
+            </span>
+          )}
+        </div>
       </div>
     </button>
   )

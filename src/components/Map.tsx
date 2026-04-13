@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
+import { hasActiveHappyHour } from '@/lib/activeHH'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
@@ -11,6 +12,29 @@ interface MapProps {
   venues: Venue[]
   selectedVenue: Venue | null
   onVenueSelect: (venue: Venue) => void
+}
+
+// Pre-compute which venues have active HH once
+function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: venues
+      .filter(v => v.lat && v.lng)
+      .map(venue => ({
+        type: 'Feature',
+        properties: {
+          id: venue.id,
+          name: venue.name,
+          address: venue.address || '',
+          status: venue.status || 'unverified',
+          hasHH: hasActiveHappyHour(venue.menu_text)
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [venue.lng!, venue.lat!]
+        }
+      }))
+  }
 }
 
 export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) {
@@ -42,28 +66,11 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
     }
   }, [])
 
-  // Set up GeoJSON source with clustering
+  // Re-render venue markers when venues or selected state changes
   useEffect(() => {
     if (!map.current || !mapLoaded) return
 
-    const geojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: venues
-        .filter(v => v.lat && v.lng)
-        .map(venue => ({
-          type: 'Feature',
-          properties: {
-            id: venue.id,
-            name: venue.name,
-            address: venue.address || '',
-            status: venue.status || 'unverified'
-          },
-          geometry: {
-            type: 'Point',
-            coordinates: [venue.lng!, venue.lat!]
-          }
-        }))
-    }
+    const geojson = buildGeoJSON(venues)
 
     // Remove existing source/layers if they exist
     if (map.current.getLayer('clusters')) map.current.removeLayer('clusters')
@@ -110,17 +117,21 @@ export default function Map({ venues, selectedVenue, onVenueSelect }: MapProps) 
       }
     })
 
-    // Individual venue dots
+    // Individual venue dots — purple if HH is active, amber otherwise
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
       source: 'venues',
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-color': ['match', ['get', 'status'],
-          'unverified', '#fbbf24',
-          'stale', '#f97316',
-          '#f59e0b'
+        'circle-color': [
+          'case',
+          ['get', 'hasHH'], '#7c3aed',   // purple for active HH
+          ['match', ['get', 'status'],
+            'unverified', '#fbbf24',
+            'stale', '#f97316',
+            '#f59e0b'
+          ]
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,

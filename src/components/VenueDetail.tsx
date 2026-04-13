@@ -1,6 +1,7 @@
 'use client'
 
 import type { Venue } from '@/lib/supabase'
+import { hasActiveHappyHour } from '@/lib/activeHH'
 
 interface VenueDetailProps {
   venue: Venue
@@ -8,6 +9,7 @@ interface VenueDetailProps {
 }
 
 export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
+  const isActiveHH = hasActiveHappyHour(venue.menu_text)
 
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto z-50">
@@ -29,6 +31,11 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         <div className="mb-4">
           <div className="flex items-start gap-2">
             <h2 className="text-xl font-bold text-gray-900">{venue.name}</h2>
+            {isActiveHH && (
+              <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-semibold mt-1">
+                HH Active
+              </span>
+            )}
             {venue.status === 'unverified' && (
               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full mt-1">
                 New

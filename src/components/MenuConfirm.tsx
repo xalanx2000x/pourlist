@@ -14,6 +14,7 @@ interface MenuConfirmProps {
   isLoading?: boolean
   isParsing?: boolean  // NEW: true while parent is parsing images
   saveError?: string
+  onRetry?: () => void
   onConfirm: (menuText: string, venueId?: string) => void
   onReject: () => void
   onClose: () => void
@@ -30,6 +31,7 @@ export default function MenuConfirm({
   isLoading,
   isParsing,
   saveError,
+  onRetry,
   onConfirm,
   onReject,
   onClose
@@ -169,6 +171,14 @@ export default function MenuConfirm({
           <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-3">
             <p className="text-sm font-medium text-red-700">Save failed</p>
             <p className="text-xs text-red-600 mt-0.5">{saveError}</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="mt-2 text-xs font-semibold text-red-700 hover:text-red-800 underline"
+              >
+                Try Again
+              </button>
+            )}
           </div>
         )}
 

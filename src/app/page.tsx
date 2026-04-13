@@ -11,6 +11,11 @@ import VenueDetail from '@/components/VenueDetail'
 import AddVenueForm from '@/components/AddVenueForm'
 import MenuCapture from '@/components/MenuCapture'
 import MenuConfirm from '@/components/MenuConfirm'
+import SupportScreen from '@/components/SupportScreen'
+import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
+import { trackEvent } from '@/lib/analytics'
+import { checkRateLimit } from '@/lib/rateLimit'
+import { getDeviceHash } from '@/lib/device'
 import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
 
 
@@ -36,6 +41,14 @@ export default function Home() {
   const [showAddVenue, setShowAddVenue] = useState(false)
   const [radius, setRadius] = useState(1)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const showOnboarding = useOnboarding()
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
+  const [supportOpen, setSupportOpen] = useState(false)
+
+  // Show onboarding once on first visit
+  useEffect(() => {
+    if (showOnboarding) setOnboardingOpen(true)
+  }, [showOnboarding])
 
   // Menu scan workflow state
   const [scanStep, setScanStep] = useState<'idle' | 'capture' | 'confirm'>('idle')
@@ -49,6 +62,8 @@ export default function Home() {
   const [scanError, setScanError] = useState('')
   const [submitLoading, setSubmitLoading] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [rateLimitError, setRateLimitError] = useState<string | null>(null)
 
   const loadVenues = useCallback(async () => {
     try {
@@ -86,6 +101,7 @@ export default function Home() {
   }, [])
 
   function handleVenueSelect(venue: Venue) {
+    trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
     setSelectedVenue(venue)
   }
 
@@ -149,9 +165,11 @@ export default function Home() {
 
       const combined = texts.join('\n\n--- Page ---\n\n')
       if (texts.length === 0) {
+        await trackEvent('menu_parse_failure', { deviceHash: getDeviceHash() })
         setScanError('No menu text could be extracted. Please try again with better lighting or a clearer photo.')
         setParsedText('')
       } else {
+        await trackEvent('menu_parse_success', { deviceHash: getDeviceHash(), metadata: { pageCount: texts.length } })
         setScanError('')
         setParsedText(combined)
       }
@@ -170,6 +188,17 @@ export default function Home() {
   async function handleMenuConfirm(menuText: string, venueId?: string) {
     setSubmitLoading(true)
     setSaveError('')
+    setRateLimitError(null)
+
+    // Client-side rate limit — fail fast before doing any work
+    const deviceHash = getDeviceHash()
+    const limit = checkRateLimit(deviceHash)
+    if (!limit.allowed) {
+      const s = Math.ceil((limit.retryAfterMs || 0) / 1000)
+      setRateLimitError(`Slow down! Please wait ${s}s before submitting again.`)
+      setSubmitLoading(false)
+      return
+    }
 
     try {
       // Step 1: Upload the first photo to Supabase Storage (reference image)
@@ -182,7 +211,7 @@ export default function Home() {
           formData.append('lat', String(scanGps.lat))
           formData.append('lng', String(scanGps.lng))
         }
-        formData.append('deviceHash', 'anonymous')
+        formData.append('deviceHash', deviceHash)
 
         try {
           const uploadRes = await fetch('/api/upload-photo', {
@@ -214,7 +243,7 @@ export default function Home() {
           address: matchedVenue?.address || '',
           lat: scanGps?.lat,
           lng: scanGps?.lng,
-          deviceHash: 'anonymous',
+          deviceHash: deviceHash,
           imageUrl
         })
       })
@@ -224,8 +253,11 @@ export default function Home() {
         throw new Error(errData.error || 'Failed to save menu')
       }
 
+      const { venueId: savedVenueId } = await res.json()
+
       // Refresh venues
       await loadVenues()
+      await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
 
       // If we found a matched venue, refresh its detail view too
       if (matchedVenue) {
@@ -240,7 +272,10 @@ export default function Home() {
       setMatchedVenue(null)
       setIsDuplicate(false)
       setIsNotHH(false)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err) {
+      await trackEvent('menu_save_failure', { deviceHash, metadata: { error: err instanceof Error ? err.message : 'unknown' } })
       setSaveError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {
       setSubmitLoading(false)
@@ -359,8 +394,31 @@ export default function Home() {
         )}
       </div>
 
-      {/* Scan button — floating at bottom */}
+      {/* Tip link + scan button */}
       <div className="shrink-0 p-4 bg-white border-t border-gray-100">
+        {saveSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
+            <span className="text-green-600 text-sm font-semibold">✓ Saved</span>
+            <span className="text-sm text-green-700">
+              {matchedVenue ? `${matchedVenue.name} menu updated` : 'New venue added'}
+            </span>
+          </div>
+        )}
+        {rateLimitError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
+            <span className="text-red-600 text-sm font-semibold">⏳ Hold on</span>
+            <span className="text-sm text-red-700">{rateLimitError}</span>
+          </div>
+        )}
+
+        {/* Tip developers link */}
+        <button
+          onClick={() => setSupportOpen(true)}
+          className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
+        >
+          Enjoying your happy hour? Tip the developers $1 →
+        </button>
+
         <button
           onClick={() => setScanStep('capture')}
           className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
@@ -393,7 +451,8 @@ export default function Home() {
           isLoading={submitLoading}
           isParsing={scanLoading}
           saveError={saveError}
-          onConfirm={handleMenuConfirm}
+            onRetry={() => handleMenuConfirm(parsedText, matchedVenue?.id)}
+            onConfirm={handleMenuConfirm}
           onReject={() => {
             setScanStep('idle')
             setScanFiles([])
@@ -411,6 +470,10 @@ export default function Home() {
             setSaveError('')
           }}
         />
+      )}
+
+      {onboardingOpen && (
+        <OnboardingModal onClose={() => setOnboardingOpen(false)} />
       )}
     </div>
   )

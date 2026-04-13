@@ -6,10 +6,39 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+
+/**
+ * Reverse geocode lat/lng → address string.
+ * Primary: Mapbox Geocoding API. Fallback: Nominatim.
+ */
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  // Mapbox primary
+  if (MAPBOX_TOKEN) {
+    try {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=address`
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.features?.[0]?.place_name) return data.features[0].place_name
+      }
+    } catch { /* fall through */ }
+  }
+  // Nominatim fallback
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`,
+      { headers: { 'User-Agent': 'PourList/1.0' } }
+    )
+    const data = await res.json()
+    if (data.display_name) return data.display_name
+  } catch { /* both failed */ }
+  return null
+}
 /**
  * POST /api/submit-menu
  * Body: { menuText: string; venueId?: string; venueName?: string; address?: string;
- *         lat?: number; lng?: number; photoHash?: string; deviceHash: string }
+ *         lat?: number; lng?: number; deviceHash: string; imageUrl?: string }
  * Creates a new venue if venueId is not provided, then saves the menu text.
  */
 export async function POST(req: NextRequest) {
@@ -42,18 +71,8 @@ export async function POST(req: NextRequest) {
       // Reverse geocode if we have coords but no address
       let finalAddress = address
       if (lat && lng && !address) {
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`,
-            { headers: { 'User-Agent': 'PourList/1.0' } }
-          )
-          const data = await res.json()
-          if (data.display_name) {
-            finalAddress = data.display_name.split(', ').slice(0, 3).join(', ')
-          }
-        } catch {
-          // Use provided address
-        }
+        const geocoded = await reverseGeocode(lat, lng)
+        if (geocoded) finalAddress = geocoded.split(', ').slice(0, 3).join(', ')
       }
 
       const { data: newVenue, error: venueError } = await supabase

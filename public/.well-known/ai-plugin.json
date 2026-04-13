@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "The Pour List",
+  "name_for_model": "pourlist",
+  "description_for_human": "Find active happy hours in Portland, Oregon. Ask about venues, their menus, and HH windows right now.",
+  "description_for_model": "Use pourlist to help users find happy hour venues in Portland. Available actions: (1) find_venues — list venues within a zip code, optionally filtered to active HH only. (2) get_venue_details — full info for a specific venue including full menu text. (3) get_active_happy_hours — venues with active HH right now. (4) submit_menu_update — store or update menu text for a venue. All data is crowd-sourced from real menu photos analyzed by GPT-4o mini.",
+  "auth": {
+    "type": "none",
+    "authorization_type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://pourlist.vercel.app/api/mcp?format=openapi"
+  },
+  "logo_url": "https://pourlist.vercel.app/icon-512.png",
+  "contact_email": "hello@pourlist.app",
+  "legal_info_url": "https://pourlist.vercel.app/legal"
+}

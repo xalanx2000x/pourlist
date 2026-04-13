@@ -316,9 +316,6 @@ export default function Home() {
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-300 shrink-0 ml-auto">
-          {venues.length} venues
-        </span>
       </div>
 
       {/* Tab bar */}

@@ -1,5 +1,12 @@
 import { supabase, Venue } from './supabase'
 
+export type PhotoSet = {
+  id: string
+  venue_id: string
+  created_at: string
+  photo_urls: string[]
+}
+
 export async function getVenuesByZip(zip: string): Promise<Venue[]> {
   const { data, error } = await supabase
     .from('venues')
@@ -122,4 +129,92 @@ export async function flagContent(
 
   if (error) throw error
   return data
+}
+
+/**
+ * Create a new venue for the scan flow.
+ * GPS is stored directly (unlike addVenue which omits lat/lng).
+ */
+export async function createVenueForScan(params: {
+  name: string
+  lat: number | null
+  lng: number | null
+  address: string | null
+  deviceHash: string
+}): Promise<Venue> {
+  const { data, error } = await supabase
+    .from('venues')
+    .insert({
+      name: params.name.trim(),
+      lat: params.lat,
+      lng: params.lng,
+      address: params.address ?? null,
+      status: 'unverified',
+      contributor_trust: 'new',
+      zip: null,
+      phone: null,
+      website: null,
+      type: null,
+      menu_text: null,
+      latest_menu_image_url: null
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Add a photo set to a venue.
+ * If the venue now has more than 4 photo sets, the oldest one is deleted.
+ */
+export async function addPhotoSet(
+  venueId: string,
+  photoUrls: string[]
+): Promise<void> {
+  // Insert the new photo set
+  const { error: insertError } = await supabase
+    .from('photo_sets')
+    .insert({
+      venue_id: venueId,
+      photo_urls: photoUrls
+    })
+
+  if (insertError) throw insertError
+
+  // Count photo sets for this venue
+  const { data: sets, error: countError } = await supabase
+    .from('photo_sets')
+    .select('id, created_at')
+    .eq('venue_id', venueId)
+    .order('created_at', { ascending: false })
+
+  if (countError) throw countError
+
+  // If more than 4, delete the oldest ones
+  if (sets && sets.length > 4) {
+    const toDelete = sets.slice(4).map(s => s.id)
+    const { error: deleteError } = await supabase
+      .from('photo_sets')
+      .delete()
+      .in('id', toDelete)
+
+    if (deleteError) console.error('Failed to delete old photo sets:', deleteError)
+  }
+}
+
+/**
+ * Get the 4 most recent photo sets for a venue.
+ */
+export async function getPhotoSets(venueId: string): Promise<PhotoSet[]> {
+  const { data, error } = await supabase
+    .from('photo_sets')
+    .select('*')
+    .eq('venue_id', venueId)
+    .order('created_at', { ascending: false })
+    .limit(4)
+
+  if (error) throw error
+  return (data as PhotoSet[]) || []
 }

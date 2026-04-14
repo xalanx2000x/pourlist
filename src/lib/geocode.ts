@@ -1,7 +1,40 @@
-export async function geocodeLocation(
+import { supabase } from './supabase'
+import type { Venue } from './supabase'
+
+export async function searchVenues(
+  query: string
+): Promise<{
+  type: 'venues' | 'location'
+  venues?: Venue[]
+  coords?: { lat: number; lng: number }
+}> {
+  const trimmed = query.trim()
+
+  // If it's a 5-digit zip, skip venue search and go straight to Nominatim
+  if (/^\d{5}$/.test(trimmed)) {
+    const coords = await geocodeWithNominatim(trimmed)
+    return coords ? { type: 'location', coords } : { type: 'location' }
+  }
+
+  // Search Supabase for venues matching the name
+  const { data: venues } = await supabase
+    .from('venues')
+    .select('id, name, address, lat, lng')
+    .ilike('name', `%${trimmed}%`)
+    .limit(5)
+
+  if (venues && venues.length > 0) {
+    return { type: 'venues', venues: venues as Venue[] }
+  }
+
+  // No venue match — fall back to Nominatim geocoding
+  const coords = await geocodeWithNominatim(trimmed)
+  return coords ? { type: 'location', coords } : { type: 'location' }
+}
+
+async function geocodeWithNominatim(
   query: string
 ): Promise<{ lat: number; lng: number } | null> {
-  // Detect US zip codes (5 digits) and append country to avoid misrouting to Italy etc.
   const isZipCode = /^\d{5}$/.test(query.trim())
   const searchQuery = isZipCode ? `${query.trim()}, USA` : query
 

@@ -300,6 +300,7 @@ export default function Home() {
       {/* Search bar */}
       <SearchBar
         onSearch={handleSearch}
+        onVenueSelect={handleVenueSelect}
         onClear={handleSearchClear}
       />
 

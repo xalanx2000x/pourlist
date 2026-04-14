@@ -1,21 +1,27 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { geocodeLocation } from '@/lib/geocode'
+import { searchVenues } from '@/lib/geocode'
+import type { Venue } from '@/lib/supabase'
 
 interface SearchBarProps {
   onSearch: (coords: { lat: number; lng: number }) => void
+  onVenueSelect: (venue: Venue) => void
   onClear: () => void
 }
 
-export default function SearchBar({ onSearch, onClear }: SearchBarProps) {
+export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBarProps) {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [venueResults, setVenueResults] = useState<Venue[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showError(msg: string) {
     setError(msg)
+    setVenueResults([])
+    setShowDropdown(false)
     if (errorTimer.current) clearTimeout(errorTimer.current)
     errorTimer.current = setTimeout(() => setError(''), 3000)
   }
@@ -25,18 +31,34 @@ export default function SearchBar({ onSearch, onClear }: SearchBarProps) {
     const trimmed = query.trim()
     if (!trimmed) return
     setLoading(true)
-    const result = await geocodeLocation(trimmed)
+    setShowDropdown(false)
+    setVenueResults([])
+
+    const result = await searchVenues(trimmed)
     setLoading(false)
-    if (!result) {
+
+    if (result.type === 'venues' && result.venues) {
+      setVenueResults(result.venues)
+      setShowDropdown(true)
+    } else if (result.type === 'location' && result.coords) {
+      setShowDropdown(false)
+      onSearch(result.coords)
+    } else {
       showError('Location not found. Try a different city or zip.')
-      return
     }
-    onSearch(result)
+  }
+
+  function handleVenueClick(venue: Venue) {
+    setShowDropdown(false)
+    setVenueResults([])
+    onVenueSelect(venue)
   }
 
   function handleClear() {
     setQuery('')
     setError('')
+    setVenueResults([])
+    setShowDropdown(false)
     if (errorTimer.current) clearTimeout(errorTimer.current)
     onClear()
   }
@@ -48,7 +70,7 @@ export default function SearchBar({ onSearch, onClear }: SearchBarProps) {
         <button
           type="submit"
           disabled={loading || !query.trim()}
-          className="absolute left-3 text-gray-400 hover:text-amber-600 disabled:opacity-40 transition-colors"
+          className="absolute left-3 text-gray-400 hover:text-amber-600 disabled:opacity-40 transition-colors z-10"
           aria-label="Search"
         >
           {loading ? (
@@ -67,8 +89,14 @@ export default function SearchBar({ onSearch, onClear }: SearchBarProps) {
         <input
           type="text"
           value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Search a city or zip..."
+          onChange={e => {
+            setQuery(e.target.value)
+            if (!e.target.value.trim()) {
+              setVenueResults([])
+              setShowDropdown(false)
+            }
+          }}
+          placeholder="Search venue or location..."
           className="w-full pl-9 pr-16 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all"
         />
 
@@ -86,6 +114,24 @@ export default function SearchBar({ onSearch, onClear }: SearchBarProps) {
           </button>
         )}
       </form>
+
+      {/* Venue results dropdown — appears above input */}
+      {showDropdown && venueResults.length > 0 && (
+        <div className="absolute z-50 w-[calc(100%-2rem)] mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
+          {venueResults.map(venue => (
+            <button
+              key={venue.id}
+              onClick={() => handleVenueClick(venue)}
+              className="w-full text-left px-4 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
+            >
+              <p className="text-sm font-medium text-gray-800">{venue.name}</p>
+              {venue.address && (
+                <p className="text-xs text-gray-500 mt-0.5">{venue.address}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <p className="text-red-500 text-xs mt-1 pl-1">{error}</p>

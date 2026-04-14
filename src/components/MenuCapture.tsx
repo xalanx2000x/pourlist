@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
 
 interface MenuCaptureProps {
@@ -8,19 +8,24 @@ interface MenuCaptureProps {
   onClose: () => void
 }
 
+const MAX_PHOTOS = 4
+
 export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
-  const [step, setStep] = useState<'choose' | 'preview'>('choose')
   const [files, setFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  async function processFiles(files: File[]) {
-    if (!files.length) return
+  const addFiles = useCallback(async (newFiles: File[]) => {
+    const allFiles = [...files, ...newFiles]
+    if (allFiles.length > MAX_PHOTOS) {
+      setError(`Maximum ${MAX_PHOTOS} photos allowed.`)
+      return
+    }
 
-    // Validate all files
-    for (const f of files) {
+    // Validate
+    for (const f of allFiles) {
       const type = f.type.toLowerCase()
       const isImage = type.startsWith('image/')
       const isHeic = type === 'image/heic' || type === 'image/heif' || type === 'image/heif-compressed'
@@ -28,69 +33,89 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         setError('All files must be images.')
         return
       }
-      // 10MB client-side limit — canvas resize in page.tsx will handle anything over ~3MB
       if (f.size > 10 * 1024 * 1024) {
         setError('One or more photos is too large. Please use smaller files.')
         return
       }
-      // Total batch should be under ~15MB to avoid memory issues
-      const totalSize = files.reduce((sum, file) => sum + file.size, 0)
-      if (totalSize > 15 * 1024 * 1024) {
-        setError('Total size of all photos is too large. Please select fewer photos.')
-        return
-      }
     }
+
+    const totalSize = allFiles.reduce((sum, f) => sum + f.size, 0)
+    if (totalSize > 15 * 1024 * 1024) {
+      setError('Total size of all photos is too large. Please select fewer photos.')
+      return
+    }
+
+    setError('')
+    setLoading(true)
+
+    try {
+      // Create preview URLs for new files only
+      const existingUrls = previewUrls
+      const newUrls = newFiles.map(f => URL.createObjectURL(f))
+      setPreviewUrls([...existingUrls, ...newUrls])
+      setFiles(allFiles)
+    } finally {
+      setLoading(false)
+    }
+  }, [files, previewUrls])
+
+  function removeFile(index: number) {
+    URL.revokeObjectURL(previewUrls[index])
+    setFiles(prev => prev.filter((_, i) => i !== index))
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function onFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files
+    if (selected?.length) {
+      addFiles(Array.from(selected))
+    }
+    // Reset so same file can be re-selected
+    e.target.value = ''
+  }
+
+  async function handleDone() {
+    if (files.length === 0) return
 
     setLoading(true)
     setError('')
 
     try {
-      // Generate preview URLs
-      const urls = files.map(f => URL.createObjectURL(f))
-      setPreviewUrls(urls)
-      setFiles(files)
+      // Try EXIF GPS from first photo first
+      let gps: { lat: number; lng: number } | null = null
+      try {
+        gps = await extractGpsFromPhoto(files[0])
+      } catch {
+        // No EXIF GPS
+      }
 
-      // Try to extract GPS from EXIF of the first photo
-      const gps = await extractGpsFromPhoto(files[0]).catch(() => null)
+      // Fallback to browser location
+      if (!gps) {
+        try {
+          gps = await getBrowserLocation()
+        } catch {
+          // Location unavailable
+        }
+      }
 
-      // If no GPS in EXIF, try browser location
-      const location = gps || await getBrowserLocation().catch(() => null)
-
-      setStep('preview')
-      onCapture(files, location)
-    } catch (err) {
+      onCapture(files, gps)
+    } catch {
       setError('Could not read photos. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  function onFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = e.target.files
-    if (selected?.length) {
-      processFiles(Array.from(selected))
-    }
-  }
-
-  function removeFile(index: number) {
-    const newFiles = [...files]
-    const newUrls = [...previewUrls]
-    URL.revokeObjectURL(newUrls[index]) // free memory
-    newFiles.splice(index, 1)
-    newUrls.splice(index, 1)
-    setFiles(newFiles)
-    setPreviewUrls(newUrls)
-  }
-
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-md rounded-t-3xl p-5 pb-8 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white w-full max-w-md rounded-t-3xl p-5 pb-8 max-h-[90vh] flex flex-col overflow-hidden">
         {/* Handle */}
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-center mb-4 shrink-0">
           <div className="w-12 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        <div className="flex justify-between items-center mb-5">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4 shrink-0">
           <h2 className="text-lg font-bold text-gray-900">Scan Menu</h2>
           <button
             onClick={onClose}
@@ -100,73 +125,123 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
           </button>
         </div>
 
-        {step === 'choose' && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500 mb-4">
-              Take photos of the happy hour menu pages, or select them from your gallery. You can add multiple pages at once.
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-3 shrink-0">{error}</p>
+        )}
+
+        {/* Instructions */}
+        {files.length === 0 && (
+          <p className="text-sm text-gray-500 mb-4 shrink-0">
+            Take photos of the happy hour menu pages. You can add up to 4 photos.
+          </p>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,image/heic,image/heif,image/heif-compressed"
+          multiple
+          onChange={onFileInput}
+          className="hidden"
+        />
+
+        {/* Photo strip — shown once at least 1 photo is added */}
+        {files.length > 0 && (
+          <div className="shrink-0 mb-4">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {previewUrls.map((url, i) => (
+                <div key={i} className="relative shrink-0 group">
+                  <img
+                    src={url}
+                    alt={`Menu page ${i + 1}`}
+                    className="h-24 w-auto object-contain rounded-xl bg-gray-100"
+                  />
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="absolute top-1 right-1 w-6 h-6 bg-black/60 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs leading-none"
+                  >
+                    ✕
+                  </button>
+                  <span className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                    {i + 1}
+                  </span>
+                </div>
+              ))}
+
+              {/* "Add another" slot */}
+              {files.length < MAX_PHOTOS && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading}
+                  className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-amber-500 hover:text-amber-500 transition-colors disabled:opacity-50"
+                >
+                  <span className="text-xl leading-none">+</span>
+                  <span className="text-xs">Add</span>
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              {files.length} of {MAX_PHOTOS} photos
             </p>
+          </div>
+        )}
 
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-            )}
-
-            {/* Hidden file input — accepts multiple images, no capture attr = shows gallery on mobile */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,image/heic,image/heif,image/heif-compressed"
-              multiple
-              onChange={onFileInput}
-              className="hidden"
-            />
-
+        {/* Action buttons */}
+        <div className="mt-auto space-y-3 shrink-0">
+          {files.length === 0 ? (
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors"
+              className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
             >
               <span className="text-xl">📷</span>
               Take Photos / Choose from Gallery
             </button>
+          ) : (
+            <>
+              {/* Done button */}
+              <button
+                onClick={handleDone}
+                disabled={loading || files.length === 0}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Getting location...
+                  </>
+                ) : (
+                  <>✓ Done — {files.length} photo{files.length > 1 ? 's' : ''}</>
+                )}
+              </button>
 
+              {/* Add more / Retake */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading || files.length >= MAX_PHOTOS}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  <span>📷</span> Add more
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+
+          {files.length === 0 && (
             <p className="text-xs text-gray-400 text-center">
               Select multiple photos to capture both pages of a two-sided menu
             </p>
-          </div>
-        )}
-
-        {step === 'preview' && files.length > 0 && (
-          <div>
-            <p className="text-sm text-green-600 font-medium mb-3">
-              ✓ {files.length} photo{files.length > 1 ? 's' : ''} ready
-            </p>
-            <div className="space-y-2 mb-3">
-              {previewUrls.map((url, i) => (
-                <div key={i} className="relative group">
-                  <img
-                    src={url}
-                    alt={`Menu page ${i + 1}`}
-                    className="w-full max-h-40 object-contain rounded-xl bg-gray-100"
-                  />
-                  <button
-                    onClick={() => removeFile(i)}
-                    className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80 text-white rounded-full flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    ✕
-                  </button>
-                  {i > 0 && (
-                    <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded">
-                      Page {i + 1}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 text-center">
-              All pages will be combined into one menu
-            </p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

@@ -70,3 +70,41 @@ async function geocodeWithNominatim(
     return null
   }
 }
+
+export async function geocodeAddress(
+  address: string
+): Promise<{ lat: number; lng: number; zip?: string } | null> {
+  const url = new URL('https://nominatim.openstreetmap.org/search')
+  url.searchParams.set('q', `${address}, Portland, OR, USA`)
+  url.searchParams.set('format', 'json')
+  url.searchParams.set('addressdetails', '1')
+  url.searchParams.set('limit', '1')
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        'User-Agent': 'PourList/1.0 (contact@pourlist.app)',
+      },
+    })
+
+    if (!res.ok) return null
+
+    const results = await res.json()
+    if (!results || results.length === 0) return null
+
+    const first = results[0]
+    // Extract zip from address components
+    const zip =
+      first.address?.postcode ||
+      first.address?.city?.match(/\d{5}/)?.[0] ||
+      undefined
+
+    return {
+      lat: parseFloat(first.lat),
+      lng: parseFloat(first.lon),
+      zip,
+    }
+  } catch {
+    return null
+  }
+}

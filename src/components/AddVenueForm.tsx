@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { addVenue } from '@/lib/venues'
 import { getDeviceHash, reverseGeocode } from '@/lib/device'
+import { geocodeAddress } from '@/lib/geocode'
 
 interface AddVenueFormProps {
   onClose: () => void
@@ -31,12 +32,23 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onV
       const deviceHash = getDeviceHash()
       let lat = initialCoords?.lat
       let lng = initialCoords?.lng
+      let zip: string | null = null
 
-      // If we have coords but no address, try to reverse geocode
+      // If we have coords but no address, reverse geocode to fill address
       if (lat && lng && !form.address) {
         const address = await reverseGeocode(lat, lng)
         if (address) {
           setForm(f => ({ ...f, address }))
+        }
+      }
+
+      // If we have address but no coords, forward geocode the address
+      if (!lat && !lng && form.address) {
+        const geo = await geocodeAddress(form.address)
+        if (geo) {
+          lat = geo.lat
+          lng = geo.lng
+          zip = geo.zip || null
         }
       }
 
@@ -46,7 +58,7 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onV
         phone: form.phone || null,
         website: form.website || null,
         type: form.type || null,
-        zip: '97209',
+        zip: zip || '97209',
         lat: lat || null,
         lng: lng || null,
         status: 'unverified',

@@ -7,7 +7,7 @@ import { checkHappyHour } from '@/lib/happyHourCheck'
 import type { Venue } from '@/lib/supabase'
 import VenueList from '@/components/VenueList'
 import VenueDetail from '@/components/VenueDetail'
-import AddVenueForm from '@/components/AddVenueForm'
+
 import MenuCapture from '@/components/MenuCapture'
 import VenuePicker from '@/components/VenuePicker'
 import NameEntry from '@/components/NameEntry'
@@ -450,21 +450,6 @@ export default function Home() {
           />
         )}
 
-        {scanStep === 'name_entry' && (
-          <AddVenueForm
-            onClose={handleScanClose}
-            onVenueAdded={loadVenues}
-            initialCoords={scan.gps ?? undefined}
-            onVenueCreated={(venue) => {
-              setVenues(prev => {
-                if (prev.some(v => v.id === venue.id)) return prev
-                return [venue as Venue, ...prev]
-              })
-              setScan(prev => ({ ...prev, confirmedVenue: venue as Venue }))
-              setScanStep('name_entry')
-            }}
-          />
-        )}
       </div>
 
       {/* Bottom bar */}

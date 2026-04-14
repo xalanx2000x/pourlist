@@ -1,8 +1,12 @@
 export async function geocodeLocation(
   query: string
 ): Promise<{ lat: number; lng: number } | null> {
+  // Detect US zip codes (5 digits) and append country to avoid misrouting to Italy etc.
+  const isZipCode = /^\d{5}$/.test(query.trim())
+  const searchQuery = isZipCode ? `${query.trim()}, USA` : query
+
   const url = new URL('https://nominatim.openstreetmap.org/search')
-  url.searchParams.set('q', query)
+  url.searchParams.set('q', searchQuery)
   url.searchParams.set('format', 'json')
   url.searchParams.set('limit', '1')
 

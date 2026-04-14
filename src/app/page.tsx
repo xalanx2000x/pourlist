@@ -87,12 +87,12 @@ export default function Home() {
     loadVenues()
   }, [loadVenues])
 
-  // Get user location on mount
+  // Get user location on mount — always use live GPS, ignore stale searchedLocation
   useEffect(() => {
     getBrowserLocation()
       .then(loc => {
         setUserLocation(loc)
-        setSearchedLocation(loc)
+        // Don't setSearchedLocation here — keep it null so the live GPS is used
       })
       .catch(() => {})
   }, [])

@@ -5,6 +5,8 @@ import { addVenue } from '@/lib/venues'
 import { getDeviceHash, reverseGeocode } from '@/lib/device'
 import { geocodeAddress } from '@/lib/geocode'
 
+type GeocodeStatus = 'idle' | 'resolving' | 'found' | 'not-found' | 'error'
+
 interface AddVenueFormProps {
   onClose: () => void
   onVenueAdded: () => void
@@ -14,50 +16,65 @@ interface AddVenueFormProps {
 
 export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onVenueCreated }: AddVenueFormProps) {
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [geocodeStatus, setGeocodeStatus] = useState<GeocodeStatus>('idle')
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     address: '',
-    phone: '',
-    website: '',
-    type: ''
   })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    setMessage('')
 
-    try {
-      const deviceHash = getDeviceHash()
-      let lat = initialCoords?.lat
-      let lng = initialCoords?.lng
-      let zip: string | null = null
+    const deviceHash = getDeviceHash()
+    let lat = initialCoords?.lat
+    let lng = initialCoords?.lng
+    let zip: string | null = null
 
-      // If we have coords but no address, reverse geocode to fill address
-      if (lat && lng && !form.address) {
+    // If we have GPS but no address, reverse geocode to fill address
+    if (lat && lng && !form.address) {
+      const address = await reverseGeocode(lat, lng)
+      if (address) {
+        setForm(f => ({ ...f, address }))
+        setResolvedAddress(address)
+      }
+    }
+
+    // If we have address but no GPS, forward geocode
+    if (!lat && !lng && form.address) {
+      setGeocodeStatus('resolving')
+      const geo = await geocodeAddress(form.address)
+      if (geo) {
+        lat = geo.lat
+        lng = geo.lng
+        zip = geo.zip || null
+        setResolvedAddress(geo.zip ? `${form.address}, Portland, OR ${geo.zip}` : `${form.address}, Portland, OR`)
+        setGeocodeStatus('found')
+      } else {
+        setGeocodeStatus('not-found')
+        setLoading(false)
+        return
+      }
+    } else if (lat && lng) {
+      // GPS available — use it directly, resolve address if not set
+      if (!form.address) {
         const address = await reverseGeocode(lat, lng)
         if (address) {
           setForm(f => ({ ...f, address }))
+          setResolvedAddress(address)
         }
       }
+      setGeocodeStatus('found')
+    }
 
-      // If we have address but no coords, forward geocode the address
-      if (!lat && !lng && form.address) {
-        const geo = await geocodeAddress(form.address)
-        if (geo) {
-          lat = geo.lat
-          lng = geo.lng
-          zip = geo.zip || null
-        }
-      }
-
+    try {
       const newVenue = await addVenue({
         name: form.name,
-        address: form.address,
-        phone: form.phone || null,
-        website: form.website || null,
-        type: form.type || null,
+        address: form.address || resolvedAddress || '',
+        phone: null,
+        website: null,
+        type: null,
         zip: zip || '97209',
         lat: lat || null,
         lng: lng || null,
@@ -65,35 +82,27 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onV
         contributor_trust: 'new'
       })
 
-      setMessage('Venue added! It will appear after review.')
-      setTimeout(() => {
-        onVenueAdded()
-        if (onVenueCreated) onVenueCreated(newVenue)
-        onClose()
-      }, 1500)
+      onVenueAdded()
+      if (onVenueCreated) onVenueCreated(newVenue)
+      onClose()
     } catch (err) {
-      setMessage('Failed to add venue. Please try again.')
+      setGeocodeStatus('error')
     } finally {
       setLoading(false)
     }
   }
 
+  const canSubmit = form.name.trim() && form.address.trim() && !loading
+
   return (
     <>
-      {/* Dark overlay behind the form */}
-      <div
-        className="fixed inset-0 bg-black/40 z-40"
-        onClick={onClose}
-      />
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
 
-      {/* Form sheet */}
       <div className="fixed inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto z-50">
-        {/* Handle bar */}
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-12 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200 active:bg-gray-300"
@@ -103,10 +112,9 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onV
         </button>
 
         <form onSubmit={handleSubmit} className="p-5">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Add a New Venue</h2>
-
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Add a Venue</h2>
           <p className="text-sm text-gray-500 mb-4">
-            Can't find a bar? Add it here. Our team will verify the details.
+            Just the name and address — we'll find it on the map.
           </p>
 
           <div className="space-y-4">
@@ -132,73 +140,60 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onV
                 type="text"
                 required
                 value={form.address}
-                onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                onChange={e => {
+                  setForm(f => ({ ...f, address: e.target.value }))
+                  setGeocodeStatus('idle')
+                  setResolvedAddress(null)
+                }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                placeholder="1000 NW 17th Ave"
+                placeholder="5627 S Kelly Ave, Portland, OR"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone
-              </label>
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                placeholder="(503) 555-0100"
-              />
-            </div>
+            {/* Geocode feedback */}
+            {geocodeStatus === 'resolving' && (
+              <div className="flex items-center gap-2 text-sm text-blue-600">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
+                </svg>
+                Finding location...
+              </div>
+            )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Website
-              </label>
-              <input
-                type="url"
-                value={form.website}
-                onChange={e => setForm(f => ({ ...f, website: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-                placeholder="https://example.com"
-              />
-            </div>
+            {geocodeStatus === 'found' && resolvedAddress && (
+              <div className="flex items-start gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                <span className="mt-0.5">✓</span>
+                <span>Found: <span className="font-medium">{resolvedAddress}</span></span>
+              </div>
+            )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Type
-              </label>
-              <select
-                value={form.type}
-                onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-              >
-                <option value="">Select type...</option>
-                <option value="Bar">Bar</option>
-                <option value="Restaurant">Restaurant</option>
-                <option value="Cocktail Lounge">Cocktail Lounge</option>
-                <option value="Sports Bar">Sports Bar</option>
-                <option value="Dive Bar">Dive Bar</option>
-                <option value="Brewpub">Brewpub</option>
-                <option value="Wine Bar">Wine Bar</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
+            {geocodeStatus === 'not-found' && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                <span className="font-medium">Couldn't find that address.</span>
+                <br />
+                Try a more specific address (street number + name + city), or use the photo scan instead — it uses your GPS to pin the exact location.
+              </div>
+            )}
+
+            {geocodeStatus === 'error' && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                Something went wrong. Please try again.
+              </div>
+            )}
           </div>
-
-          {message && (
-            <p className={`text-sm mt-4 ${message.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
-              {message}
-            </p>
-          )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={!canSubmit}
             className="w-full mt-5 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white py-3 px-4 rounded-lg font-semibold transition-colors"
           >
             {loading ? 'Adding...' : 'Add Venue'}
           </button>
+
+          <p className="text-xs text-gray-400 text-center mt-3">
+            Tip: Scan a menu photo instead — it's faster and pins the location automatically.
+          </p>
         </form>
       </div>
     </>

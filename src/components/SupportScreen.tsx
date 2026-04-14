@@ -6,8 +6,8 @@ interface SupportScreenProps {
   onClose: () => void
 }
 
-const CASHAPP = '$PourListPDX'
-const VENMO = '@PourListPDX'
+const CASHAPP = '$heretothere23'
+const VENMO = 'tymyry'
 
 export default function SupportScreen({ onClose }: SupportScreenProps) {
   return (

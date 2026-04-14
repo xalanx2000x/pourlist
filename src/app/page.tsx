@@ -111,6 +111,11 @@ export default function Home() {
   function handleVenueSelect(venue: Venue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
     setSelectedVenue(venue)
+    // Also add to venues array if not already present, so the pin appears on map
+    setVenues(prev => {
+      if (prev.some(v => v.id === venue.id)) return prev
+      return [venue, ...prev]
+    })
   }
 
   // Menu scan workflow

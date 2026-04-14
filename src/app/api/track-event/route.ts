@@ -27,8 +27,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ ok: true })
-  } catch {
+  } catch (err) {
     // Never surface errors to the client — analytics must not break UX
+    console.error('track-event error:', err)
     return NextResponse.json({ ok: true })
   }
 }

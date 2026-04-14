@@ -263,7 +263,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ venueId: targetVenueId, success: true })
   } catch (err) {
     console.error('commit-menu error:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

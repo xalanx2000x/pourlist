@@ -110,36 +110,19 @@ async function handleSpecificDeletions(
   paths: string[],
   dryRun: boolean
 ) {
-  const deletedDbCount = 0
-  const deletedStorageCount = 0
-
   // 1. Delete DB records by ID
   if (photoIds.length > 0 && !dryRun) {
-    const { error: dbError } = await supabaseAdmin
+    await supabaseAdmin
       .from('photos')
       .delete()
       .in('id', photoIds)
-
-    if (dbError) {
-      return NextResponse.json(
-        { error: `DB delete failed: ${dbError.message}` },
-        { status: 500 }
-      )
-    }
   }
 
   // 2. Delete storage files by path
   if (paths.length > 0 && !dryRun) {
-    const { error: storageError } = await supabaseAdmin.storage
+    await supabaseAdmin.storage
       .from(STORAGE_BUCKET)
       .remove(paths)
-
-    if (storageError) {
-      return NextResponse.json(
-        { error: `Storage delete failed: ${storageError.message}`, dbDeletedCount: photoIds.length },
-        { status: 500 }
-      )
-    }
   }
 
   return NextResponse.json({

@@ -62,17 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ isDuplicate: false })
     }
 
-    const { data: venue } = await supabase
-      .from('venues')
-      .select('id, menu_text')
-      .eq('id', matchedVenueId)
-      .single()
-
-    return NextResponse.json({
-      isDuplicate: true,
-      venueId: matchedVenueId,
-      existingMenuText: venue?.menu_text ?? null
-    })
+    return NextResponse.json({ isDuplicate: true })
 
   } catch (err) {
     console.error('Check duplicate error:', err)

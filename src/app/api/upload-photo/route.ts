@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'File too large. Maximum size is 20MB.' }, { status: 400 })
     }
 
+    // MIME type allowlist
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/heif-compressed']
+    if (!ALLOWED_TYPES.includes(photo.type)) {
+      return NextResponse.json({ error: 'Invalid file type' }, { status: 400 })
+    }
+
     // Server-side rate limit check (fail-open — doesn't block user on error)
     if (deviceHash) {
       try {
@@ -69,7 +76,7 @@ export async function POST(req: NextRequest) {
           const { allowed } = await rateLimitRes.json() as { allowed: boolean }
           if (!allowed) {
             return NextResponse.json(
-              { error: 'Rate limit exceeded. Please wait before uploading again.' },
+              { error: 'Too many requests. Please wait a moment before trying again.' },
               { status: 429 }
             )
           }
@@ -79,8 +86,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const fileExt = photo.name.split('.').pop() || 'jpg'
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`
+    const ext = photo.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+    const fileName = `${randomUUID()}.${ext}`
     const filePath = `venue-photos/${fileName}`
 
     // Convert File to Buffer
@@ -97,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     if (uploadError) {
       console.error('Storage upload error:', uploadError)
-      return NextResponse.json({ error: uploadError.message }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to upload photo' }, { status: 500 })
     }
 
     // Get public URL
@@ -173,7 +180,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (err: unknown) {
     console.error('Upload error:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

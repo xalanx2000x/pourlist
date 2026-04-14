@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
           if (!allowed) {
             clearTimeout(timeout)
             return NextResponse.json(
-              { error: 'Rate limit exceeded. Please wait before parsing another menu.' },
+              { error: 'Too many requests. Please wait a moment before trying again.' },
               { status: 429 }
             )
           }
@@ -102,8 +102,8 @@ Do NOT add, interpret, or correct anything. Just extract what's there.`
         })
       } catch (fetchErr: unknown) {
         clearTimeout(timeout)
-        const msg = fetchErr instanceof Error ? fetchErr.message : 'Unknown'
-        return NextResponse.json({ error: `Failed to fetch image: ${msg}` }, { status: 400 })
+        console.error('Failed to fetch image:', fetchErr)
+        return NextResponse.json({ error: 'Failed to fetch image' }, { status: 400 })
       }
     }
 

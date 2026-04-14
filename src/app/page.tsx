@@ -394,6 +394,10 @@ export default function Home() {
             onVenueAdded={loadVenues}
             initialCoords={scanGps ?? undefined}
             onVenueCreated={(venue) => {
+              setVenues(prev => {
+                if (prev.some(v => v.id === venue.id)) return prev
+                return [venue as Venue, ...prev]
+              })
               setMatchedVenue(venue as Venue)
               setScanStep('confirm')
             }}

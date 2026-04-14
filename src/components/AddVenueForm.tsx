@@ -8,7 +8,7 @@ interface AddVenueFormProps {
   onClose: () => void
   onVenueAdded: () => void
   initialCoords?: { lat: number; lng: number }
-  onVenueCreated?: (venue: { id: string; name: string; address: string }) => void
+  onVenueCreated?: (venue: { id: string; name: string; address: string; lat: number | null; lng: number | null; status: string }) => void
 }
 
 export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onVenueCreated }: AddVenueFormProps) {

@@ -304,25 +304,7 @@ export default function Home() {
         onClear={handleSearchClear}
       />
 
-      {/* Radius selector */}
-      <div className="shrink-0 px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-2 overflow-x-auto">
-        <span className="text-xs text-gray-400 shrink-0">Radius:</span>
-        <div className="flex gap-1.5">
-          {RADIUS_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setRadius(opt.value)}
-              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                radius === opt.value
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
+
 
       {/* Tab bar */}
       <div className="shrink-0 flex border-b border-gray-200 bg-white z-10">
@@ -366,6 +348,22 @@ export default function Home() {
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
               />
+              {/* Floating vertical radius slider */}
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg px-2 py-3">
+                <span className="text-xs text-amber-600 font-semibold leading-none">
+                  {RADIUS_OPTIONS.find(o => o.value === radius)?.label ?? `${radius} mi`}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={6}
+                  step={1}
+                  value={RADIUS_OPTIONS.findIndex(o => o.value === radius)}
+                  onChange={(e) => setRadius(RADIUS_OPTIONS[Number(e.target.value)].value)}
+                  className="vertical-slider"
+                />
+                <span className="text-xs text-gray-400 leading-none">mi</span>
+              </div>
             </div>
             <div className="hidden md:block w-80 bg-white border-l border-gray-200 overflow-y-auto">
               <VenueList

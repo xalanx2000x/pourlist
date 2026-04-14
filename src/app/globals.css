@@ -60,3 +60,53 @@ body {
   padding: 4px 8px;
   color: #6b7280;
 }
+
+/* Vertical radius slider */
+.vertical-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 24px;
+  height: 120px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.vertical-slider::-webkit-slider-runnable-track {
+  width: 4px;
+  height: 100%;
+  background: #e5e7eb;
+  border-radius: 2px;
+}
+
+.vertical-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #f59e0b;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  margin-left: -8px;
+  cursor: pointer;
+}
+
+.vertical-slider::-moz-range-track {
+  width: 4px;
+  height: 100%;
+  background: #e5e7eb;
+  border-radius: 2px;
+}
+
+.vertical-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #f59e0b;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}

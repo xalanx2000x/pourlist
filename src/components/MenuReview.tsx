@@ -7,7 +7,7 @@ interface MenuReviewProps {
   files: File[]
   gps: { lat: number; lng: number } | null
   venue: Venue | null
-  newVenueName?: string
+  newVenueName?: string | null
   parsedText: string
   hhTimes: string[]
   isNotHH: boolean

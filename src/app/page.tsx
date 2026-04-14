@@ -3,26 +3,44 @@
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { getVenuesByProximity } from '@/lib/venues'
-import { fingerprintFile } from '@/lib/imageHash'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import type { Venue } from '@/lib/supabase'
 import VenueList from '@/components/VenueList'
 import VenueDetail from '@/components/VenueDetail'
 import AddVenueForm from '@/components/AddVenueForm'
 import MenuCapture from '@/components/MenuCapture'
-import MenuConfirm from '@/components/MenuConfirm'
+import VenuePicker from '@/components/VenuePicker'
+import NameEntry from '@/components/NameEntry'
+import MenuReview from '@/components/MenuReview'
 import SupportScreen from '@/components/SupportScreen'
 import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
 import { trackEvent } from '@/lib/analytics'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getDeviceHash } from '@/lib/device'
-import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
+import { getBrowserLocation } from '@/lib/gps'
 import SearchBar from '@/components/SearchBar'
-
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
 type ViewMode = 'map' | 'list'
+
+// ── New scan step state machine ───────────────────────────────────────────
+type ScanStep =
+  | 'idle'
+  | 'capture'        // MenuCapture — taking 1–4 photos
+  | 'venue_picker'   // VenuePicker — GPS available, confirm nearby venue
+  | 'name_entry'     // NameEntry — type venue name, fuzzy match
+  | 'review'         // MenuReview — edit HH time + menu text, commit
+
+type ScanState = {
+  files: File[]
+  gps: { lat: number; lng: number } | null
+  confirmedVenue: Venue | null
+  newVenueName: string | null
+  parsedText: string
+  hhTimes: string[]
+  isNotHH: boolean
+}
 
 const RADIUS_OPTIONS = [
   { label: '¼ mi', value: 0.25 },
@@ -33,6 +51,18 @@ const RADIUS_OPTIONS = [
   { label: '10 mi', value: 10 },
   { label: '25 mi', value: 25 },
 ]
+
+function emptyScanState(): ScanState {
+  return {
+    files: [],
+    gps: null,
+    confirmedVenue: null,
+    newVenueName: null,
+    parsedText: '',
+    hhTimes: [],
+    isNotHH: false
+  }
+}
 
 export default function Home() {
   const [venues, setVenues] = useState<Venue[]>([])
@@ -52,24 +82,15 @@ export default function Home() {
     if (showOnboarding) setOnboardingOpen(true)
   }, [showOnboarding])
 
-  // Menu scan workflow state
-  const [scanStep, setScanStep] = useState<'idle' | 'capture' | 'confirm' | 'newvenue'>('idle')
-  const [scanFiles, setScanFiles] = useState<File[]>([])
-  const [scanGps, setScanGps] = useState<{ lat: number; lng: number } | null>(null)
-  const [parsedText, setParsedText] = useState('')
-  const [matchedVenue, setMatchedVenue] = useState<Venue | null>(null)
-  const [isDuplicate, setIsDuplicate] = useState(false)
-  const [isNotHH, setIsNotHH] = useState(false)
+  // ── Scan workflow state ──────────────────────────────────────────────────
+  const [scanStep, setScanStep] = useState<ScanStep>('idle')
+  const [scan, setScan] = useState<ScanState>(emptyScanState())
   const [scanLoading, setScanLoading] = useState(false)
   const [scanError, setScanError] = useState('')
-  const [submitLoading, setSubmitLoading] = useState(false)
-  const [saveError, setSaveError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
-  const [rateLimitError, setRateLimitError] = useState<string | null>(null)
 
   const loadVenues = useCallback(async () => {
     try {
-      // Default to Pearl District if no user location
       const searchLat = userLocation?.lat ?? 45.523
       const searchLng = userLocation?.lng ?? -122.676
       const radiusMeters = radius * 1609.34
@@ -87,17 +108,13 @@ export default function Home() {
     loadVenues()
   }, [loadVenues])
 
-  // Get user location on mount — always use live GPS, ignore stale searchedLocation
+  // Get user location on mount
   useEffect(() => {
     getBrowserLocation()
-      .then(loc => {
-        setUserLocation(loc)
-        // Don't setSearchedLocation here — keep it null so the live GPS is used
-      })
+      .then(loc => setUserLocation(loc))
       .catch(() => {})
   }, [])
 
-  // Search bar handlers
   function handleSearch(coords: { lat: number; lng: number }) {
     setSearchedLocation(coords)
     setUserLocation(coords)
@@ -111,42 +128,83 @@ export default function Home() {
   function handleVenueSelect(venue: Venue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
     setSelectedVenue(venue)
-    // Also add to venues array if not already present, so the pin appears on map
     setVenues(prev => {
       if (prev.some(v => v.id === venue.id)) return prev
       return [venue, ...prev]
     })
   }
 
-  // Menu scan workflow
-  async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
-    setScanFiles(files)
-    setScanGps(gps)
-    setScanStep('confirm')
+  // ── Scan workflow handlers ───────────────────────────────────────────────
+
+  /**
+   * Step 1: Photos captured → decide next step based on GPS availability.
+   * If GPS available → venue_picker (show nearby venues).
+   * If no GPS → name_entry directly.
+   */
+  function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
+    setScan({ ...emptyScanState(), files, gps })
+
+    if (gps != null) {
+      // GPS available → show venue picker
+      setScanStep('venue_picker')
+    } else {
+      // No GPS → skip venue picker, go straight to name entry
+      setScanStep('name_entry')
+    }
+  }
+
+  /**
+   * Step 2a: Venue confirmed from VenuePicker → proceed to parse + review.
+   */
+  function handleVenueConfirmed(venue: Venue) {
+    setScan(prev => ({ ...prev, confirmedVenue: venue }))
+    transitionToReview(venue, null)
+  }
+
+  /**
+   * Step 2b: No nearby venue from VenuePicker, or "No, I'm not here" → go to name entry.
+   */
+  function handleVenueNotListed() {
+    setScanStep('name_entry')
+  }
+
+  /**
+   * Step 3a: Matched an existing venue from NameEntry fuzzy search.
+   */
+  function handleVenueMatched(venue: Venue) {
+    setScan(prev => ({ ...prev, confirmedVenue: venue }))
+    transitionToReview(venue, null)
+  }
+
+  /**
+   * Step 3b: User wants to create a new venue from NameEntry.
+   */
+  function handleVenueCreated(name: string) {
+    setScan(prev => ({ ...prev, newVenueName: name }))
+    transitionToReview(null, name)
+  }
+
+  /**
+   * Parse all photos in parallel, then show MenuReview.
+   */
+  async function transitionToReview(venue: Venue | null, newVenueName: string | null) {
     setScanLoading(true)
     setScanError('')
 
     try {
-      // Step 1: Convert all files to base64 (with resize for large files)
       const { fileToBase64 } = await import('@/lib/imageResize')
+      const files = scan.files
+
+      // Convert all files to base64
       const imageDataUrls: string[] = []
       for (const file of files) {
-        const dataUrl = await fileToBase64(file, 3) // max 3MB after base64 encoding
+        const dataUrl = await fileToBase64(file, 3)
         imageDataUrls.push(dataUrl)
       }
 
-      // Step 2: Find nearby venue by GPS
-      let nearbyVenue: Venue | null = null
-      if (gps) {
-        const nearbyVenues = await getVenuesByProximity(gps.lat, gps.lng, 50)
-        nearbyVenue = nearbyVenues[0] || null
-      }
-      setMatchedVenue(nearbyVenue)
-
-      // Step 3: Parse all pages (sends base64 directly — no Supabase URL needed)
+      // Parse all photos in parallel
       const texts: string[] = []
       for (let i = 0; i < imageDataUrls.length; i++) {
-        console.log(`[PourList] Parsing page ${i+1}/${imageDataUrls.length}, size: ${imageDataUrls[i].length} chars`)
         const parseRes = await fetch('/api/parse-menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -155,142 +213,144 @@ export default function Home() {
 
         if (parseRes.ok) {
           const data = await parseRes.json()
-          console.log(`[PourList] Parse page ${i+1} result:`, data.text ? `got ${data.text.length} chars` : 'EMPTY — no text')
           if (data.text) texts.push(data.text)
-          else console.warn('[PourList] Parse page returned no text field or empty text')
         } else {
           const errText = await parseRes.text()
-          console.error(`[PourList] Parse page ${i+1} API error:`, parseRes.status, errText)
-          // Surface the error to the user
-          setScanError(`Page ${i+1} parse failed (${parseRes.status}): ${errText.slice(0, 200)}`)
+          console.error(`[PourList] Parse page ${i+1} error:`, parseRes.status, errText)
         }
       }
 
       const combined = texts.join('\n\n--- Page ---\n\n')
-      if (texts.length === 0) {
-        await trackEvent('menu_parse_failure', { deviceHash: getDeviceHash() })
-        setScanError('No menu text could be extracted. Please try again with better lighting or a clearer photo.')
-        setParsedText('')
-      } else {
-        await trackEvent('menu_parse_success', { deviceHash: getDeviceHash(), metadata: { pageCount: texts.length } })
-        setScanError('')
-        setParsedText(combined)
-      }
-
-      // Step 4: HH screening
       const hh = checkHappyHour(combined)
-      setIsNotHH(!hh.isHappyHour)
 
-      // If no venue matched, redirect to new venue creation flow
-      if (!nearbyVenue) {
-        setScanStep('newvenue')
-        setScanLoading(false)
-        return
+      setScan(prev => ({
+        ...prev,
+        confirmedVenue: venue,
+        newVenueName: newVenueName ?? prev.newVenueName,
+        parsedText: combined || '',
+        hhTimes: hh.times,
+        isNotHH: !hh.isHappyHour
+      }))
+
+      if (texts.length > 0) {
+        await trackEvent('menu_parse_success', {
+          deviceHash: getDeviceHash(),
+          metadata: { pageCount: texts.length }
+        })
+      } else {
+        await trackEvent('menu_parse_failure', { deviceHash: getDeviceHash() })
       }
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
-      setParsedText('[Could not extract menu text. Please try again.]')
+      setScan(prev => ({ ...prev, parsedText: '' }))
     } finally {
       setScanLoading(false)
+      setScanStep('review')
     }
   }
 
-  async function handleMenuConfirm(menuText: string, venueId?: string) {
-    setSubmitLoading(true)
-    setSaveError('')
-    setRateLimitError(null)
-
-    // Client-side rate limit — fail fast before doing any work
+  /**
+   * Commit the menu: upload photos + save venue.
+   */
+  async function handleMenuCommit(menuText: string, hhTime: string) {
     const deviceHash = getDeviceHash()
     const limit = checkRateLimit(deviceHash)
     if (!limit.allowed) {
       const s = Math.ceil((limit.retryAfterMs || 0) / 1000)
-      setRateLimitError(`Slow down! Please wait ${s}s before submitting again.`)
-      setSubmitLoading(false)
-      return
+      throw new Error(`Slow down! Please wait ${s}s before submitting again.`)
     }
 
-    try {
-      // Step 1: Upload the first photo to Supabase Storage (reference image)
-      let imageUrl: string | null = null
-      if (scanFiles.length > 0) {
-        const formData = new FormData()
-        formData.append('photo', scanFiles[0])
-        if (venueId) formData.append('venueId', venueId)
-        if (scanGps) {
-          formData.append('lat', String(scanGps.lat))
-          formData.append('lng', String(scanGps.lng))
-        }
-        formData.append('deviceHash', deviceHash)
+    const { confirmedVenue, newVenueName, files, gps } = scan
+    const isNewVenue = !confirmedVenue && newVenueName
 
-        try {
-          const uploadRes = await fetch('/api/upload-photo', {
-            method: 'POST',
-            body: formData
-          })
-          if (uploadRes.ok) {
-            const uploadData = await uploadRes.json()
-            imageUrl = uploadData.url
-          } else {
-            const errText = await uploadRes.text()
-            console.error('Photo upload failed:', uploadRes.status, errText)
-            // Non-fatal — continue without image
-          }
-        } catch (uploadErr) {
-          console.error('Photo upload error:', uploadErr)
-          // Non-fatal — continue without image
-        }
-      }
+    // Step 1: Upload photos
+    const formData = new FormData()
+    for (const file of files) {
+      formData.append('photos', file)
+    }
+    if (gps) {
+      formData.append('lat', String(gps.lat))
+      formData.append('lng', String(gps.lng))
+    }
+    formData.append('deviceHash', deviceHash)
+    formData.append('menuText', menuText)
+    if (hhTime) formData.append('hhTime', hhTime)
 
-      // Step 2: Submit the menu
-      const res = await fetch('/api/submit-menu', {
+    let venueId: string | undefined
+    let createdVenueId: string | undefined
+
+    if (confirmedVenue) {
+      formData.append('venueId', confirmedVenue.id)
+      venueId = confirmedVenue.id
+    } else if (newVenueName) {
+      // Create the new venue first
+      const createRes = await fetch('/api/create-venue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          menuText,
-          venueId,
-          venueName: matchedVenue?.name || 'Unknown Venue',
-          address: matchedVenue?.address || '',
-          lat: scanGps?.lat,
-          lng: scanGps?.lng,
-          deviceHash: deviceHash,
-          imageUrl
+          name: newVenueName,
+          lat: gps?.lat ?? null,
+          lng: gps?.lng ?? null,
+          address: null,
+          deviceHash
         })
       })
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}))
-        throw new Error(errData.error || 'Failed to save menu')
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to create venue')
       }
-
-      const { venueId: savedVenueId } = await res.json()
-
-      // Refresh venues
-      await loadVenues()
-      await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
-
-      // If we found a matched venue, refresh its detail view too
-      if (matchedVenue) {
-        setSelectedVenue(prev => prev ? { ...prev, menu_text: menuText, latest_menu_image_url: imageUrl || prev.latest_menu_image_url } : prev)
-      }
-
-      // Reset scan workflow
-      setScanStep('idle')
-      setScanFiles([])
-      setScanGps(null)
-      setParsedText('')
-      setMatchedVenue(null)
-      setIsDuplicate(false)
-      setIsNotHH(false)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
-    } catch (err) {
-      await trackEvent('menu_save_failure', { deviceHash, metadata: { error: err instanceof Error ? err.message : 'unknown' } })
-      setSaveError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
-    } finally {
-      setSubmitLoading(false)
+      const newVenue = await createRes.json()
+      createdVenueId = newVenue.id
+      formData.append('venueId', newVenue.id)
+      venueId = newVenue.id
     }
+
+    // Step 2: Commit (upload photos + update venue)
+    const commitRes = await fetch('/api/commit-menu', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!commitRes.ok) {
+      const err = await commitRes.json().catch(() => ({}))
+      throw new Error(err.error || 'Failed to save menu')
+    }
+
+    const { venueId: savedVenueId } = await commitRes.json()
+
+    // Refresh venue list
+    await loadVenues()
+    await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
+
+    // Success feedback
+    setSaveSuccess(true)
+    setTimeout(() => setSaveSuccess(false), 3000)
+
+    // Reset scan workflow
+    resetScan()
   }
+
+  function handleMenuDiscard() {
+    resetScan()
+  }
+
+  function handleMenuRetry() {
+    resetScan()
+    setScanStep('capture')
+  }
+
+  function resetScan() {
+    setScan(emptyScanState())
+    setScanStep('idle')
+    setScanError('')
+  }
+
+  function handleScanClose() {
+    resetScan()
+  }
+
+  const venueToReview = scan.confirmedVenue
+  const newVenueNameToReview = scan.newVenueName
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -308,8 +368,6 @@ export default function Home() {
         onVenueSelect={handleVenueSelect}
         onClear={handleSearchClear}
       />
-
-
 
       {/* Tab bar */}
       <div className="shrink-0 flex border-b border-gray-200 bg-white z-10">
@@ -353,7 +411,6 @@ export default function Home() {
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
               />
-              {/* Floating vertical radius slider */}
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg px-2 py-3">
                 <span className="text-xs text-amber-600 font-semibold leading-none">
                   {RADIUS_OPTIONS.find(o => o.value === radius)?.label ?? `${radius} mi`}
@@ -393,41 +450,34 @@ export default function Home() {
           />
         )}
 
-        {scanStep === 'newvenue' && (
+        {scanStep === 'name_entry' && (
           <AddVenueForm
-            onClose={() => setScanStep('idle')}
+            onClose={handleScanClose}
             onVenueAdded={loadVenues}
-            initialCoords={scanGps ?? undefined}
+            initialCoords={scan.gps ?? undefined}
             onVenueCreated={(venue) => {
               setVenues(prev => {
                 if (prev.some(v => v.id === venue.id)) return prev
                 return [venue as Venue, ...prev]
               })
-              setMatchedVenue(venue as Venue)
-              setScanStep('confirm')
+              setScan(prev => ({ ...prev, confirmedVenue: venue as Venue }))
+              setScanStep('name_entry')
             }}
           />
         )}
       </div>
 
-      {/* Tip link + scan button */}
+      {/* Bottom bar */}
       <div className="shrink-0 p-4 bg-white border-t border-gray-100">
         {saveSuccess && (
           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
             <span className="text-green-600 text-sm font-semibold">✓ Saved</span>
             <span className="text-sm text-green-700">
-              {matchedVenue ? `${matchedVenue.name} menu updated` : 'New venue added'}
+              {scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'}
             </span>
           </div>
         )}
-        {rateLimitError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
-            <span className="text-red-600 text-sm font-semibold">⏳ Hold on</span>
-            <span className="text-sm text-red-700">{rateLimitError}</span>
-          </div>
-        )}
 
-        {/* Tip developers link */}
         <button
           onClick={() => setSupportOpen(true)}
           className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
@@ -447,44 +497,47 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Menu scan workflow */}
+      {/* ── Scan workflow screens ─────────────────────────────────────────── */}
+
       {scanStep === 'capture' && (
         <MenuCapture
           onCapture={handleCapture}
-          onClose={() => setScanStep('idle')}
+          onClose={handleScanClose}
         />
       )}
 
-      {scanStep === 'confirm' && scanFiles.length > 0 && (
-        <MenuConfirm
-          files={scanFiles}
-          gps={scanGps}
-          parsedText={parsedText}
-          matchedVenue={matchedVenue}
-          isDuplicate={isDuplicate}
-          isNotHH={isNotHH}
-          existingMenuText={matchedVenue?.menu_text}
-          isLoading={submitLoading}
-          isParsing={scanLoading}
-          saveError={saveError}
-            onRetry={() => handleMenuConfirm(parsedText, matchedVenue?.id)}
-            onConfirm={handleMenuConfirm}
-          onReject={() => {
-            setScanStep('idle')
-            setScanFiles([])
-            setScanGps(null)
-            setIsNotHH(false)
-          }}
-          onClose={() => {
-            setScanStep('idle')
-            setScanFiles([])
-            setScanGps(null)
-            setParsedText('')
-            setMatchedVenue(null)
-            setIsDuplicate(false)
-            setIsNotHH(false)
-            setSaveError('')
-          }}
+      {scanStep === 'venue_picker' && (
+        <VenuePicker
+          files={scan.files}
+          gps={scan.gps}
+          onVenueConfirmed={handleVenueConfirmed}
+          onVenueNotListed={handleVenueNotListed}
+          onClose={handleScanClose}
+        />
+      )}
+
+      {scanStep === 'name_entry' && (
+        <NameEntry
+          gps={scan.gps}
+          onVenueMatched={handleVenueMatched}
+          onVenueCreated={handleVenueCreated}
+          onClose={handleScanClose}
+        />
+      )}
+
+      {scanStep === 'review' && (
+        <MenuReview
+          files={scan.files}
+          gps={scan.gps}
+          venue={venueToReview}
+          newVenueName={newVenueNameToReview}
+          parsedText={scan.parsedText}
+          hhTimes={scan.hhTimes}
+          isNotHH={scan.isNotHH}
+          onCommit={handleMenuCommit}
+          onDiscard={handleMenuDiscard}
+          onRetry={handleMenuRetry}
+          onClose={handleScanClose}
         />
       )}
 

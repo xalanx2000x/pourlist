@@ -1,20 +1,44 @@
 /**
  * Checks if extracted menu text contains happy hour indicators.
- * Returns an object with isHappyHour signal and list of detected signals.
+ * Returns an object with isHappyHour signal, list of detected signals,
+ * and matched time substrings.
  */
-export function checkHappyHour(text: string): { isHappyHour: boolean; signals: string[] } {
+export function checkHappyHour(
+  text: string
+): { isHappyHour: boolean; signals: string[]; times: string[] } {
   const lower = text.toLowerCase()
 
   const signals: string[] = []
+  const times: string[] = []
+
+  // Time windows regex — capture the actual matched substring
+  // Uses - (hyphen) at start/end of char class to avoid range interpretation issues
+  const DASH = '[-—–]' // hyphen, em-dash, en-dash
+  const TIME_WINDOW_RE = new RegExp(
+    `\\b(\\d{1,2}(?::\\d{2})?\\s*${DASH}\\s*[-—–to]+\\s*\\d{1,2}(?::\\d{2})?\\s*(?:pm|am)\\b|` +
+    `\\b(\\d{1,2}(?::\\d{2})?\\s*(?:pm|am)\\s*${DASH}\\s*[-—–to]+\\s*\\d{1,2}(?::\\d{2})?\\s*(?:pm|am)\\b)`,
+    'gi'
+  )
+  const TIME_WINDOW_RE2 = new RegExp(
+    `\\b(\\d{1,2}\\s*${DASH}\\s*\\d{1,2}\\s*(?:pm|am))\\b`,
+    'gi'
+  )
+  // Extract all time windows
+  let m: RegExpExecArray | null
+  const foundTimes = new Set<string>()
+  while ((m = TIME_WINDOW_RE.exec(text)) !== null) {
+    foundTimes.add(m[1])
+  }
+  while ((m = TIME_WINDOW_RE2.exec(text)) !== null) {
+    foundTimes.add(m[1])
+  }
+  times.push(...Array.from(foundTimes))
+
+  if (times.length > 0) signals.push('Time window detected')
 
   // Explicit happy hour mentions (including common variations/spellings)
   if (/\bhh\b|\bh\.?h\.?\b|happy\s*hour|angry\s*hour|happy\s*hr\b|angry\s*hr\b/i.test(lower)) {
     signals.push('Happy Hour explicitly mentioned')
-  }
-
-  // Time windows — very strong signal (e.g. "3-6pm", "4pm - 7pm", "5 to 8")
-  if (/\b\d+\s*[-–—to]+\s*\d+(?:pm|am)\b|\b\d+(?:pm|am)\s*[-–—to]+\s*\d+(?:pm|am)\b/i.test(lower)) {
-    signals.push('Time window detected')
   }
 
   // Discount language: "$5", "50% off", "$2 off", "half price", etc.
@@ -39,6 +63,7 @@ export function checkHappyHour(text: string): { isHappyHour: boolean; signals: s
 
   return {
     isHappyHour: signals.length >= 1,
-    signals
+    signals,
+    times
   }
 }

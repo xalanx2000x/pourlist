@@ -148,7 +148,34 @@ export async function POST(req: NextRequest) {
 
       targetVenueId = newVenue.id
     } else {
-      // ── Step 2: Update existing venue ─────────────────────────────────────
+      // ── Auth check for existing venue updates ──────────────────────────
+      console.error(`Attempted menu update for venue ${targetVenueId} by device ${deviceHash}`)
+
+      // Fetch the most recent photo_set to get original contributor's device hash
+      const { data: recentSet } = await supabase
+        .from('photo_sets')
+        .select('uploader_device_hash')
+        .eq('venue_id', targetVenueId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      const originalContributorHash = recentSet?.uploader_device_hash ?? null
+
+      // Fetch venue contributor_trust
+      const { data: venue } = await supabase
+        .from('venues')
+        .select('contributor_trust')
+        .eq('id', targetVenueId)
+        .single()
+
+      const trust = venue?.contributor_trust ?? 'new'
+
+      if (trust === 'trusted' && originalContributorHash && originalContributorHash !== deviceHash) {
+        return NextResponse.json({ error: 'Not authorized to update this venue' }, { status: 403 })
+      }
+
+      // ── Step 2: Update existing venue ─────────────────────────────────
       const updateFields: Record<string, unknown> = {
         menu_text: sanitizedMenuText.trim(),
         menu_text_updated_at: new Date().toISOString()

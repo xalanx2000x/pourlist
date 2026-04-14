@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
           name: venueName.trim(),
           address: finalAddress,
           // lat/lng intentionally not stored — venue coords come from address geocoding only
-          zip: '97209',
+          zip: null,
           status: 'unverified',
           contributor_trust: deviceHash ? 'new' : 'anonymous',
           menu_text: sanitizedMenuText.trim(),

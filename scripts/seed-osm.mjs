@@ -60,8 +60,18 @@ async function seedCity(citySearch, dryRun) {
 }
 const args=process.argv.slice(2)
 const dryRun=args.includes('--dry-run')
-const cityFilter=args.find(a=>a.startsWith('--cities='))?.split('=')[1]?.split(',').map(c=>c.trim())
-const cities=cityFilter?CITIES.filter(c=>cityFilter.includes(c.split(',')[0].trim())):CITIES
+
+// Support --cities-file=<path> to read cities from a line-separated file
+const citiesFile = args.find(a=>a.startsWith('--cities-file='))?.split('=')[1]
+let cities
+if (citiesFile) {
+  const { readFileSync } = await import('fs')
+  cities = readFileSync(citiesFile, 'utf8').split('\n').map(l=>l.trim()).filter(Boolean)
+  console.log(`Loaded ${cities.length} cities from file: ${citiesFile}`)
+} else {
+  const cityFilter=args.find(a=>a.startsWith('--cities='))?.split('=')[1]?.split(',').map(c=>c.trim())
+  cities=cityFilter?CITIES.filter(c=>cityFilter.includes(c.split(',')[0].trim())):CITIES
+}
 console.log(`\n🍺 PourList OSM Seeder — ${cities.length} cities${dryRun?' (DRY RUN)':''}\n`)
 let total=0,inserted=0
 for(const city of cities){

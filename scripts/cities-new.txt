@@ -1,0 +1,101 @@
+Portland ME
+Detroit MI
+Salem OR
+Eugene OR
+Hood River OR
+Yakima WA
+Spokane WA
+Olympia WA
+Tacoma WA
+Ashland OR
+Medford OR
+Boise ID
+Coeur d'Alene ID
+El Paso TX
+Asheville NC
+Chattanooga TN
+Knoxville TN
+Richmond VA
+Atlantic City NJ
+New Haven CT
+Bridgeport CT
+Pittsburgh PA
+Ithaca NY
+Syracuse NY
+Buffalo NY
+Albany NY
+Concord NH
+Providence RI
+Dayton OH
+Cincinnati OH
+Toledo OH
+Yellow Springs OH
+Lexington KY
+Cedar Rapids IA
+Sioux City IA
+Lincoln NE
+Sioux Falls SD
+Sturgis SD
+Rapid City SD
+Bismarck ND
+Fargo ND
+Minot ND
+Williston ND
+Billings MT
+Great Falls MT
+Butte MT
+Helena MT
+Missoula MT
+Whitefish MT
+Pullman WA
+Lewiston WA
+Corvallis OR
+Klamath Falls OR
+Redding CA
+San Luis Obispo CA
+Winnemucca NV
+Elko NV
+Long Beach CA
+Flagstaff AZ
+Santa Fe NM
+Taos NM
+Grand Junction CO
+Amarillo TX
+Midland TX
+Odessa TX
+Waco TX
+Galveston TX
+Lafayette LA
+Shreveport LA
+Jackson MS
+Mobile AL
+Pensacola FL
+Panama City Beach FL
+Savannah GA
+Charleston SC
+Myrtle Beach SC
+Augusta GA
+St Augustine FL
+Daytona Beach FL
+Sarasota FL
+Fort Myers FL
+Naples FL
+Fort Lauderdale FL
+West Palm Beach FL
+Melbourne FL
+Orlando FL
+Wilmington NC
+Greensboro NC
+Durham NC
+Pigeon Forge TN
+Roanoke VA
+Virginia Beach VA
+Little Rock AR
+Conway AR
+Memphis TN
+Fairbanks AK
+Juneau AK
+Hilo HI
+Kaneohe HI
+San Juan PR
+Ponce PR

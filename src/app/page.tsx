@@ -17,6 +17,7 @@ import { trackEvent } from '@/lib/analytics'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getDeviceHash } from '@/lib/device'
 import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
+import SearchBar from '@/components/SearchBar'
 
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
@@ -38,12 +39,13 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('map')
-  const [showAddVenue, setShowAddVenue] = useState(false)
   const [radius, setRadius] = useState(5)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const showOnboarding = useOnboarding()
   const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
+  const [searchedLocation, setSearchedLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const originalGpsLocation = { lat: 45.523, lng: -122.676 }
 
   // Show onboarding once on first visit
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function Home() {
   }, [showOnboarding])
 
   // Menu scan workflow state
-  const [scanStep, setScanStep] = useState<'idle' | 'capture' | 'confirm'>('idle')
+  const [scanStep, setScanStep] = useState<'idle' | 'capture' | 'confirm' | 'newvenue'>('idle')
   const [scanFiles, setScanFiles] = useState<File[]>([])
   const [scanGps, setScanGps] = useState<{ lat: number; lng: number } | null>(null)
   const [parsedText, setParsedText] = useState('')
@@ -88,9 +90,23 @@ export default function Home() {
   // Get user location on mount
   useEffect(() => {
     getBrowserLocation()
-      .then(loc => setUserLocation(loc))
+      .then(loc => {
+        setUserLocation(loc)
+        setSearchedLocation(loc)
+      })
       .catch(() => {})
   }, [])
+
+  // Search bar handlers
+  function handleSearch(coords: { lat: number; lng: number }) {
+    setSearchedLocation(coords)
+    setUserLocation(coords)
+  }
+
+  function handleSearchClear() {
+    setSearchedLocation(originalGpsLocation)
+    setUserLocation(originalGpsLocation)
+  }
 
   function handleVenueSelect(venue: Venue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
@@ -159,6 +175,13 @@ export default function Home() {
       // Step 4: HH screening
       const hh = checkHappyHour(combined)
       setIsNotHH(!hh.isHappyHour)
+
+      // If no venue matched, redirect to new venue creation flow
+      if (!nearbyVenue) {
+        setScanStep('newvenue')
+        setScanLoading(false)
+        return
+      }
     } catch (err) {
       setScanError(err instanceof Error ? err.message : 'Something went wrong')
       setParsedText('[Could not extract menu text. Please try again.]')
@@ -272,13 +295,13 @@ export default function Home() {
           <h1 className="text-lg font-bold tracking-tight">The Pour List</h1>
           <p className="text-amber-100 text-xs">Pearl District, Portland</p>
         </div>
-        <button
-          onClick={() => setShowAddVenue(true)}
-          className="bg-white text-amber-600 px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-amber-50 transition-colors"
-        >
-          + Add Venue
-        </button>
       </header>
+
+      {/* Search bar */}
+      <SearchBar
+        onSearch={handleSearch}
+        onClear={handleSearchClear}
+      />
 
       {/* Radius selector */}
       <div className="shrink-0 px-4 py-2 bg-white border-b border-gray-100 flex items-center gap-2 overflow-x-auto">
@@ -366,10 +389,15 @@ export default function Home() {
           />
         )}
 
-        {showAddVenue && (
+        {scanStep === 'newvenue' && (
           <AddVenueForm
-            onClose={() => setShowAddVenue(false)}
+            onClose={() => setScanStep('idle')}
             onVenueAdded={loadVenues}
+            initialCoords={scanGps ?? undefined}
+            onVenueCreated={(venue) => {
+              setMatchedVenue(venue as Venue)
+              setScanStep('confirm')
+            }}
           />
         )}
       </div>
@@ -404,7 +432,7 @@ export default function Home() {
           className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
         >
           <span className="text-xl">📷</span>
-          Scan Happy Hour Menu
+          Scan Happy Hour Menu / Add Venue
         </button>
         <p className="text-xs text-gray-400 text-center mt-2">
           Take a photo of a menu to add or update it

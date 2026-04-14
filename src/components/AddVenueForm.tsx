@@ -8,9 +8,10 @@ interface AddVenueFormProps {
   onClose: () => void
   onVenueAdded: () => void
   initialCoords?: { lat: number; lng: number }
+  onVenueCreated?: (venue: { id: string; name: string; address: string }) => void
 }
 
-export default function AddVenueForm({ onClose, onVenueAdded, initialCoords }: AddVenueFormProps) {
+export default function AddVenueForm({ onClose, onVenueAdded, initialCoords, onVenueCreated }: AddVenueFormProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [form, setForm] = useState({
@@ -39,7 +40,7 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords }: A
         }
       }
 
-      await addVenue({
+      const newVenue = await addVenue({
         name: form.name,
         address: form.address,
         phone: form.phone || null,
@@ -55,6 +56,7 @@ export default function AddVenueForm({ onClose, onVenueAdded, initialCoords }: A
       setMessage('Venue added! It will appear after review.')
       setTimeout(() => {
         onVenueAdded()
+        if (onVenueCreated) onVenueCreated(newVenue)
         onClose()
       }, 1500)
     } catch (err) {

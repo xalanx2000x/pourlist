@@ -97,6 +97,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
             }
           }}
           placeholder="Search venue or location..."
+          autoComplete="off"
           className="w-full pl-9 pr-16 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all"
         />
 

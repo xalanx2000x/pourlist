@@ -529,6 +529,10 @@ export default function Home() {
       {onboardingOpen && (
         <OnboardingModal onClose={() => setOnboardingOpen(false)} />
       )}
+
+      {supportOpen && (
+        <SupportScreen onClose={() => setSupportOpen(false)} />
+      )}
     </div>
   )
 }

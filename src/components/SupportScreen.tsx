@@ -49,7 +49,7 @@ export default function SupportScreen({ onClose }: SupportScreenProps) {
 
           {/* Message */}
           <p className="text-gray-700 text-center text-sm mb-6 leading-relaxed">
-            The Pour List is built and maintained by a small team who believes every Portland happy hour deserves to be documented. If this app helped you find a good deal tonight, we'd genuinely appreciate the support.
+            The Pour List is built and maintained by Tyler and Alan who believe local knowledge is living knowledge and rely on your reports.
           </p>
 
           {/* Payment options */}

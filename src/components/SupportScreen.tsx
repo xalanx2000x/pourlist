@@ -27,29 +27,29 @@ export default function SupportScreen({ onClose }: SupportScreenProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[200] flex items-end justify-center">
-      <div className="bg-white w-full max-w-md rounded-t-3xl shadow-2xl overflow-hidden">
-        {/* Accent bar */}
-        <div className="h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600" />
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <div className="flex justify-end p-3">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-700 text-lg font-medium transition-colors"
+          >
+            ×
+          </button>
+        </div>
 
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Enjoying the happy hour?</h2>
-              <p className="text-sm text-gray-500 mt-1">Tip the developers — even $1 keeps the servers running.</p>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl leading-none p-1"
-            >
-              ×
-            </button>
-          </div>
-
+        <div className="px-6 pb-6">
           {/* Message */}
           <p className="text-gray-700 text-center text-sm mb-6 leading-relaxed">
-            The Pour List is built and maintained by Tyler and Alan who believe local knowledge is living knowledge and rely on your reports.
+            Even $1 keeps the servers running.{' '}
+            The Pour List is built and maintained by Tyler & Alan, two thirsty developers just trying to find a good joint to hit up.
           </p>
 
           {/* Payment options */}
@@ -171,11 +171,6 @@ export default function SupportScreen({ onClose }: SupportScreenProps) {
                 </button>
               </div>
             </div>
-          </div>
-
-          {/* $1 suggestion */}
-          <div className="mt-4 text-center">
-            <p className="text-xs text-gray-400">Suggested tip: <span className="font-semibold text-gray-600">$1</span></p>
           </div>
         </div>
       </div>

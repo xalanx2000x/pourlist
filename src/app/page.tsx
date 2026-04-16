@@ -410,6 +410,7 @@ export default function Home() {
                 selectedVenue={selectedVenue}
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
+                showUserLocation={true}
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg px-2 py-3">
                 <span className="text-xs text-amber-600 font-semibold leading-none">

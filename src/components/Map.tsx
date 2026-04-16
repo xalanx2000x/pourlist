@@ -14,6 +14,7 @@ interface MapProps {
   onVenueSelect: (venue: Venue) => void
   center?: [number, number] // [lng, lat]
   flyToUserLocation?: { lat: number; lng: number } | null
+  showUserLocation?: boolean
 }
 
 // Pre-compute which venues have active HH once
@@ -39,10 +40,79 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const userMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const watchIdRef = useRef<number | null>(null)
+
+  // Track and watch user location
+  useEffect(() => {
+    if (!showUserLocation || !navigator.geolocation) return
+
+    // Get initial position
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        updateUserDot(lat, lng)
+        // Watch for movement
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (p) => updateUserDot(p.coords.latitude, p.coords.longitude),
+          (err) => console.error('User location watch error:', err),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        )
+      },
+      (err) => console.error('Initial user location error:', err),
+      { enableHighAccuracy: true, timeout: 5000 }
+    )
+
+    function updateUserDot(lat: number, lng: number) {
+      if (!map.current) return
+      if (!userMarkerRef.current) {
+        // Create the blue dot marker
+        const el = document.createElement('div')
+        el.style.width = '16px'
+        el.style.height = '16px'
+        el.style.borderRadius = '50%'
+        el.style.backgroundColor = '#3b82f6'
+        el.style.border = '3px solid #ffffff'
+        el.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.4)'
+        el.style.position = 'relative'
+
+        // Accuracy circle
+        const accuracyEl = document.createElement('div')
+        accuracyEl.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: rgba(59, 130, 246, 0.15);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          z-index: -1;
+        `
+        el.appendChild(accuracyEl)
+
+        userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([lng, lat])
+          .addTo(map.current)
+      } else {
+        userMarkerRef.current.setLngLat([lng, lat])
+      }
+    }
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
+    }
+  }, [showUserLocation])
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return

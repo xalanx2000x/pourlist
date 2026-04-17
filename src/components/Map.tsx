@@ -15,6 +15,9 @@ interface MapProps {
   center?: [number, number] // [lng, lat]
   flyToUserLocation?: { lat: number; lng: number } | null
   showUserLocation?: boolean
+  onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void
+  /** Incrementing this number triggers a fly-to-user animation */
+  zoomToUser?: number
 }
 
 // Pre-compute which venues have active HH once
@@ -40,12 +43,14 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, zoomToUser }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const watchIdRef = useRef<number | null>(null)
+  const userLocationRef = useRef<{ lat: number; lng: number } | null>(null)
+  const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Track and watch user location
   useEffect(() => {
@@ -68,6 +73,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     )
 
     function updateUserDot(lat: number, lng: number) {
+      userLocationRef.current = { lat, lng }
       if (!map.current) return
       if (!userMarkerRef.current) {
         // Create the blue dot marker
@@ -127,6 +133,23 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     })
 
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right')
+
+    // Emit bounds on map move (debounced via moveend)
+    if (onBoundsChange) {
+      map.current.on('moveend', () => {
+        if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current)
+        boundsTimerRef.current = setTimeout(() => {
+          const b = map.current!.getBounds()
+          if (!b) return
+          onBoundsChange({
+            north: b.getNorth(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            west: b.getWest()
+          })
+        }, 150)
+      })
+    }
 
     map.current.on('load', () => {
       setMapLoaded(true)
@@ -260,6 +283,18 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       duration: 1500
     })
   }, [flyToUserLocation, mapLoaded])
+
+  // Fly to user's current position (zoom-to-user button)
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !zoomToUser) return
+    const loc = userLocationRef.current
+    if (!loc) return
+    map.current.flyTo({
+      center: [loc.lng, loc.lat],
+      zoom: 15,
+      duration: 1200
+    })
+  }, [zoomToUser, mapLoaded])
 
   return (
     <div ref={mapContainer} className="w-full h-full min-h-[300px]" />

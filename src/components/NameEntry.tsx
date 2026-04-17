@@ -64,7 +64,7 @@ export default function NameEntry({
         // Fuzzy search on name
         const { data, error } = await supabase
           .from('venues')
-          .select('id, name, address, lat, lng')
+          .select('id, name, address_backup, lat, lng')
           .ilike('name', `%${query}%`)
           .not('lat', 'is', null)
           .not('lng', 'is', null)

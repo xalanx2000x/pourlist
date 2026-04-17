@@ -84,7 +84,7 @@ export default function MenuConfirm({
             ) : (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3">
                 <p className="text-sm font-medium text-green-800">✓ Adding to {matchedVenue.name}</p>
-                <p className="text-xs text-green-600 mt-1">{matchedVenue.address}</p>
+                <p className="text-xs text-green-600 mt-1">{matchedVenue.address_backup}</p>
               </div>
             )}
           </div>

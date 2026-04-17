@@ -11,15 +11,21 @@ const supabase = createClient(
 interface Venue {
   id: string
   name: string
-  address: string | null
+  address_backup: string | null
+  lat: number | null
+  lng: number | null
+  zip: string | null
   phone: string | null
   website: string | null
   type: string | null
+  status: string
+  contributor_trust: string
+  last_verified: string | null
+  photo_count: number
+  created_at: string
   menu_text: string | null
   menu_text_updated_at: string | null
-  status: string
-  contributor_trust: string | null
-  created_at: string
+  latest_menu_image_url: string | null
 }
 
 type ReviewAction = 'approve' | 'reject'

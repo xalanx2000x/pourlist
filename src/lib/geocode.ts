@@ -19,7 +19,7 @@ export async function searchVenues(
   // Search Supabase for venues matching the name
   const { data: venues } = await supabase
     .from('venues')
-    .select('id, name, address, lat, lng')
+    .select('id, name, address_backup, lat, lng')
     .ilike('name', `%${trimmed}%`)
     .limit(5)
 

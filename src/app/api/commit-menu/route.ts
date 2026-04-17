@@ -17,15 +17,22 @@ function storagePathFromUrl(url: string): string {
 }
 
 /**
- * HTML escape to prevent stored XSS on menu text.
+ * HTML escape + strip crypto addresses from menu text.
  */
 function sanitizeMenuText(text: string): string {
   return text
+    .replace(/(?:0x[a-fA-F0-9]{38,42})/g, '')        // ETH/USDC/SOL — 38-42 hex chars
+    .replace(/(?:bc1[a-z0-9]{39,89})/gi, '')          // Bitcoin bech32
+    .replace(/(?:[13][a-zA-Z0-9]{24,33})/g, '')        // Bitcoin base58
+    .replace(/(?:[LM][a-zA-Z0-9]{26,33})/g, '')        // Litecoin, Monero
+    .replace(/(?:r[a-zA-Z0-9]{24,34})/g, '')          // Ripple
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /**

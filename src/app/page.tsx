@@ -101,6 +101,9 @@ export default function Home() {
 
       const data = await getVenuesByProximity(searchLat, searchLng, radiusMeters)
       setVenues(data)
+      // Reset map bounds so newly loaded venues show in full (unfiltered)
+      // until map moves again via moveend
+      setMapBounds(null)
     } catch (err) {
       console.error('Failed to load venues:', err)
     } finally {
@@ -526,7 +529,7 @@ export default function Home() {
           </>
         ) : (
           <VenueList
-            venues={visibleVenues}
+            venues={venues}
             selectedVenue={selectedVenue}
             onVenueSelect={handleVenueSelect}
           />

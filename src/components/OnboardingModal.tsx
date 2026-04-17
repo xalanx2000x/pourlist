@@ -17,7 +17,7 @@ const STEPS = [
   {
     emoji: '📷',
     title: 'Scan a menu',
-    body: 'Tap "Scan Happy Hour Menu" to photograph a menu. The app reads the text and finds the venue automatically.',
+    body: 'Tap "Scan Menu" to photograph a menu. The app reads the text and finds the venue automatically.',
   },
   {
     emoji: '💾',

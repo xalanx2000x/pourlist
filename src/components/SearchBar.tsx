@@ -126,8 +126,8 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
               className="w-full text-left px-4 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
             >
               <p className="text-sm font-medium text-gray-800">{venue.name}</p>
-              {venue.address && (
-                <p className="text-xs text-gray-500 mt-0.5">{venue.address}</p>
+              {venue.address_backup && (
+                <p className="text-xs text-gray-500 mt-0.5">{venue.address_backup}</p>
               )}
             </button>
           ))}

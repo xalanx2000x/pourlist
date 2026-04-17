@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
         name: name.trim(),
         lat: lat ?? null,
         lng: lng ?? null,
-        address: address ?? null,
+        address_backup: address ?? null,
         status: 'unverified',
         contributor_trust: 'new',
         zip: null,

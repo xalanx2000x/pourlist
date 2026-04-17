@@ -22,7 +22,7 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{venue.name}</h3>
-          <p className="text-sm text-gray-600 mt-0.5">{venue.address}</p>
+          <p className="text-sm text-gray-600 mt-0.5">{venue.address_backup}</p>
           {venue.type && (
             <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
               {venue.type}

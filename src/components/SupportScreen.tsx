@@ -94,82 +94,60 @@ export default function SupportScreen({ onClose }: SupportScreenProps) {
             <p className="text-xs text-gray-400 text-center mb-3">Crypto preferred?</p>
             <div className="space-y-2">
               {/* Solana USDC */}
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => copyAddress(SOLANA_USDC, 'solana')}
+                className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+              >
                 <span className="text-lg">⚡</span>
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-semibold text-gray-700">Solana <span className="text-gray-400 font-normal">USDC</span></p>
-                  <p className="text-xs text-gray-500 font-mono truncate">{SOLANA_USDC}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {copied === 'solana' ? '✓ Copied!' : 'Solana USDC'}
+                  </p>
                 </div>
-                <div className="flex gap-1">
-                  <a
-                    href={`solana:${SOLANA_USDC}?token=EPjFWdd5AufqSSqeM2qNksxNasVMfx3EGbNJAfDqEpump`}
-                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                    title="Open in wallet"
-                  >
-                    →
-                  </a>
-                  <button
-                    onClick={() => copyAddress(SOLANA_USDC, 'solana')}
-                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                  >
-                    {copied === 'solana' ? '✓' : 'copy'}
-                  </button>
-                </div>
-              </div>
+                <span className="text-xs text-gray-400">{copied === 'solana' ? '✓' : 'tap to copy'}</span>
+              </button>
 
               {/* Ethereum */}
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => copyAddress(ETHEREUM, 'ethereum')}
+                className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+              >
                 <span className="text-lg">Ξ</span>
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-semibold text-gray-700">Ethereum <span className="text-gray-400 font-normal">ETH</span></p>
-                  <p className="text-xs text-gray-500 font-mono truncate">{ETHEREUM}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {copied === 'ethereum' ? '✓ Copied!' : 'Ethereum'}
+                  </p>
                 </div>
-                <div className="flex gap-1">
-                  <a
-                    href={`ethereum:${ETHEREUM}`}
-                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                    title="Open in wallet"
-                  >
-                    →
-                  </a>
-                  <button
-                    onClick={() => copyAddress(ETHEREUM, 'ethereum')}
-                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                  >
-                    {copied === 'ethereum' ? '✓' : 'copy'}
-                  </button>
-                </div>
-              </div>
+                <span className="text-xs text-gray-400">{copied === 'ethereum' ? '✓' : 'tap to copy'}</span>
+              </button>
 
               {/* Bitcoin */}
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => copyAddress(BITCOIN, 'bitcoin')}
+                className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+              >
                 <span className="text-lg">₿</span>
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-semibold text-gray-700">Bitcoin <span className="text-gray-400 font-normal">BTC</span></p>
-                  <p className="text-xs text-gray-500 font-mono truncate">{BITCOIN}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {copied === 'bitcoin' ? '✓ Copied!' : 'Bitcoin'}
+                  </p>
                 </div>
-                <button
-                  onClick={() => copyAddress(BITCOIN, 'bitcoin')}
-                  className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                >
-                  {copied === 'bitcoin' ? '✓' : 'copy'}
-                </button>
-              </div>
+                <span className="text-xs text-gray-400">{copied === 'bitcoin' ? '✓' : 'tap to copy'}</span>
+              </button>
 
               {/* Sui */}
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => copyAddress(SUI, 'sui')}
+                className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+              >
                 <span className="text-lg">◇</span>
-                <div className="flex-1 text-left">
-                  <p className="text-xs font-semibold text-gray-700">Sui <span className="text-gray-400 font-normal">SUI</span></p>
-                  <p className="text-xs text-gray-500 font-mono truncate">{SUI}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {copied === 'sui' ? '✓ Copied!' : 'Sui'}
+                  </p>
                 </div>
-                <button
-                  onClick={() => copyAddress(SUI, 'sui')}
-                  className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg font-medium text-gray-600 transition-colors"
-                >
-                  {copied === 'sui' ? '✓' : 'copy'}
-                </button>
-              </div>
+                <span className="text-xs text-gray-400">{copied === 'sui' ? '✓' : 'tap to copy'}</span>
+              </button>
             </div>
           </div>
         </div>

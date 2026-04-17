@@ -127,7 +127,7 @@ export default function MenuReview({
           <span className="text-sm">🏠</span>
           <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
           {venue?.address && (
-            <span className="text-xs text-gray-400 truncate">{venue.address}</span>
+            <span className="text-xs text-gray-400 truncate">{venue.address_backup}</span>
           )}
         </div>
 

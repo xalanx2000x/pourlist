@@ -201,9 +201,9 @@ export default function NameEntry({
                   <p className="font-semibold text-gray-900 truncate">
                     {suggestion.venue.name}
                   </p>
-                  {suggestion.venue.address && (
+                  {suggestion.venue.address_backup && (
                     <p className="text-sm text-gray-500 truncate">
-                      {suggestion.venue.address}
+                      {suggestion.venue.address_backup}
                     </p>
                   )}
                   {suggestion.distance != null && (

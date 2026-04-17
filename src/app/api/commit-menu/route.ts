@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
           name: venueName.trim(),
           lat: lat ?? null,
           lng: lng ?? null,
-          address: address ?? null,
+          address_backup: address ?? null,
           status: 'unverified',
           contributor_trust: 'new',
           zip: null,
@@ -148,33 +148,6 @@ export async function POST(req: NextRequest) {
 
       targetVenueId = newVenue.id
     } else {
-      // ── Auth check for existing venue updates ──────────────────────────
-      console.error(`Attempted menu update for venue ${targetVenueId} by device ${deviceHash}`)
-
-      // Fetch the most recent photo_set to get original contributor's device hash
-      const { data: recentSet } = await supabase
-        .from('photo_sets')
-        .select('uploader_device_hash')
-        .eq('venue_id', targetVenueId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      const originalContributorHash = recentSet?.uploader_device_hash ?? null
-
-      // Fetch venue contributor_trust
-      const { data: venue } = await supabase
-        .from('venues')
-        .select('contributor_trust')
-        .eq('id', targetVenueId)
-        .single()
-
-      const trust = venue?.contributor_trust ?? 'new'
-
-      if (trust === 'trusted' && originalContributorHash && originalContributorHash !== deviceHash) {
-        return NextResponse.json({ error: 'Not authorized to update this venue' }, { status: 403 })
-      }
-
       // ── Step 2: Update existing venue ─────────────────────────────────
       const updateFields: Record<string, unknown> = {
         menu_text: sanitizedMenuText.trim(),
@@ -286,6 +259,15 @@ export async function POST(req: NextRequest) {
         .update({ latest_menu_image_url: finalPhotoUrls[0] })
         .eq('id', targetVenueId)
     }
+
+    // ── Step 7: Clear all flags on this venue (menu committed = trust signal) ─
+    await supabase.rpc('clear_flags_on_menu_commit', { p_venue_id: targetVenueId })
+
+    // ── Step 8: Increment device submission count ──────────────────────────
+    // Trust is tracked via submission count in device_stats.
+    // Flags from devices with submission_count >= 10 count as "trusted" (2x weight)
+    // at the database level — no code change needed here.
+    await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
 
     return NextResponse.json({ venueId: targetVenueId, success: true })
   } catch (err) {

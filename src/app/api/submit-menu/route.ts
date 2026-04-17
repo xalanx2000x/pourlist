@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
         .from('venues')
         .insert({
           name: venueName.trim(),
-          address: finalAddress,
+          address_backup: finalAddress,
           // lat/lng intentionally not stored — venue coords come from address geocoding only
           zip: null,
           status: 'unverified',

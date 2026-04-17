@@ -150,7 +150,7 @@ export default function AdminPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-gray-900 truncate">{venue.name}</h3>
-                      <p className="text-sm text-gray-500 mt-0.5">{venue.address || 'No address'}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">{venue.address_backup || 'No address'}</p>
                       {venue.type && (
                         <span className="inline-block text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1">
                           {venue.type}

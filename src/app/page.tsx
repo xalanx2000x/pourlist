@@ -10,6 +10,7 @@ import VenueDetail from '@/components/VenueDetail'
 
 import MenuCapture from '@/components/MenuCapture'
 import VenuePicker from '@/components/VenuePicker'
+import ScanStart from '@/components/ScanStart'
 import NameEntry from '@/components/NameEntry'
 import MenuReview from '@/components/MenuReview'
 import SupportScreen from '@/components/SupportScreen'
@@ -27,10 +28,11 @@ type ViewMode = 'map' | 'list'
 // ── New scan step state machine ───────────────────────────────────────────
 type ScanStep =
   | 'idle'
-  | 'capture'        // MenuCapture — taking 1–4 photos
-  | 'venue_picker'   // VenuePicker — GPS available, confirm nearby venue
-  | 'name_entry'     // NameEntry — type venue name, fuzzy match
-  | 'review'         // MenuReview — edit HH time + menu text, commit
+  | 'scan_start'    // ScanStart — location check + venue list + add venue option
+  | 'capture'       // MenuCapture — taking 1–4 photos
+  | 'venue_picker'  // VenuePicker — GPS available, confirm nearby venue
+  | 'name_entry'   // NameEntry — type venue name, fuzzy match
+  | 'review'       // MenuReview — edit HH time + menu text, commit
 
 type ScanState = {
   files: File[]
@@ -137,18 +139,68 @@ export default function Home() {
   // ── Scan workflow handlers ───────────────────────────────────────────────
 
   /**
-   * Step 1: Photos captured → decide next step based on GPS availability.
-   * If GPS available → venue_picker (show nearby venues).
-   * If no GPS → name_entry directly.
+   * Step 0: User tapped "Scan Menu" → open ScanStart (location + venue list).
+   */
+  function handleScanStartVenueSelected(venue: Venue) {
+    // Save selected venue, proceed to photo capture
+    setScan(prev => ({ ...emptyScanState(), confirmedVenue: venue }))
+    setScanStep('capture')
+  }
+
+  /**
+   * Step 0b: User tapped "Add Happy Hour Location" → proceed to capture
+   * for a new venue (no pre-selected venue).
+   */
+  function handleScanStartAddVenue() {
+    setScan(emptyScanState())
+    setScanStep('capture')
+  }
+
+  /**
+   * Step 1: Photos captured → decide next step based on GPS + pre-selected venue.
+   *
+   * If a venue was pre-selected in scan_start:
+   *   - GPS available → verify within 50m → proceed to review
+   *   - No GPS → name_entry (confirm or create venue)
+   *
+   * If no venue pre-selected (user tapped "Add Venue"):
+   *   - GPS available → venue_picker (show nearby venues to snap to)
+   *   - No GPS → name_entry
    */
   function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
-    setScan({ ...emptyScanState(), files, gps })
+    const confirmedVenue = scan.confirmedVenue
+
+    if (confirmedVenue && confirmedVenue.lat != null && confirmedVenue.lng != null && gps != null) {
+      // Venue pre-selected → verify GPS is within 50m
+      const R = 6371000
+      const toRad = (deg: number) => (deg * Math.PI) / 180
+      const dLat = (gps.lat - confirmedVenue.lat) * Math.PI / 180
+      const dLng = (gps.lng - confirmedVenue.lng) * Math.PI / 180
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(confirmedVenue.lat)) * Math.cos(toRad(gps.lat)) *
+                Math.sin(dLng/2)**2
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+      const distance = R * c
+
+      if (distance <= 50) {
+        // GPS matches venue — proceed to review directly
+        setScan(prev => ({ ...prev, files, gps }))
+        transitionToReview(confirmedVenue, null)
+        return
+      } else {
+        // GPS too far from pre-selected venue — force name entry
+        setScan(prev => ({ ...prev, files, gps }))
+        setScanStep('name_entry')
+        return
+      }
+    }
+
+    // No pre-selected venue — use original flow
+    setScan(prev => ({ ...prev, files, gps }))
 
     if (gps != null) {
-      // GPS available → show venue picker
       setScanStep('venue_picker')
     } else {
-      // No GPS → skip venue picker, go straight to name entry
       setScanStep('name_entry')
     }
   }
@@ -472,18 +524,26 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => setScanStep('capture')}
+          onClick={() => setScanStep('scan_start')}
           className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
         >
           <span className="text-xl">📷</span>
-          Scan Happy Hour Menu / Add Venue
+          Scan Menu
         </button>
         <p className="text-xs text-gray-400 text-center mt-2">
-          Take a photo of a menu to add or update it
+          Find a venue or add a new one
         </p>
       </div>
 
       {/* ── Scan workflow screens ─────────────────────────────────────────── */}
+
+      {scanStep === 'scan_start' && (
+        <ScanStart
+          onVenueSelected={handleScanStartVenueSelected}
+          onAddVenue={handleScanStartAddVenue}
+          onClose={handleScanClose}
+        />
+      )}
 
       {scanStep === 'capture' && (
         <MenuCapture

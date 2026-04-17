@@ -49,7 +49,7 @@ export default function VenuePicker({
     setLoading(true)
     setError('')
 
-    getVenuesByProximity(gps.lat, gps.lng, 10)
+    getVenuesByProximity(gps.lat, gps.lng, 50)
       .then((results) => {
         // Sort by distance to user
         const sorted = results.sort((a, b) => {
@@ -151,8 +151,8 @@ export default function VenuePicker({
                   <span className="text-xl shrink-0">🏠</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 truncate">{venue.name}</p>
-                    {venue.address && (
-                      <p className="text-sm text-gray-500 truncate">{venue.address}</p>
+                    {venue.address_backup && (
+                      <p className="text-sm text-gray-500 truncate">{venue.address_backup}</p>
                     )}
                     {distance != null && (
                       <p className="text-xs text-gray-400 mt-0.5">

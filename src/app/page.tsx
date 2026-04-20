@@ -93,19 +93,29 @@ export default function Home() {
   const [scanError, setScanError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  const loadVenues = useCallback(async () => {
+  const loadVenues = useCallback(async (overrides?: { lat: number; lng: number }): Promise<Venue[]> => {
     try {
-      const searchLat = userLocation?.lat ?? 45.523
-      const searchLng = userLocation?.lng ?? -122.676
-      const radiusMeters = radius * 1609.34
+      // Location priority: explicit override (scan GPS) > userLocation > nothing
+      // We do NOT fall back to Portland center — that was a dev convenience.
+      // If no location is available, show an empty map and wait for the user to pan.
+      const searchLat = overrides?.lat ?? userLocation?.lat
+      const searchLng = overrides?.lng ?? userLocation?.lng
 
+      if (searchLat == null || searchLng == null) {
+        setVenues([])
+        return []
+      }
+
+      const radiusMeters = radius * 1609.34
       const data = await getVenuesByProximity(searchLat, searchLng, radiusMeters)
       setVenues(data)
       // Reset map bounds so newly loaded venues show in full (unfiltered)
       // until map moves again via moveend
       setMapBounds(null)
+      return data
     } catch (err) {
       console.error('Failed to load venues:', err)
+      return []
     } finally {
       setLoading(false)
     }
@@ -378,8 +388,15 @@ export default function Home() {
 
     const { venueId: savedVenueId } = await commitRes.json()
 
-    // Refresh venue list
-    await loadVenues()
+    // Refresh venue list using the scan's GPS (user's actual location at time of scan)
+    // This ensures the venue they just updated is included in the reload results
+    const freshVenues = await loadVenues(scan.gps ?? undefined)
+
+    // Update selectedVenue using the freshly loaded data directly.
+    // This avoids closure issues with stale React state.
+    const updatedVenue = freshVenues.find(v => v.id === savedVenueId)
+    if (updatedVenue) setSelectedVenue(updatedVenue)
+
     await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
 
     // Success feedback

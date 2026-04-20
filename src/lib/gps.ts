@@ -30,20 +30,50 @@ export async function extractGpsFromPhoto(file: File): Promise<GpsCoords | null>
 }
 
 /**
- * Get browser's current geolocation as a fallback.
+ * Get browser's current geolocation.
+ * Falls back to IP-based geolocation if browser GPS is unavailable or times out.
+ * This ensures the app loads at the user's actual location — not a hardcoded city.
  */
 export function getBrowserLocation(): Promise<GpsCoords> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation not supported'))
+      // No GPS hardware — try IP geolocation
+      fetchIpLocation().then(resolve).catch(reject)
       return
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => reject(err),
+      () => {
+        // GPS failed — try IP geolocation before giving up
+        fetchIpLocation().then(resolve).catch(reject)
+      },
       { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
     )
   })
+}
+
+/**
+ * Approximate user location via IP geolocation (free, no API key needed).
+ * Used as fallback when browser GPS is unavailable.
+ */
+async function fetchIpLocation(): Promise<GpsCoords> {
+  // Try ipapi.co (free tier, 1000 req/day, no key needed)
+  const res = await fetch('https://ipapi.co/json/', { cache: 'no-cache' })
+  if (res.ok) {
+    const data = await res.json()
+    if (data.latitude && data.longitude) {
+      return { lat: data.latitude, lng: data.longitude }
+    }
+  }
+  // Fallback: ip-api.com (free, 45 req/min)
+  const res2 = await fetch('http://ip-api.com/json/?fields=lat,lon', { cache: 'no-cache' })
+  if (res2.ok) {
+    const data = await res2.json()
+    if (data.lat != null && data.lon != null) {
+      return { lat: data.lat, lng: data.lon }
+    }
+  }
+  throw new Error('IP geolocation failed')
 }
 
 /**

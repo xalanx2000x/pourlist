@@ -129,31 +129,71 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { data: newVenue, error: venueError } = await supabase
-        .from('venues')
-        .insert({
-          name: venueName.trim(),
-          lat: lat ?? null,
-          lng: lng ?? null,
-          address_backup: address ?? null,
-          status: 'unverified',
-          contributor_trust: 'new',
-          zip: null,
-          phone: null,
-          website: null,
-          type: null,
-          menu_text: sanitizedMenuText.trim(),
-          menu_text_updated_at: new Date().toISOString()
-        })
-        .select('id')
-        .single()
+      // GEO-DEDUPLICATION: Before creating a new venue, check if one already
+      // exists at the same GPS coordinates with the same name. This guards
+      // against the frontend losing the confirmedVenue.id and accidentally
+      // creating a duplicate, and also handles the case where a user submits
+      // a menu for an existing venue without going through the picker.
+      if (lat != null && lng != null) {
+        const R = 6371000 // Earth radius in meters
+        const { data: nearbyVenues } = await supabase
+          .from('venues')
+          .select('id, name, lat, lng, status')
+          .not('status', 'eq', 'closed')
+          .not('lat', 'is', null)
+          .not('lng', 'is', null)
+          .gte('lat', lat - (50 / 111320))
+          .lte('lat', lat + (50 / 111320))
+          .gte('lng', lng - (50 / (111320 * Math.cos(lat * Math.PI / 180))))
+          .lte('lng', lng + (50 / (111320 * Math.cos(lat * Math.PI / 180))))
 
-      if (venueError) {
-        console.error('commit-menu: venue insert error:', venueError)
-        return NextResponse.json({ error: 'Failed to create venue' }, { status: 500 })
+        if (nearbyVenues && nearbyVenues.length > 0) {
+          // Exact Haversine filter to find true within-50m matches by name
+          const exactMatch = nearbyVenues.find(v => {
+            const dLat = (v.lat - lat) * Math.PI / 180
+            const dLng = (v.lng - lng) * Math.PI / 180
+            const a = Math.sin(dLat/2)**2 +
+                      Math.cos(lat * Math.PI/180) * Math.cos(v.lat * Math.PI/180) *
+                      Math.sin(dLng/2)**2
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+            return R * c <= 50 &&
+                   v.name.toLowerCase().trim() === venueName!.toLowerCase().trim()
+          })
+          if (exactMatch) {
+            console.log(`[commit-menu] geo-dedup: using existing venue ${exactMatch.id} for "${venueName}" (${lat},${lng})`)
+            targetVenueId = exactMatch.id
+          }
+        }
       }
 
-      targetVenueId = newVenue.id
+      if (!targetVenueId) {
+        // No duplicate found — create new venue
+        const { data: newVenue, error: venueError } = await supabase
+          .from('venues')
+          .insert({
+            name: venueName.trim(),
+            lat: lat ?? null,
+            lng: lng ?? null,
+            address_backup: address ?? null,
+            status: 'unverified',
+            contributor_trust: 'new',
+            zip: null,
+            phone: null,
+            website: null,
+            type: null,
+            menu_text: sanitizedMenuText.trim(),
+            menu_text_updated_at: new Date().toISOString()
+          })
+          .select('id')
+          .single()
+
+        if (venueError) {
+          console.error('commit-menu: venue insert error:', venueError)
+          return NextResponse.json({ error: 'Failed to create venue' }, { status: 500 })
+        }
+
+        targetVenueId = newVenue.id
+      }
     } else {
       // ── Step 2: Update existing venue ─────────────────────────────────
       const updateFields: Record<string, unknown> = {

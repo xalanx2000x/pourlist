@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { searchVenues } from '@/lib/geocode'
 import type { Venue } from '@/lib/supabase'
 
@@ -17,24 +17,20 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   const [venueResults, setVenueResults] = useState<Venue[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function showError(msg: string) {
-    setError(msg)
-    setVenueResults([])
-    setShowDropdown(false)
-    if (errorTimer.current) clearTimeout(errorTimer.current)
-    errorTimer.current = setTimeout(() => setError(''), 3000)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const trimmed = query.trim()
-    if (!trimmed) return
+  async function doSearch(q: string) {
+    if (!q.trim()) {
+      setVenueResults([])
+      setShowDropdown(false)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setShowDropdown(false)
     setVenueResults([])
 
-    const result = await searchVenues(trimmed)
+    const result = await searchVenues(q)
     setLoading(false)
 
     if (result.type === 'venues' && result.venues) {
@@ -48,9 +44,44 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     }
   }
 
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setQuery(val)
+    if (errorTimer.current) clearTimeout(errorTimer.current)
+
+    if (!val.trim()) {
+      setVenueResults([])
+      setShowDropdown(false)
+      setLoading(false)
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+      return
+    }
+
+    setLoading(true)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(() => doSearch(val), 350)
+  }, [])
+
+  function showError(msg: string) {
+    setError(msg)
+    setVenueResults([])
+    setShowDropdown(false)
+    if (errorTimer.current) clearTimeout(errorTimer.current)
+    errorTimer.current = setTimeout(() => setError(''), 3000)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    const trimmed = query.trim()
+    if (!trimmed) return
+    await doSearch(trimmed)
+  }
+
   function handleVenueClick(venue: Venue) {
     setShowDropdown(false)
     setVenueResults([])
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onVenueSelect(venue)
   }
 
@@ -60,6 +91,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     setVenueResults([])
     setShowDropdown(false)
     if (errorTimer.current) clearTimeout(errorTimer.current)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onClear()
   }
 
@@ -89,13 +121,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
         <input
           type="text"
           value={query}
-          onChange={e => {
-            setQuery(e.target.value)
-            if (!e.target.value.trim()) {
-              setVenueResults([])
-              setShowDropdown(false)
-            }
-          }}
+          onChange={handleInputChange}
           placeholder="Search venue or location..."
           autoComplete="off"
           className="w-full pl-9 pr-16 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all"

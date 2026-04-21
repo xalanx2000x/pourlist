@@ -268,7 +268,7 @@ export default function Home() {
       // Convert all files to base64
       const imageDataUrls: string[] = []
       for (const file of files) {
-        const dataUrl = await fileToBase64(file, 3)
+        const dataUrl = await fileToBase64(file, 0.5)
         imageDataUrls.push(dataUrl)
       }
 

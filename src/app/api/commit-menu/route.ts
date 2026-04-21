@@ -170,7 +170,10 @@ export async function POST(req: NextRequest) {
           .from('venue-photos')
           .getPublicUrl(filePath)
 
-        uploadedUrls.push(urlData.publicUrl)
+        // Supabase public URL includes bucket name in path — strip the dup prefix
+        const rawUrl: string = urlData.publicUrl
+        const cleanUrl = rawUrl.replace('/venue-photos/venue-photos/', '/venue-photos/')
+        uploadedUrls.push(cleanUrl)
       }
 
       // Add photo set (max 4 — oldest purged on insert)

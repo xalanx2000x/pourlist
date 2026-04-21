@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { getVenuesByProximity } from '@/lib/venues'
+import { getVenuesByProximity, getVenueById } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import type { Venue } from '@/lib/supabase'
 import VenueList from '@/components/VenueList'
@@ -314,13 +314,9 @@ export default function Home() {
 
     const { venueId: savedVenueId } = await commitRes.json()
 
-    // Refresh venue list using the scan's GPS (user's actual location at time of scan)
-    // This ensures the venue they just updated is included in the reload results
-    const freshVenues = await loadVenues(scan.gps ?? undefined)
-
-    // Update selectedVenue using the freshly loaded data directly.
-    // This avoids closure issues with stale React state.
-    const updatedVenue = freshVenues.find(v => v.id === savedVenueId)
+    // Fetch the saved venue directly by ID to update selectedVenue with fresh data.
+    // We use ID-based lookup (not proximity) so it works regardless of GPS location.
+    const updatedVenue = await getVenueById(savedVenueId)
     if (updatedVenue) setSelectedVenue(updatedVenue)
 
     await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })

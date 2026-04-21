@@ -15,7 +15,7 @@ const GPS_MAX_METERS = 50
  * Body (JSON):
  *   venueId: string          // venue UUID
  *   deviceHash: string       // device fingerprint
- *   reason: 'closed' | 'wrong'
+ *   reason: 'no_hh' | 'wrong'
  *   lat: number             // browser GPS latitude
  *   lng: number             // browser GPS longitude
  *
@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     if (!deviceHash) {
       return NextResponse.json({ error: 'deviceHash is required' }, { status: 400 })
     }
-    if (!reason || (reason !== 'closed' && reason !== 'wrong')) {
-      return NextResponse.json({ error: 'reason must be "closed" or "wrong"' }, { status: 400 })
+    if (!reason || (reason !== 'no_hh' && reason !== 'wrong')) {
+      return NextResponse.json({ error: 'reason must be "no_hh" or "wrong"' }, { status: 400 })
     }
     if (typeof lat !== 'number' || typeof lng !== 'number') {
       return NextResponse.json({ error: 'lat and lng are required' }, { status: 400 })

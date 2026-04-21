@@ -93,7 +93,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         body: JSON.stringify({
           venueId: venue.id,
           deviceHash: getDeviceHash(),
-          reason: 'closed',
+          reason: 'no_hh',
           lat: userLocation.lat,
           lng: userLocation.lng
         })
@@ -234,7 +234,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
                 className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed underline"
                 title={!userLocation ? 'Enable location to report' : undefined}
               >
-                {flagState === 'loading' ? 'Reporting…' : 'Is this place closed?'}
+                {flagState === 'loading' ? 'Reporting…' : 'Does this place not have Happy Hour?'}
               </button>
             )}
             {!userLocation && !locationError && !flagError && (

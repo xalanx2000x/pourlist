@@ -16,9 +16,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const isActiveHH = hasActiveHappyHour(venue.menu_text, venue.hh_time)
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
-  const [confirmState, setConfirmState] = useState<ActionState>('idle')
   const [flagError, setFlagError] = useState<string | null>(null)
-  const [confirmError, setConfirmError] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -68,40 +66,6 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
     } catch {
       setFlagError('Network error — try again')
       setFlagState('error')
-    }
-  }, [venue.id, userLocation])
-
-  const handleConfirm = useCallback(async () => {
-    if (!userLocation) {
-      setConfirmError('Need your location to confirm — enable GPS')
-      return
-    }
-    setConfirmState('loading')
-    setConfirmError(null)
-
-    try {
-      const res = await fetch('/api/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          venueId: venue.id,
-          deviceHash: getDeviceHash(),
-          lat: userLocation.lat,
-          lng: userLocation.lng
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setConfirmError(data.error || 'Failed to confirm')
-        setConfirmState('error')
-        return
-      }
-      setConfirmState('success')
-      setSuccessMessage('Venue confirmed — thanks')
-      setTimeout(() => setSuccessMessage(null), 3000)
-    } catch {
-      setConfirmError('Network error — try again')
-      setConfirmState('error')
     }
   }, [venue.id, userLocation])
 
@@ -186,71 +150,29 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         )}
 
         {/* Moderation buttons */}
+        {/* Flag as closed — discreet text link */}
         {showModeration && (
-          <div className="mb-5 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-3">See something wrong?</p>
-            <div className="flex gap-2">
-              {/* Flag button */}
+          <div className="mb-4">
+            {flagState === 'success' ? (
+              <p className="text-xs text-green-600">Reported — thanks</p>
+            ) : (
               <button
                 onClick={handleFlag}
-                disabled={flagState === 'loading' || flagState === 'success' || !userLocation}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-sm font-medium transition-colors ${
-                  flagState === 'success'
-                    ? 'bg-green-100 text-green-700'
-                    : flagState === 'loading'
-                    ? 'bg-gray-100 text-gray-400'
-                    : 'bg-red-50 hover:bg-red-100 text-red-700'
-                }`}
-                title={!userLocation ? 'Enable location to flag' : undefined}
+                disabled={flagState === 'loading' || !userLocation}
+                className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed underline"
+                title={!userLocation ? 'Enable location to report' : undefined}
               >
-                {flagState === 'loading' ? (
-                  <span className="text-xs">Sending…</span>
-                ) : flagState === 'success' ? (
-                  <>Reported ✓</>
-                ) : (
-                  <>🚫 This place is closed</>
-                )}
+                {flagState === 'loading' ? 'Reporting…' : 'Is this place closed?'}
               </button>
-
-              {/* Confirm button */}
-              <button
-                onClick={handleConfirm}
-                disabled={confirmState === 'loading' || confirmState === 'success'}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-sm font-medium transition-colors ${
-                  confirmState === 'success'
-                    ? 'bg-green-100 text-green-700'
-                    : confirmState === 'loading'
-                    ? 'bg-gray-100 text-gray-400'
-                    : 'bg-green-50 hover:bg-green-100 text-green-700'
-                }`}
-              >
-                {confirmState === 'loading' ? (
-                  <span className="text-xs">Sending…</span>
-                ) : confirmState === 'success' ? (
-                  <>Confirmed ✓</>
-                ) : (
-                  <>👍 Menu looks right</>
-                )}
-              </button>
-            </div>
-
-            {/* Error messages */}
-            {(flagError || confirmError) && (
-              <p className="text-xs text-red-600 mt-2">
-                {flagError || confirmError}
-              </p>
             )}
-
-            {/* Location note */}
-            {!userLocation && !locationError && (
-              <p className="text-xs text-gray-400 mt-2">
-                📍 Getting your location…
-              </p>
+            {!userLocation && !locationError && !flagError && (
+              <span className="text-xs text-gray-400 ml-2">📍</span>
             )}
             {locationError && (
-              <p className="text-xs text-gray-400 mt-2">
-                {locationError} — flagging requires GPS
-              </p>
+              <span className="text-xs text-gray-400 ml-2">({locationError})</span>
+            )}
+            {flagError && (
+              <span className="text-xs text-red-500 ml-2">{flagError}</span>
             )}
           </div>
         )}

@@ -182,32 +182,15 @@ export default function Home() {
   async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
     const confirmedVenue = scan.confirmedVenue
 
-    if (confirmedVenue && confirmedVenue.lat != null && confirmedVenue.lng != null && gps != null) {
-      // Venue pre-selected → verify GPS is within 50m
-      const R = 6371000
-      const toRad = (deg: number) => (deg * Math.PI) / 180
-      const dLat = (gps.lat - confirmedVenue.lat) * Math.PI / 180
-      const dLng = (gps.lng - confirmedVenue.lng) * Math.PI / 180
-      const a = Math.sin(dLat/2)**2 +
-                Math.cos(toRad(confirmedVenue.lat)) * Math.cos(toRad(gps.lat)) *
-                Math.sin(dLng/2)**2
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-      const distance = R * c
-
-      if (distance <= 50) {
-        // GPS matches venue — proceed to review directly
-        setScan(prev => ({ ...prev, files, gps }))
-        await transitionToReview(confirmedVenue, null)
-        return
-      } else {
-        // GPS too far from pre-selected venue — force name entry
-        setScan(prev => ({ ...prev, files, gps }))
-        setScanStep('name_entry')
-        return
-      }
+    if (confirmedVenue) {
+      // Venue was pre-selected — skip GPS check and go directly to review.
+      // User already confirmed the venue; GPS from photo is supplementary only.
+      setScan(prev => ({ ...prev, files, gps: gps ?? null }))
+      await transitionToReview(confirmedVenue, null)
+      return
     }
 
-    // No pre-selected venue — use original flow
+    // No venue pre-selected — use GPS to find nearby venues
     setScan(prev => ({ ...prev, files, gps }))
 
     if (gps != null) {

@@ -19,9 +19,17 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
         isSelected ? 'bg-amber-50 border-l-4 border-l-amber-500' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
       }`}
     >
-      <div className="flex justify-between items-start gap-2">
+      <div className="flex justify-between items-start gap-2 relative">
+        {venue.latest_menu_image_url && (
+          <span className="absolute top-0 right-0 text-sm text-gray-400">📷</span>
+        )}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{venue.name}</h3>
+          {venue.hh_time && (
+            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full mt-0.5 inline-block">
+              {venue.hh_time}
+            </span>
+          )}
           <p className="text-sm text-gray-600 mt-0.5">{venue.address_backup}</p>
           {venue.type && (
             <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">

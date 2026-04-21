@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import type { Venue } from '@/lib/supabase'
 import { getVenuesByProximity, getVenueById } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
-import type { Venue } from '@/lib/supabase'
+import { isWithinRadius } from '@/lib/gpsCheck'
 import VenueList from '@/components/VenueList'
 import VenueDetail from '@/components/VenueDetail'
 
@@ -12,7 +13,6 @@ import MenuCapture from '@/components/MenuCapture'
 import VenuePicker from '@/components/VenuePicker'
 import ScanStart from '@/components/ScanStart'
 import NameEntry from '@/components/NameEntry'
-import MenuReview from '@/components/MenuReview'
 import SupportScreen from '@/components/SupportScreen'
 import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
 import { trackEvent } from '@/lib/analytics'
@@ -20,6 +20,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { getDeviceHash } from '@/lib/device'
 import { getBrowserLocation } from '@/lib/gps'
 import SearchBar from '@/components/SearchBar'
+import MenuReview from '@/components/MenuReview'
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
@@ -85,6 +86,7 @@ export default function Home() {
   const [scan, setScan] = useState<ScanState>(emptyScanState())
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [lastSavedVenue, setLastSavedVenue] = useState<string | null>(null)
+  const [gpsWarning, setGpsWarning] = useState<string | null>(null)
 
   const loadVenues = useCallback(async (overrides?: { lat: number; lng: number }): Promise<Venue[]> => {
     try {
@@ -182,8 +184,13 @@ export default function Home() {
     const confirmedVenue = scan.confirmedVenue
 
     if (confirmedVenue) {
-      // Venue was pre-selected — skip GPS check and go directly to review.
-      // User already confirmed the venue; GPS from photo is supplementary only.
+      // Venue was pre-selected — verify user GPS is near the venue before proceeding.
+      if (gps && confirmedVenue.lat != null && confirmedVenue.lng != null) {
+        const withinRange = isWithinRadius(gps.lat, gps.lng, confirmedVenue.lat, confirmedVenue.lng, 100)
+        if (!withinRange) {
+          setGpsWarning('Your location seems far from this venue. Are you sure you\'re here?')
+        }
+      }
       setScan(prev => ({ ...prev, files, gps: gps ?? null }))
       await transitionToReview(confirmedVenue, null)
       return
@@ -317,6 +324,11 @@ export default function Home() {
     const updatedVenue = await getVenueById(savedVenueId)
     if (updatedVenue) setSelectedVenue(updatedVenue)
 
+    // Refresh venues list so map markers update
+    const freshVenues = await loadVenues(scan.gps ?? undefined)
+    const refreshed = freshVenues.find(v => v.id === savedVenueId)
+    if (refreshed) setSelectedVenue(refreshed)
+
     // Capture venue label before resetScan clears confirmedVenue
     const venueLabel = scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'
 
@@ -343,6 +355,7 @@ export default function Home() {
   function resetScan() {
     setScan(emptyScanState())
     setScanStep('idle')
+    setGpsWarning(null)
   }
 
   function handleScanClose() {

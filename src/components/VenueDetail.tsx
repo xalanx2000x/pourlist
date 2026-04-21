@@ -79,12 +79,12 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         <div className="w-12 h-1 bg-gray-300 rounded-full" />
       </div>
 
-      {/* Close button */}
+      {/* Back to map button */}
       <button
         onClick={onClose}
-        className="absolute top-3 right-3 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200"
+        className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 rounded-full text-amber-700 text-sm font-semibold transition-colors"
       >
-        ✕
+        ← Back to Map
       </button>
 
       <div className="p-5">

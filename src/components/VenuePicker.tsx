@@ -103,7 +103,7 @@ export default function VenuePicker({
       {/* Header */}
       <div className="shrink-0 bg-amber-500 text-white px-4 py-3 flex items-center justify-between">
         <button onClick={onClose} className="text-white/80 hover:text-white text-sm font-medium">
-          ✕
+          ← Back
         </button>
         <span className="font-semibold text-sm">Confirm Venue</span>
         <div className="w-10" />

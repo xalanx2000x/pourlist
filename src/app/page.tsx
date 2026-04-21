@@ -497,6 +497,14 @@ export default function Home() {
 
       </div>
 
+      {/* Back to map — persistent escape hatch */}
+      <button
+        onClick={() => setSelectedVenue(null)}
+        className="shrink-0 w-full text-center text-xs text-gray-400 hover:text-amber-600 py-2 border-t border-gray-100 transition-colors"
+      >
+        ← Back to Map
+      </button>
+
       {/* Bottom bar */}
       <div className="shrink-0 p-4 bg-white border-t border-gray-100">
         {saveSuccess && (

@@ -121,7 +121,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
             onClick={onClose}
             className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200"
           >
-            ✕
+            ← Back
           </button>
         </div>
 

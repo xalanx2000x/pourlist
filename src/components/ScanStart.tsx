@@ -89,7 +89,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
           onClick={onClose}
           className="text-white/80 hover:text-white text-sm font-medium"
         >
-          ✕
+          ← Back
         </button>
         <span className="font-semibold text-sm">Scan Menu</span>
         <div className="w-10" />

@@ -56,7 +56,7 @@ export default function MenuReview({
           onClick={onClose}
           className="text-white/80 hover:text-white text-sm font-medium"
         >
-          ✕
+          ← Back
         </button>
         <span className="font-semibold text-sm">Review</span>
         <div className="w-10" />

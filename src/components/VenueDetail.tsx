@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Venue } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getDeviceHash } from '@/lib/device'
 
@@ -12,6 +13,12 @@ interface VenueDetailProps {
   onClose: () => void
 }
 
+interface PhotoSet {
+  id: string
+  created_at: string
+  photo_urls: string[]
+}
+
 export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const isActiveHH = hasActiveHappyHour(venue.menu_text, venue.hh_time)
 
@@ -20,7 +27,44 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  // Photo viewer state
+  const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false)
+  const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0)
+  const [allPhotos, setAllPhotos] = useState<{ url: string; setIndex: number; photoIndex: number }[]>([])
+
+  // All flattened photos from all sets
+  const [photoSetsLoading, setPhotoSetsLoading] = useState(false)
+
+  // Fetch all photo sets for this venue
+  useEffect(() => {
+    async function fetchPhotoSets() {
+      setPhotoSetsLoading(true)
+      const { data, error } = await supabase
+        .from('photo_sets')
+        .select('id, created_at, photo_urls')
+        .eq('venue_id', venue.id)
+        .order('created_at', { ascending: false })
+        .limit(4)
+      if (!error && data) {
+        setPhotoSets(data as PhotoSet[])
+      }
+      setPhotoSetsLoading(false)
+    }
+    fetchPhotoSets()
+  }, [venue.id])
+
+  // Build flattened list of all photos when sets change
+  useEffect(() => {
+    const photos: { url: string; setIndex: number; photoIndex: number }[] = []
+    photoSets.forEach((set, setIdx) => {
+      set.photo_urls.forEach((url, photoIdx) => {
+        photos.push({ url, setIndex: setIdx, photoIndex: photoIdx })
+      })
+    })
+    setAllPhotos(photos)
+  }, [photoSets])
 
   // Request geolocation on mount (for flag button)
   useEffect(() => {
@@ -69,8 +113,36 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
     }
   }, [venue.id, userLocation])
 
+  function openPhotoViewer(photoIndex: number) {
+    setViewerPhotoIndex(photoIndex)
+    setPhotoViewerOpen(true)
+  }
+
+  function closePhotoViewer() {
+    setPhotoViewerOpen(false)
+  }
+
+  function prevPhoto() {
+    setViewerPhotoIndex(prev => (prev > 0 ? prev - 1 : allPhotos.length - 1))
+  }
+
+  function nextPhoto() {
+    setViewerPhotoIndex(prev => (prev < allPhotos.length - 1 ? prev + 1 : 0))
+  }
+
   // Only show moderation buttons for verified/stale venues
   const showModeration = venue.status === 'verified' || venue.status === 'stale'
+
+  function formatSetDate(dateStr: string) {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
 
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto z-50">
@@ -177,23 +249,66 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
           </div>
         )}
 
-        {/* Menu image */}
-        {venue.latest_menu_image_url && (
+        {/* Menu photo sets */}
+        {photoSetsLoading ? (
+          <div className="mb-4 flex items-center gap-2 text-sm text-gray-400">
+            <span>Loading photos…</span>
+          </div>
+        ) : photoSets.length > 0 ? (
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-700">Menu Photo</h3>
-              <span className="text-xs text-gray-400">Reference</span>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">Menu Photos</h3>
+              <span className="text-xs text-gray-400">{photoSets.length} set{photoSets.length !== 1 ? 's' : ''}</span>
             </div>
-            <div
-              onClick={() => setPhotoViewerOpen(true)}
-              className="block rounded-xl overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors cursor-pointer"
-            >
-              <img
-                src={venue.latest_menu_image_url}
-                alt="Happy hour menu"
-                className="w-full max-h-52 object-contain bg-gray-50"
-              />
-            </div>
+
+            {photoSets.map((set, setIdx) => (
+              <div key={set.id} className="mb-4 last:mb-0">
+                {/* Date header for this set */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500 font-medium">
+                    {formatSetDate(set.created_at)}
+                  </span>
+                  {setIdx === 0 && (
+                    <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-semibold">
+                      Latest
+                    </span>
+                  )}
+                  <div className="flex-1 h-px bg-gray-100" />
+                </div>
+
+                {/* Photos in this set — horizontal scroll */}
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {set.photo_urls.map((url, photoIdx) => {
+                    // Global photo index across all sets
+                    let globalIdx = 0
+                    for (let si = 0; si < setIdx; si++) {
+                      globalIdx += photoSets[si].photo_urls.length
+                    }
+                    globalIdx += photoIdx
+
+                    return (
+                      <button
+                        key={url}
+                        onClick={() => openPhotoViewer(globalIdx)}
+                        className="shrink-0 w-24 h-24 rounded-xl overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors"
+                      >
+                        <img
+                          src={url}
+                          alt={`Menu photo ${photoIdx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mb-5">
+            <p className="text-sm text-gray-400 italic text-center py-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              No menu on file yet. Be the first to scan it!
+            </p>
           </div>
         )}
 
@@ -215,7 +330,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         )}
 
         {/* No menu on file — only shown when there is no photo AND no text */}
-        {!venue.menu_text && !venue.latest_menu_image_url && (
+        {!venue.menu_text && photoSets.length === 0 && !photoSetsLoading && (
           <div className="mb-5">
             <p className="text-sm text-gray-400 italic text-center py-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
               No menu on file yet. Be the first to scan it!
@@ -249,32 +364,72 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         </p>
       </div>
 
-      {/* Full-screen photo viewer */}
-      {photoViewerOpen && venue.latest_menu_image_url && (
+      {/* Full-screen photo viewer — all photos, navigable */}
+      {photoViewerOpen && allPhotos.length > 0 && (
         <div
-          className="fixed inset-0 z-[200] bg-black/90 flex flex-col"
+          className="fixed inset-0 z-[200] bg-black/95 flex flex-col"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setPhotoViewerOpen(false)
+            if (e.target === e.currentTarget) closePhotoViewer()
           }}
         >
-          {/* Header with back button */}
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0">
             <button
-              onClick={() => setPhotoViewerOpen(false)}
+              onClick={closePhotoViewer}
               className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium"
             >
               ← Back
             </button>
-            <span className="text-white/60 text-xs">Menu Photo</span>
+            <span className="text-white/60 text-xs">
+              {viewerPhotoIndex + 1} / {allPhotos.length}
+            </span>
           </div>
 
-          {/* Photo — scrollable if tall */}
-          <div className="flex-1 overflow-auto flex items-center justify-center p-2">
-            <img
-              src={venue.latest_menu_image_url}
-              alt="Happy hour menu"
-              className="max-w-full max-h-full object-contain"
-            />
+          {/* Photo area */}
+          <div className="flex-1 flex items-center justify-center relative">
+            {/* Prev button */}
+            <button
+              onClick={prevPhoto}
+              className="absolute left-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors"
+              aria-label="Previous photo"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M12 4l-8 8 8 8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            <div className="max-w-full max-h-full p-4 flex items-center justify-center">
+              <img
+                src={allPhotos[viewerPhotoIndex].url}
+                alt={`Photo ${viewerPhotoIndex + 1}`}
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+
+            {/* Next button */}
+            <button
+              onClick={nextPhoto}
+              className="absolute right-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors"
+              aria-label="Next photo"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M8 4l8 8-8 8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Dots indicator */}
+          <div className="flex justify-center gap-1.5 pb-6 shrink-0">
+            {allPhotos.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setViewerPhotoIndex(idx)}
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  idx === viewerPhotoIndex ? 'bg-white' : 'bg-white/30'
+                }`}
+                aria-label={`Go to photo ${idx + 1}`}
+              />
+            ))}
           </div>
         </div>
       )}

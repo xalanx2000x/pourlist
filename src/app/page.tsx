@@ -83,9 +83,8 @@ export default function Home() {
   // ── Scan workflow state ──────────────────────────────────────────────────
   const [scanStep, setScanStep] = useState<ScanStep>('idle')
   const [scan, setScan] = useState<ScanState>(emptyScanState())
-  const [scanLoading, setScanLoading] = useState(false)
-  const [scanError, setScanError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [lastSavedVenue, setLastSavedVenue] = useState<string | null>(null)
 
   const loadVenues = useCallback(async (overrides?: { lat: number; lng: number }): Promise<Venue[]> => {
     try {
@@ -258,7 +257,6 @@ export default function Home() {
     }
 
     const { confirmedVenue, newVenueName, files, gps } = scan
-    const isNewVenue = !confirmedVenue && newVenueName
 
     // Upload photos + save venue
     const formData = new FormData()
@@ -319,10 +317,14 @@ export default function Home() {
     const updatedVenue = await getVenueById(savedVenueId)
     if (updatedVenue) setSelectedVenue(updatedVenue)
 
+    // Capture venue label before resetScan clears confirmedVenue
+    const venueLabel = scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'
+
     await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
 
     // Success feedback
     setSaveSuccess(true)
+    setLastSavedVenue(venueLabel)
     setTimeout(() => setSaveSuccess(false), 3000)
 
     // Reset scan workflow
@@ -341,7 +343,6 @@ export default function Home() {
   function resetScan() {
     setScan(emptyScanState())
     setScanStep('idle')
-    setScanError('')
   }
 
   function handleScanClose() {
@@ -489,7 +490,7 @@ export default function Home() {
           <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
             <span className="text-green-600 text-sm font-semibold">✓ Saved</span>
             <span className="text-sm text-green-700">
-              {scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'}
+              {lastSavedVenue}
             </span>
           </div>
         )}

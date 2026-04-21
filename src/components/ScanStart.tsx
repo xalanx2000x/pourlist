@@ -50,7 +50,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
         setUserGps(gps)
 
         // Find venues within 50m
-        const nearby = await getVenuesByProximity(gps.lat, gps.lng, 3000) // TEMP: expanded for testing from home — revert before launch
+        const nearby = await getVenuesByProximity(gps.lat, gps.lng, 50)
         if (cancelled) return
 
         // Sort by distance

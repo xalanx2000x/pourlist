@@ -12,8 +12,9 @@ interface MenuConfirmProps {
   isNotHH: boolean
   existingMenuText?: string | null
   isLoading?: boolean
-  isParsing?: boolean  // NEW: true while parent is parsing images
+  isParsing?: boolean
   saveError?: string
+  parseError?: string  // true while parent is parsing images
   onRetry?: () => void
   onConfirm: (menuText: string, venueId?: string) => void
   onReject: () => void
@@ -31,6 +32,7 @@ export default function MenuConfirm({
   isLoading,
   isParsing,
   saveError,
+  parseError,
   onRetry,
   onConfirm,
   onReject,
@@ -128,6 +130,13 @@ export default function MenuConfirm({
             <p className="text-xs text-amber-600 mt-2">
               Couldn't read the menu. Please type the happy hour items manually.
             </p>
+          )}
+
+          {parseError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mt-2">
+              <p className="text-xs font-medium text-red-700">⚠️ Parse failed: {parseError}</p>
+              <p className="text-xs text-red-600 mt-0.5">You can still type the menu manually above.</p>
+            </div>
           )}
         </div>
 

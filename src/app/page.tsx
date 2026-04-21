@@ -506,7 +506,13 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => setScanStep('scan_start')}
+          onClick={() => {
+            if (selectedVenue) {
+              handleScanStartVenueSelected(selectedVenue)
+            } else {
+              setScanStep('scan_start')
+            }
+          }}
           className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
         >
           <span className="text-xl">📷</span>

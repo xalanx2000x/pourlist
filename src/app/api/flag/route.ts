@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const GPS_MAX_METERS = 10
+const GPS_MAX_METERS = 50
 
 /**
  * POST /api/flag
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Venue not found' }, { status: 404 })
     }
 
-    // ── GPS verification: user must be within 10m of venue ───────
+    // ── GPS verification: user must be within 50m of venue ───────
     if (venue.lat == null || venue.lng == null) {
       // Venue has no GPS — can't verify. Reject.
       return NextResponse.json(
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     if (!isWithinRadius(lat, lng, venue.lat, venue.lng, GPS_MAX_METERS)) {
       return NextResponse.json(
-        { error: 'You must be within 10 meters of the venue to flag it' },
+        { error: 'You must be within 50 meters of the venue to flag it' },
         { status: 400 }
       )
     }

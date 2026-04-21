@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to update menu' }, { status: 500 })
       }
 
-      // Geo-check: verify photo location is within 10m of venue location
+      // Geo-check: verify photo location is within 50m of venue location
       if (photoLat != null && photoLng != null) {
         const { data: venue } = await supabase
           .from('venues')
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
 
         if (venue?.lat != null && venue?.lng != null) {
           const distance = haversineDistance(photoLat, photoLng, venue.lat, venue.lng)
-          if (distance > 10) {
+          if (distance > 50) {
             return NextResponse.json(
               { error: 'Unable to verify location. Please ensure you are standing at the venue.' },
               { status: 400 }

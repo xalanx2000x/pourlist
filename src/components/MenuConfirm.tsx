@@ -43,7 +43,6 @@ export default function MenuConfirm({
   // Keep text in sync when parent finishes parsing
   useEffect(() => { setText(parsedText) }, [parsedText])
 
-  const isConfirmed = Boolean(text.trim())
   const isEmpty = !text.trim() || text === '[No menu text extracted]'
 
   async function handleSubmit() {
@@ -62,8 +61,16 @@ export default function MenuConfirm({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
+        {/* Parse error — always shown when present */}
+        {parseError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
+            <p className="text-sm font-medium text-red-700">⚠️ Couldn't read menu</p>
+            <p className="text-xs text-red-600 mt-1">{parseError}</p>
+          </div>
+        )}
+
         {/* Venue match status */}
-        {isNotHH && !matchedVenue && (
+        {isNotHH && !matchedVenue && !parseError && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
             <p className="text-sm font-medium text-amber-800">⚠️ This may not be a happy hour menu</p>
             <p className="text-xs text-amber-600 mt-1">

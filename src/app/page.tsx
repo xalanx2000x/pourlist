@@ -205,7 +205,7 @@ export default function Home() {
       if (distance <= 50) {
         // GPS matches venue — proceed to review directly
         setScan(prev => ({ ...prev, files, gps }))
-        transitionToReview(confirmedVenue, null)
+        await transitionToReview(confirmedVenue, null)
         return
       } else {
         // GPS too far from pre-selected venue — force name entry
@@ -230,7 +230,7 @@ export default function Home() {
    */
   function handleVenueConfirmed(venue: Venue) {
     setScan(prev => ({ ...prev, confirmedVenue: venue }))
-    transitionToReview(venue, null)
+    await transitionToReview(venue, null)
   }
 
   /**
@@ -245,7 +245,7 @@ export default function Home() {
    */
   function handleVenueMatched(venue: Venue) {
     setScan(prev => ({ ...prev, confirmedVenue: venue }))
-    transitionToReview(venue, null)
+    await transitionToReview(venue, null)
   }
 
   /**
@@ -253,7 +253,7 @@ export default function Home() {
    */
   function handleVenueCreated(name: string) {
     setScan(prev => ({ ...prev, newVenueName: name }))
-    transitionToReview(null, name)
+    await transitionToReview(null, name)
   }
 
   /**

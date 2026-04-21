@@ -14,7 +14,7 @@ function isHeic(mime: string): boolean {
  * Handles HEIC → JPEG conversion via heic2any first.
  * If the image is over maxSizeMB, it will be resized via canvas before encoding.
  */
-export async function fileToBase64(file: File, maxSizeMB = 3): Promise<string> {
+export async function fileToBase64(file: File, maxSizeMB = 0.5): Promise<string> {
   return new Promise((resolve, reject) => {
     const processFile = (blob: Blob) => {
       const img = new Image()

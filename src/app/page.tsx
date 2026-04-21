@@ -380,41 +380,40 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      {/* Header */}
-      <header className="shrink-0 bg-amber-500 text-white px-4 py-3 flex items-center justify-between shadow-md z-10">
-        <h1 className="text-lg font-bold tracking-tight">The Pour List</h1>
-      </header>
+      {/* Search bar — hidden during venue detail */}
+      {!selectedVenue && (
+        <SearchBar
+          onSearch={handleSearch}
+          onVenueSelect={handleVenueSelect}
+          onClear={handleSearchClear}
+        />
+      )}
 
-      {/* Search bar */}
-      <SearchBar
-        onSearch={handleSearch}
-        onVenueSelect={handleVenueSelect}
-        onClear={handleSearchClear}
-      />
-
-      {/* Tab bar */}
-      <div className="shrink-0 flex border-b border-gray-200 bg-white z-10">
-        <button
-          onClick={() => setViewMode('map')}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-            viewMode === 'map'
-              ? 'text-amber-600 border-b-2 border-amber-500'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Map
-        </button>
-        <button
-          onClick={() => setViewMode('list')}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-            viewMode === 'list'
-              ? 'text-amber-600 border-b-2 border-amber-500'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          List
-        </button>
-      </div>
+      {/* Tab bar — hidden during venue detail */}
+      {!selectedVenue && (
+        <div className="shrink-0 flex border-b border-gray-200 bg-white z-10">
+          <button
+            onClick={() => setViewMode('map')}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+              viewMode === 'map'
+                ? 'text-amber-600 border-b-2 border-amber-500'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Map
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+              viewMode === 'list'
+                ? 'text-amber-600 border-b-2 border-amber-500'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            List
+          </button>
+        </div>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden relative">

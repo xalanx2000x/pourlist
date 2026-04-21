@@ -1,8 +1,18 @@
 /**
- * Checks if a venue's menu text currently qualifies as having an active happy hour.
- * Accounts for time windows, day-of-week restrictions, and HH terminology.
+ * Checks if a venue's menu text or hh_time field currently qualifies as
+ * having an active happy hour. Accounts for time windows, day-of-week
+ * restrictions, and HH terminology.
+ *
+ * hhTime is checked as a fallback when menuText is absent — any non-empty
+ * hh_time is treated as a signal that a HH exists (for map highlighting).
  */
-export function hasActiveHappyHour(menuText: string | null | undefined): boolean {
+export function hasActiveHappyHour(
+  menuText: string | null | undefined,
+  hhTime?: string | null
+): boolean {
+  // If hh_time is set, treat the venue as having a known HH (for highlighting)
+  if (hhTime && hhTime.trim().length > 0) return true
+
   if (!menuText) return false
 
   const now = new Date()

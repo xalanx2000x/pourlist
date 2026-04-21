@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
         website: null,
         type: null,
         menu_text: null,
-        latest_menu_image_url: null
+        latest_menu_image_url: null,
+        hh_time: null
       })
       .select()
       .single()

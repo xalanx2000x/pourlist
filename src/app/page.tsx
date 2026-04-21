@@ -32,17 +32,13 @@ type ScanStep =
   | 'capture'       // MenuCapture — taking 1–4 photos
   | 'venue_picker'  // VenuePicker — GPS available, confirm nearby venue
   | 'name_entry'   // NameEntry — type venue name, fuzzy match
-  | 'review'       // MenuReview — edit HH time + menu text, commit
+  | 'review'       // MenuReview — HH time + photos, commit
 
 type ScanState = {
   files: File[]
   gps: { lat: number; lng: number } | null
   confirmedVenue: Venue | null
   newVenueName: string | null
-  parsedText: string
-  hhTimes: string[]
-  isNotHH: boolean
-  parseError: string
 }
 
 const RADIUS_OPTIONS = [
@@ -60,11 +56,7 @@ function emptyScanState(): ScanState {
     files: [],
     gps: null,
     confirmedVenue: null,
-    newVenueName: null,
-    parsedText: '',
-    hhTimes: [],
-    isNotHH: false,
-    parseError: ''
+    newVenueName: null
   }
 }
 
@@ -187,7 +179,7 @@ export default function Home() {
    *   - GPS available → venue_picker (show nearby venues to snap to)
    *   - No GPS → name_entry
    */
-  function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
+  async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
     const confirmedVenue = scan.confirmedVenue
 
     if (confirmedVenue && confirmedVenue.lat != null && confirmedVenue.lng != null && gps != null) {
@@ -226,9 +218,9 @@ export default function Home() {
   }
 
   /**
-   * Step 2a: Venue confirmed from VenuePicker → proceed to parse + review.
+   * Step 2a: Venue confirmed from VenuePicker → proceed to review directly.
    */
-  function handleVenueConfirmed(venue: Venue) {
+  async function handleVenueConfirmed(venue: Venue) {
     setScan(prev => ({ ...prev, confirmedVenue: venue }))
     await transitionToReview(venue, null)
   }
@@ -243,7 +235,7 @@ export default function Home() {
   /**
    * Step 3a: Matched an existing venue from NameEntry fuzzy search.
    */
-  function handleVenueMatched(venue: Venue) {
+  async function handleVenueMatched(venue: Venue) {
     setScan(prev => ({ ...prev, confirmedVenue: venue }))
     await transitionToReview(venue, null)
   }
@@ -251,7 +243,7 @@ export default function Home() {
   /**
    * Step 3b: User wants to create a new venue from NameEntry.
    */
-  function handleVenueCreated(name: string) {
+  async function handleVenueCreated(name: string) {
     setScan(prev => ({ ...prev, newVenueName: name }))
     await transitionToReview(null, name)
   }
@@ -259,81 +251,22 @@ export default function Home() {
   /**
    * Parse all photos in parallel, then show MenuReview.
    */
+  /**
+   * Transition to review: no more parsing. Just capture photos and go to review.
+   */
   async function transitionToReview(venue: Venue | null, newVenueName: string | null) {
-    setScanLoading(true)
-    setScanError('')
-
-    try {
-      const { fileToBase64 } = await import('@/lib/imageResize')
-      const files = scan.files
-
-      // Convert all files to base64
-      const imageDataUrls: string[] = []
-      for (const file of files) {
-        const dataUrl = await fileToBase64(file, 1.5)
-        imageDataUrls.push(dataUrl)
-      }
-
-      // Parse all photos in parallel
-      const texts: string[] = []
-      const parseErrors: string[] = []
-      for (let i = 0; i < imageDataUrls.length; i++) {
-        const parseRes = await fetch('/api/parse-menu', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageData: imageDataUrls[i] })
-        })
-
-        if (parseRes.ok) {
-          const data = await parseRes.json()
-          if (data.text) {
-            texts.push(data.text)
-          } else if (data.error) {
-            // Parse succeeded but returned an error (e.g., OpenAI rejected the image)
-            parseErrors.push(`Page ${i + 1}: ${data.error}`)
-          }
-        } else {
-          const errText = await parseRes.text()
-          const msg = `Page ${i + 1} error (${parseRes.status}): ${errText}`
-          console.error(`[PourList] ${msg}`)
-          parseErrors.push(msg)
-        }
-      }
-
-      const combined = texts.join('\n\n--- Page ---\n\n')
-      const hh = checkHappyHour(combined)
-
-      setScan(prev => ({
-        ...prev,
-        confirmedVenue: venue,
-        newVenueName: newVenueName ?? prev.newVenueName,
-        parsedText: combined || '',
-        hhTimes: hh.times,
-        isNotHH: !hh.isHappyHour,
-        parseError: texts.length === 0 ? (parseErrors[0] ?? 'No menu text detected') : ''
-      }))
-
-      if (texts.length > 0) {
-        await trackEvent('menu_parse_success', {
-          deviceHash: getDeviceHash(),
-          metadata: { pageCount: texts.length }
-        })
-      } else {
-        await trackEvent('menu_parse_failure', { deviceHash: getDeviceHash() })
-      }
-    } catch (err) {
-      setScanError(err instanceof Error ? err.message : 'Something went wrong')
-      setScan(prev => ({ ...prev, parsedText: '' }))
-    } finally {
-      setScanLoading(false)
-      setScanStep('review')
-    }
+    setScan(prev => ({
+      ...prev,
+      confirmedVenue: venue,
+      newVenueName: newVenueName ?? prev.newVenueName
+    }))
+    setScanStep('review')
   }
 
   /**
    * Commit the menu: upload photos + save venue.
    */
-  async function handleMenuCommit(menuText: string, hhTime: string) {
+  async function handleMenuCommit(hhTime: string) {
     const deviceHash = getDeviceHash()
     const limit = checkRateLimit(deviceHash)
     if (!limit.allowed) {
@@ -344,7 +277,7 @@ export default function Home() {
     const { confirmedVenue, newVenueName, files, gps } = scan
     const isNewVenue = !confirmedVenue && newVenueName
 
-    // Step 1: Upload photos
+    // Upload photos + save venue
     const formData = new FormData()
     for (const file of files) {
       formData.append('photos', file)
@@ -354,7 +287,6 @@ export default function Home() {
       formData.append('lng', String(gps.lng))
     }
     formData.append('deviceHash', deviceHash)
-    formData.append('menuText', menuText)
     if (hhTime) formData.append('hhTime', hhTime)
 
     let venueId: string | undefined
@@ -644,10 +576,6 @@ export default function Home() {
           gps={scan.gps}
           venue={venueToReview}
           newVenueName={newVenueNameToReview}
-          parsedText={scan.parsedText}
-          hhTimes={scan.hhTimes}
-          isNotHH={scan.isNotHH}
-          parseError={scan.parseError}
           onCommit={handleMenuCommit}
           onDiscard={handleMenuDiscard}
           onRetry={handleMenuRetry}

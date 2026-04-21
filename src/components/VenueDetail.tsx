@@ -13,7 +13,7 @@ interface VenueDetailProps {
 }
 
 export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
-  const isActiveHH = hasActiveHappyHour(venue.menu_text)
+  const isActiveHH = hasActiveHappyHour(venue.menu_text, venue.hh_time)
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
   const [confirmState, setConfirmState] = useState<ActionState>('idle')

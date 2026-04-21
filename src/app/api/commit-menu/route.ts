@@ -148,16 +148,17 @@ export async function POST(req: NextRequest) {
 
       for (let i = 0; i < photoFiles.length; i++) {
         const photo = photoFiles[i]
-        const fileExt = (photo.name || 'jpg').split('.').pop() || 'jpg'
-        const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.${fileExt}`
-        const filePath = `venue-photos/${targetVenueId}/${timestamp}/${fileName}`
+        // Always save as JPEG — file extension reflects original but binary is converted on client
+        const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
+        // Path is relative to bucket name (bucket = "venue-photos")
+        const filePath = `${targetVenueId}/${timestamp}/${fileName}`
 
         const buffer = Buffer.from(await photo.arrayBuffer())
 
         const { error: uploadError } = await supabase.storage
           .from('venue-photos')
           .upload(filePath, buffer, {
-            contentType: photo.type || 'image/jpeg',
+            contentType: 'image/jpeg',
             upsert: false
           })
 
@@ -170,10 +171,7 @@ export async function POST(req: NextRequest) {
           .from('venue-photos')
           .getPublicUrl(filePath)
 
-        // Supabase public URL includes bucket name in path — strip the dup prefix
-        const rawUrl: string = urlData.publicUrl
-        const cleanUrl = rawUrl.replace('/venue-photos/venue-photos/', '/venue-photos/')
-        uploadedUrls.push(cleanUrl)
+        uploadedUrls.push(urlData.publicUrl)
       }
 
       // Add photo set (max 4 — oldest purged on insert)

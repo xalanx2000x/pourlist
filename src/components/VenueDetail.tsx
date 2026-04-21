@@ -155,7 +155,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
             </a>
           )}
           {venue.website ? (
-            <a href={venue.website} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-600 hover:underline mt-1 block">
+            <a href={venue.website.startsWith('http') ? venue.website : `https://${venue.website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-600 hover:underline mt-1 block">
               Visit website →
             </a>
           ) : (

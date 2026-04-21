@@ -42,6 +42,7 @@ type ScanState = {
   parsedText: string
   hhTimes: string[]
   isNotHH: boolean
+  parseError: string
 }
 
 const RADIUS_OPTIONS = [
@@ -62,7 +63,8 @@ function emptyScanState(): ScanState {
     newVenueName: null,
     parsedText: '',
     hhTimes: [],
-    isNotHH: false
+    isNotHH: false,
+    parseError: ''
   }
 }
 
@@ -274,6 +276,7 @@ export default function Home() {
 
       // Parse all photos in parallel
       const texts: string[] = []
+      const parseErrors: string[] = []
       for (let i = 0; i < imageDataUrls.length; i++) {
         const parseRes = await fetch('/api/parse-menu', {
           method: 'POST',
@@ -283,10 +286,17 @@ export default function Home() {
 
         if (parseRes.ok) {
           const data = await parseRes.json()
-          if (data.text) texts.push(data.text)
+          if (data.text) {
+            texts.push(data.text)
+          } else if (data.error) {
+            // Parse succeeded but returned an error (e.g., OpenAI rejected the image)
+            parseErrors.push(`Page ${i + 1}: ${data.error}`)
+          }
         } else {
           const errText = await parseRes.text()
-          console.error(`[PourList] Parse page ${i+1} error:`, parseRes.status, errText)
+          const msg = `Page ${i + 1} error (${parseRes.status}): ${errText}`
+          console.error(`[PourList] ${msg}`)
+          parseErrors.push(msg)
         }
       }
 
@@ -299,7 +309,8 @@ export default function Home() {
         newVenueName: newVenueName ?? prev.newVenueName,
         parsedText: combined || '',
         hhTimes: hh.times,
-        isNotHH: !hh.isHappyHour
+        isNotHH: !hh.isHappyHour,
+        parseError: texts.length === 0 ? (parseErrors[0] ?? 'No menu text detected') : ''
       }))
 
       if (texts.length > 0) {
@@ -636,6 +647,7 @@ export default function Home() {
           parsedText={scan.parsedText}
           hhTimes={scan.hhTimes}
           isNotHH={scan.isNotHH}
+          parseError={scan.parseError}
           onCommit={handleMenuCommit}
           onDiscard={handleMenuDiscard}
           onRetry={handleMenuRetry}

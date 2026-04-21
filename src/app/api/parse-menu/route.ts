@@ -6,6 +6,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+export const runtime = 'nodejs'
+export const maxBodySize = 2 * 1024 * 1024 // 2MB
+
 /**
  * POST /api/parse-menu
  * Body: { imageUrl?: string, imageData?: string, deviceHash?: string }

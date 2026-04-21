@@ -11,6 +11,7 @@ interface MenuReviewProps {
   parsedText: string
   hhTimes: string[]
   isNotHH: boolean
+  parseError?: string
   onCommit: (menuText: string, hhTime: string) => Promise<void>
   onDiscard: () => void
   onRetry: () => void
@@ -25,6 +26,7 @@ export default function MenuReview({
   parsedText,
   hhTimes,
   isNotHH,
+  parseError,
   onCommit,
   onDiscard,
   onRetry,
@@ -185,6 +187,14 @@ export default function MenuReview({
               {text || (
                 <span className="text-gray-400 italic">No menu text available</span>
               )}
+            </div>
+          )}
+
+          {parseError && (
+            <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-semibold text-red-700 mb-1">⚠️ Parse failed</p>
+              <p className="text-xs text-red-600">{parseError}</p>
+              <p className="text-xs text-red-500 mt-1">You can type the menu manually above.</p>
             </div>
           )}
         </div>

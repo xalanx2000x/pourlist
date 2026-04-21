@@ -22,6 +22,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false)
 
   // Request geolocation on mount (for flag button)
   useEffect(() => {
@@ -261,23 +262,21 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
               <h3 className="text-sm font-semibold text-gray-700">Menu Photo</h3>
               <span className="text-xs text-gray-400">Reference</span>
             </div>
-            <a
-              href={venue.latest_menu_image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block rounded-xl overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors"
+            <div
+              onClick={() => setPhotoViewerOpen(true)}
+              className="block rounded-xl overflow-hidden border border-gray-200 hover:border-amber-400 transition-colors cursor-pointer"
             >
               <img
                 src={venue.latest_menu_image_url}
                 alt="Happy hour menu"
                 className="w-full max-h-52 object-contain bg-gray-50"
               />
-            </a>
+            </div>
           </div>
         )}
 
-        {/* Menu text */}
-        {venue.menu_text ? (
+        {/* Menu text — only shown when there is text */}
+        {venue.menu_text && (
           <div className="mb-5">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-gray-700">Happy Hour Menu</h3>
@@ -291,7 +290,10 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
               {venue.menu_text}
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* No menu on file — only shown when there is no photo AND no text */}
+        {!venue.menu_text && !venue.latest_menu_image_url && (
           <div className="mb-5">
             <p className="text-sm text-gray-400 italic text-center py-3 bg-gray-50 rounded-xl border border-dashed border-gray-200">
               No menu on file yet. Be the first to scan it!
@@ -324,6 +326,36 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
           Tap "Scan Happy Hour Menu" at the bottom to add or update menu info
         </p>
       </div>
+
+      {/* Full-screen photo viewer */}
+      {photoViewerOpen && venue.latest_menu_image_url && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/90 flex flex-col"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPhotoViewerOpen(false)
+          }}
+        >
+          {/* Header with back button */}
+          <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0">
+            <button
+              onClick={() => setPhotoViewerOpen(false)}
+              className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium"
+            >
+              ← Back
+            </button>
+            <span className="text-white/60 text-xs">Menu Photo</span>
+          </div>
+
+          {/* Photo — scrollable if tall */}
+          <div className="flex-1 overflow-auto flex items-center justify-center p-2">
+            <img
+              src={venue.latest_menu_image_url}
+              alt="Happy hour menu"
+              className="max-w-full max-h-full object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

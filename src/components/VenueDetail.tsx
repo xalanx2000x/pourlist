@@ -127,8 +127,13 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         <div className="mb-4">
           <div className="flex items-start gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-gray-900">{venue.name}</h2>
-            {isActiveHH && (
+            {venue.hh_time && (
               <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-semibold mt-1">
+                {venue.hh_time}
+              </span>
+            )}
+            {isActiveHH && (
+              <span className="text-xs bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-semibold mt-1">
                 HH Active
               </span>
             )}
@@ -149,9 +154,18 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
               {venue.phone}
             </a>
           )}
-          {venue.website && (
+          {venue.website ? (
             <a href={venue.website} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-600 hover:underline mt-1 block">
               Visit website →
+            </a>
+          ) : (
+            <a
+              href={`https://www.google.com/search?q=${encodeURIComponent(venue.name)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-amber-600 hover:underline mt-1 block"
+            >
+              Search on Google →
             </a>
           )}
         </div>

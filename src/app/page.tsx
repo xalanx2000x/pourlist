@@ -66,7 +66,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('map')
-  const [radius, setRadius] = useState(200) // TEMP: expanded for testing from home — revert before launch
+  const [radius, setRadius] = useState(10) // default: happy hour is a local activity, 10mi covers most use cases
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
   const [zoomToUserTick, setZoomToUserTick] = useState(0)

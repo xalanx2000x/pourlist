@@ -15,7 +15,8 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback(async (newFiles: File[]) => {
     const allFiles = [...files, ...newFiles]
@@ -136,12 +137,21 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
           </p>
         )}
 
-        {/* Hidden file input */}
+        {/* Hidden gallery input */}
         <input
-          ref={fileInputRef}
+          ref={galleryInputRef}
           type="file"
           accept="image/*,image/heic,image/heif,image/heif-compressed"
           multiple
+          onChange={onFileInput}
+          className="hidden"
+        />
+        {/* Hidden camera input — opens camera directly on mobile (no file picker) */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*,image/heic,image/heif,image/heif-compressed"
+          capture="environment"
           onChange={onFileInput}
           className="hidden"
         />
@@ -172,7 +182,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
               {/* "Add another" slot */}
               {files.length < MAX_PHOTOS && (
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => galleryInputRef.current?.click()}
                   disabled={loading}
                   className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-amber-500 hover:text-amber-500 transition-colors disabled:opacity-50"
                 >
@@ -191,14 +201,26 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         {/* Action buttons */}
         <div className="mt-auto space-y-3 shrink-0">
           {files.length === 0 ? (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
-            >
-              <span className="text-xl">📷</span>
-              Take Photos / Choose from Gallery
-            </button>
+            <>
+              {/* Camera — opens directly on mobile, no file picker */}
+              <button
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={loading}
+                className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
+              >
+                <span className="text-xl">📷</span>
+                Take a Photo
+              </button>
+              {/* Gallery — opens photo library picker */}
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                disabled={loading}
+                className="w-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
+              >
+                <span className="text-xl">🖼️</span>
+                Choose from Gallery
+              </button>
+            </>
           ) : (
             <>
               {/* Done button */}
@@ -220,11 +242,11 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
               {/* Add more / Retake */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => galleryInputRef.current?.click()}
                   disabled={loading || files.length >= MAX_PHOTOS}
                   className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
                 >
-                  <span>📷</span> Add more
+                  <span>🖼️</span> Add more
                 </button>
                 <button
                   onClick={onClose}

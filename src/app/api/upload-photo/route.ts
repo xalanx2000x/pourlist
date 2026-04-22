@@ -86,19 +86,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const ext = photo.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-    const fileName = `${randomUUID()}.${ext}`
+    // Always store as JPEG — extension is always .jpg regardless of device.
+    // The original filename's extension is unreliable (iPhone HEIC files named
+    // .jpg, Android WebP named .png, etc.). JPEG is the universal safe format
+    // for menu photos.
+    const fileName = `${randomUUID()}.jpg`
     const filePath = `venue-photos/${fileName}`
 
     // Convert File to Buffer
     const arrayBuffer = await photo.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // Upload to Supabase Storage — pass through original MIME type
+    // Upload to Supabase Storage — always as image/jpeg
     const { error: uploadError } = await supabase.storage
       .from('venue-photos')
       .upload(filePath, buffer, {
-        contentType: photo.type,
+        contentType: 'image/jpeg',
         upsert: false
       })
 

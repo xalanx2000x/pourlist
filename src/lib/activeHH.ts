@@ -8,6 +8,10 @@
  */
 import type { Venue } from '@/lib/supabase'
 
+// Default bar closing time (2 AM) — used when endMin is null for late_night windows
+// Most US states mandate 2 AM or earlier; some cities/districts vary but 2 AM is the safest default
+const CLOSE_DEFAULT = 2 * 60 // 120 mins = 2:00 AM
+
 function minsSinceMidnight(): number {
   const now = new Date()
   return now.getHours() * 60 + now.getMinutes()
@@ -49,9 +53,14 @@ function isWindowActive(
       return currentMin < endMin
 
     case 'late_night':
-      // Starts at startMin, no end (venue close)
+      // Starts at startMin, ends at CLOSE_DEFAULT (2 AM) or venue close
       if (startMin === null || startMin === undefined) return false
-      return currentMin >= startMin
+      const end = endMin ?? CLOSE_DEFAULT
+      if (startMin > end) {
+        // Crosses midnight: active if currentMin >= start OR currentMin < end
+        return currentMin >= startMin || currentMin < end
+      }
+      return currentMin >= startMin && currentMin < end
 
     case 'typical':
       if (startMin === null || startMin === undefined) return false

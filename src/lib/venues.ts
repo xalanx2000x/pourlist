@@ -57,6 +57,7 @@ export async function getVenuesByProximity(
 
   // Filter by exact Haversine distance (rectangular bbox is wider than radius)
   const filtered = allVenues.filter(v => {
+    if (v.lat == null || v.lng == null) return false
     const R = 6371000
     const dLat = (v.lat - lat) * Math.PI / 180
     const dLng = (v.lng - lng) * Math.PI / 180

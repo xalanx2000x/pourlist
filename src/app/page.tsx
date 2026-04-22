@@ -116,9 +116,13 @@ export default function Home() {
     }
   }, [userLocation, radius])
 
+  // Load venues whenever user location becomes available
+  // This is the key effect that fetches nearby venues when GPS resolves.
+  // Previously loadVenues was only called on mount (with null location) or map pan/zoom.
   useEffect(() => {
+    if (!userLocation) return
     loadVenues()
-  }, [loadVenues])
+  }, [userLocation, loadVenues])
 
   // Get user location on mount
   useEffect(() => {

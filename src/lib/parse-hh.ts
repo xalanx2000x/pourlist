@@ -157,8 +157,9 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
 /**
  * Parse a single clause (no commas) into one HHWindow.
  * Handles: "M-F 4-6", "W all day", "before 5", "10pm-close", etc.
+ * Exported for use in HHScheduleInput (late night box).
  */
-function parseOneClause(text: string): HHWindow | null {
+export function parseOneClause(text: string): HHWindow | null {
   const lower = text.trim()
   if (!lower) return null
 

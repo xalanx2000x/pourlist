@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { Venue } from '@/lib/supabase'
-import { HHWindow, parseHHSchedule } from '@/lib/parse-hh'
-import HHScheduleEditor from './HHScheduleEditor'
+import { HHWindow } from '@/lib/parse-hh'
+import HHScheduleInput from './HHScheduleInput'
 
 interface MenuReviewProps {
   files: File[]
@@ -33,24 +33,27 @@ export default function MenuReview({
   onClose
 }: MenuReviewProps) {
   const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
-  const [legacyHhTime, setLegacyHhTime] = useState('')
-  const [agreed, setAgreed] = useState(false)
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
 
-  // Parse menu text on mount to pre-populate HH schedule
-  useEffect(() => {
-    if (menuText) {
-      const schedule = parseHHSchedule(menuText)
-      setHhWindows(schedule.windows)
-    }
-  }, [menuText])
+  // Called by HHScheduleInput when user clicks "Confirm Happy Hour"
+  function handleHhScheduleCommit(windows: [HHWindow | null, HHWindow | null, HHWindow | null]) {
+    setHhWindows(windows)
+    setCommitError('')
+    setIsCommitting(true)
+    onCommit({ hhWindows: windows, hhTime: '' })
+      .catch((err: unknown) => {
+        setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
+      })
+      .finally(() => setIsCommitting(false))
+  }
 
-  async function handleCommit() {
+  // Called by the Save button in MenuReview
+  async function handleSave() {
     setCommitError('')
     setIsCommitting(true)
     try {
-      await onCommit({ hhWindows, hhTime: legacyHhTime })
+      await onCommit({ hhWindows, hhTime: '' })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {
@@ -104,34 +107,11 @@ export default function MenuReview({
           </div>
         )}
 
-        {/* HH Schedule editor */}
-        <HHScheduleEditor
-          initialWindows={hhWindows}
-          onConfirm={setHhWindows}
-          onAgreed={() => setAgreed(true)}
+        {/* HH Schedule — two-box input */}
+        <HHScheduleInput
+          initialBox1={menuText}
+          onCommit={handleHhScheduleCommit}
         />
-
-        {/* Divider */}
-        <div className="border-t border-gray-100" />
-
-        {/* Legacy HH time input (for old API / fallback) */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-            Happy Hour Time
-          </label>
-          <input
-            type="text"
-            value={legacyHhTime}
-            onChange={(e) => setLegacyHhTime(e.target.value)}
-            placeholder="e.g. Mon-Fri 4-7pm — or leave blank"
-            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            {hhWindows[0] !== null
-              ? 'Above schedule will be stored as structured data.'
-              : 'Optional — leave blank if no happy hour.'}
-          </p>
-        </div>
 
         {/* Commit error */}
         {commitError && (
@@ -145,7 +125,7 @@ export default function MenuReview({
       {/* Action buttons */}
       <div className="shrink-0 p-4 border-t border-gray-100 bg-white">
         <button
-          onClick={handleCommit}
+          onClick={handleSave}
           disabled={isCommitting}
           className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
         >

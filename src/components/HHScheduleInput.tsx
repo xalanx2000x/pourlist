@@ -1,11 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { HHWindow, parseHHSchedule, parseOneClause } from '@/lib/parse-hh'
 
 interface HHScheduleInputProps {
-  /** Pre-populated value for box 1 (from AI-parsed menu text) */
+  /** Pre-populated value for box 1 (from AI-parsed menu text, can be blank) */
   initialBox1?: string | null
+  /** Called whenever the parsed result changes — use this to keep parent in sync */
+  onChange?: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
+  /** Internal commit callback (still fires for the Confirm flow) */
   onCommit: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
 }
 
@@ -77,8 +80,9 @@ function WindowsPreview({ windows }: { windows: HHWindow[] }) {
   )
 }
 
-export default function HHScheduleInput({ initialBox1, onCommit }: HHScheduleInputProps) {
-  const [box1, setBox1] = useState(initialBox1 ?? '')
+export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHScheduleInputProps) {
+  // Box 1 starts blank — don't pre-populate from initialBox1 (AI text can be wrong)
+  const [box1, setBox1] = useState('')
   const [box2, setBox2] = useState('')
   const [hasLateNight, setHasLateNight] = useState(false)
   const [box1Error, setBox1Error] = useState('')
@@ -123,6 +127,25 @@ export default function HHScheduleInput({ initialBox1, onCommit }: HHScheduleInp
     return final
   }
 
+  // Compute preview once (after buildWindows is defined)
+  const previewFinal = buildWindows()
+  const previewWindows = previewFinal.filter(w => w !== null) as HHWindow[]
+
+  // Fire onChange whenever the parsed result changes (live preview sync)
+  useEffect(() => {
+    onChange?.(previewFinal)
+  }, [previewFinal, onChange])
+
+  // Live error: fires on every keystroke when box1 has text but parser returns nothing
+  useEffect(() => {
+    if (box1.trim() && !result1.windows.some(w => w !== null)) {
+      setBox1Error("Couldn't understand — try 'M-F 4-6' or '4-7pm'")
+    } else {
+      setBox1Error('')
+    }
+  }, [box1, result1])
+
+  // Manual commit trigger (used by parent Save button flow via hhWindows state)
   function handleCommit() {
     setBox1Error('')
     setBox2Error('')
@@ -140,16 +163,12 @@ export default function HHScheduleInput({ initialBox1, onCommit }: HHScheduleInp
     onCommit(buildWindows())
   }
 
-  // Merge for preview display
-  const previewFinal = buildWindows()
-  const previewWindows = previewFinal.filter(w => w !== null) as HHWindow[]
-
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="font-semibold text-gray-800">Happy Hour Schedule</h3>
+        <h3 className="font-semibold text-gray-800">When is Happy Hour?</h3>
         <p className="text-xs text-gray-400 mt-0.5">
-          Type your happy hour — use commas for different windows
+          Type your happy hour — use commas for multiple windows
         </p>
       </div>
 
@@ -176,8 +195,8 @@ export default function HHScheduleInput({ initialBox1, onCommit }: HHScheduleInp
         )}
       </div>
 
-      {/* Box 1 preview */}
-      {box1.trim() && previewWindows.length > 0 && (
+      {/* Preview: shown only when there's parsed output */}
+      {previewWindows.length > 0 && (
         <div className="bg-gray-50 rounded-xl px-3 py-2.5">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Preview</p>
           <WindowsPreview windows={previewWindows} />
@@ -253,14 +272,6 @@ export default function HHScheduleInput({ initialBox1, onCommit }: HHScheduleInp
         </div>
       )}
 
-      {/* Confirm button */}
-      <button
-        type="button"
-        onClick={handleCommit}
-        className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl font-semibold text-sm transition-colors"
-      >
-        ✓ Confirm Happy Hour
-      </button>
-    </div>
+      </div>
   )
 }

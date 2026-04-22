@@ -245,31 +245,48 @@ export function parseOneClause(text: string): HHWindow | null {
   let startMin: number | null = null
   let endMin: number | null = null
 
-  // Pattern: "4-7pm", "4pm-7pm", "4 to 7pm", "4:30-6:30pm"
+  // Pattern: "4-7pm" (suffix on end), "4pm-7pm" (suffix on both), "4 to 7pm", "4-7" (bare)
+  // The [-–—to ]+ with a space after "to" handles "4 to 7" explicitly
   const rangeMatch = timePortion.match(
-    /^(\d{1,2})(?::(\d{2}))?\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/i
+    /^(\d{1,2})(?::(\d{2}))?\s*[-–—to ]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/i
   )
 
   if (rangeMatch) {
-    const startStr = rangeMatch[1]
-    const startMinPart = rangeMatch[2]
-    const endStr = rangeMatch[3]
-    const endMinPart = rangeMatch[4]
-    const suffix = rangeMatch[5]
+    const rawStart = rangeMatch[1]           // "4"
+    const rawStartMin = rangeMatch[2]        // optional minutes e.g. "30"
+    const rawEnd = rangeMatch[3]             // "7"
+    const rawEndMin = rangeMatch[4]          // optional minutes e.g. "30"
+    const suffix = rangeMatch[5] ?? ''       // trailing suffix e.g. "pm"
 
-    const startSuffix = suffix ? suffix[0] : ''
-    const endSuffix = suffix ? suffix[0] : (endMinPart ? '' : startSuffix)
+    // Build full start/end strings with any explicit suffix
+    const startStr = rawStartMin ? `${rawStart}:${rawStartMin}` : rawStart
+    const endStr = rawEndMin ? `${rawEnd}:${rawEndMin}` : rawEnd
 
-    startMin = parseTimeToMin(startStr + (startMinPart ? ':' + startMinPart : '') + startSuffix)
-    endMin = parseTimeToMin(endStr + (endMinPart ? ':' + endMinPart : '') + endSuffix)
+    // Determine what suffix to apply to each side:
+    // "4pm-7pm"   → suffix on start (from "pm" after start)   → both get explicit pm
+    // "4-7pm"     → suffix on end only                        → start gets pm (heuristic), end gets pm
+    // "4 to 7"    → no suffix                                → start gets pm (heuristic), end gets am if < 12
+    // "4-7"       → no suffix                                → start gets pm, end gets am if < 12
+
+    const startSuffix = suffix || 'pm'   // bare range: assume first number = PM
+    const endSuffix = suffix || ''       // bare range: no default on end (parseTimeToMin handles 12h)
+
+    startMin = parseTimeToMin(startStr + startSuffix)
+    endMin = parseTimeToMin(endStr + endSuffix)
+
+    // If end is still null (parseTimeToMin failed), try AM for bare numbers < 12
+    // e.g. "4-7" → endMin=7am (unlikely HH, but we can catch it in validation)
+    if (endMin === null && !suffix && endStr) {
+      endMin = parseTimeToMin(endStr + 'pm')
+    }
 
     if (type === 'open_through') {
       // "open to 6pm": start is implicit (venue open = 2pm), end is explicit
-      endMin = endMin ?? parseTimeToMin(endStr + endSuffix)
+      endMin = endMin ?? parseTimeToMin(endStr + (suffix || ''))
       startMin = startMin ?? (14 * 60)
     } else if (type === 'late_night') {
       // "10pm-close": end is implicit (bar close), start is explicit
-      startMin = startMin ?? parseTimeToMin(startStr + startSuffix)
+      startMin = startMin ?? parseTimeToMin(startStr + (suffix || ''))
       endMin = null
     }
   }

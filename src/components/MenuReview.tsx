@@ -109,8 +109,8 @@ export default function MenuReview({
 
         {/* HH Schedule — two-box input */}
         <HHScheduleInput
-          initialBox1={menuText}
-          onCommit={handleHhScheduleCommit}
+          onChange={(windows) => setHhWindows(windows)}
+          onCommit={() => {}}
         />
 
         {/* Commit error */}
@@ -135,7 +135,7 @@ export default function MenuReview({
               Saving...
             </>
           ) : (
-            '💾 Save'
+            '💾 Save Happy Hour'
           )}
         </button>
         <button

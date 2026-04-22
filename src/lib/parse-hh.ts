@@ -209,14 +209,14 @@ function parseOneWindow(text: string): HHWindow | null {
     startMin = parseTimeToMin(startStr + (startMinPart ? ':' + startMinPart : '') + (suffix ? suffix[0] : ''))
     endMin = parseTimeToMin(endStr + (endMinPart ? ':' + endMinPart : '') + (suffix ? suffix[0] : ''))
 
-    // For open_through: start is null, end is the parsed end
-    // For late_night: start is the parsed start, end is null
+    // For open_through: "open to 6pm" means from 2pm until end
+    // For late_night: "until close" means start until close (endMin = null)
     if (type === 'open_through') {
       endMin = endMin ?? parseTimeToMin(endStr + (suffix ? suffix[0] : ''))
-      startMin = null
+      startMin = startMin ?? 14 * 60  // "open" = 2pm default
     } else if (type === 'late_night') {
       startMin = startMin ?? parseTimeToMin(startStr + (suffix ? suffix[0] : ''))
-      endMin = null
+      endMin = null  // "until close" — we don't know closing time
     }
   } else if (timePortion && /^\d/.test(timePortion)) {
     // Try opening_hours.js as fallback for complex time expressions

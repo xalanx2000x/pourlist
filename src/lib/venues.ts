@@ -24,28 +24,48 @@ export async function getVenuesByProximity(
   lng: number,
   radiusMeters: number
 ): Promise<Venue[]> {
-  const { data, error } = await supabase
-    .from('venues')
-    .select('*')
-    .neq('status', 'closed')
-    .not('lat', 'is', null)
-    .not('lng', 'is', null)
-    .gte('lat', lat - (radiusMeters / 111320))
-    .lte('lat', lat + (radiusMeters / 111320))
-    .gte('lng', lng - (radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))))
-    .lte('lng', lng + (radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))))
+  const bboxLatDelta = radiusMeters / 111320
+  const bboxLngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))
 
-  if (error) throw error
+  // Fetch up to 10,000 rows to handle large national seed data.
+  // The Supabase JS client caps at 1,000 by default, which skips
+  // alphabetically-late venues (like "Paymaster") even when they
+  // fall within the geographic radius. The Haversine filter below
+  // still ensures only truly nearby venues are returned.
+  let allVenues: Venue[] = []
+  const PAGE_SIZE = 5000
+
+  for (let page = 0; page < 2; page++) {
+    const { data, error } = await supabase
+      .from('venues')
+      .select('*')
+      .neq('status', 'closed')
+      .not('lat', 'is', null)
+      .not('lng', 'is', null)
+      .gte('lat', lat - bboxLatDelta)
+      .lte('lat', lat + bboxLatDelta)
+      .gte('lng', lng - bboxLngDelta)
+      .lte('lng', lng + bboxLngDelta)
+      .order('name')
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    if (error) throw error
+    if (!data || data.length === 0) break
+    allVenues = allVenues.concat(data as Venue[])
+    if (data.length < PAGE_SIZE) break
+  }
 
   // Filter by exact Haversine distance (rectangular bbox is wider than radius)
-  const filtered = (data || []).filter(v => {
+  const filtered = allVenues.filter(v => {
     const R = 6371000
     const dLat = (v.lat - lat) * Math.PI / 180
     const dLng = (v.lng - lng) * Math.PI / 180
-    const a = Math.sin(dLat/2)**2 +
-              Math.cos(lat * Math.PI/180) * Math.cos(v.lat * Math.PI/180) *
-              Math.sin(dLng/2)**2
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat * Math.PI / 180) *
+        Math.cos(v.lat * Math.PI / 180) *
+        Math.sin(dLng / 2) ** 2
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     return R * c <= radiusMeters
   })
 

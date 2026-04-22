@@ -14,6 +14,57 @@
 import type { Venue } from '@/lib/supabase'
 import { getCityCloseMin } from '@/lib/bar-close-times'
 
+/**
+ * Checks if a legacy hh_time string (e.g. "4-6pm", "4pm - 7pm") represents
+ * an active happy hour right now.
+ *
+ * Uses heuristics for bare numbers like "4-6":
+ * - If endHour <= 4: assumes AM/PM pair (e.g. "4-6" = 4pm-6pm)
+ * - Otherwise uses current hour context (assumes PM if startHour < currentHour)
+ *
+ * Returns false if the string can't be parsed or the current time
+ * is outside the window.
+ */
+function isLegacyHhTimeActive(hhTime: string): boolean {
+  const currentHour = new Date().getHours()
+
+  // Pattern: "4-6", "4pm-6pm", "4 pm - 7 pm", "5 to 8", etc.
+  const timeWindowMatch = hhTime.match(
+    /\b(\d{1,2})\s*[-–—to]+\s*(\d{1,2})(pm|am)?\b/i
+  )
+  if (!timeWindowMatch) return false
+
+  let startHour = parseInt(timeWindowMatch[1])
+  let endHour = parseInt(timeWindowMatch[2])
+  const suffix = timeWindowMatch[3]?.toLowerCase()
+
+  if (suffix === 'am' && endHour < 12) endHour += 12
+  if (suffix === 'pm' && startHour < 12) startHour += 12
+
+  // Bare number heuristic: if no suffix and endHour < current hour reference,
+  // assume PM (typical HH like "4-6" = 4pm-6pm, not 4am-6am)
+  if (!suffix && endHour < 12) {
+    // If endHour <= currentHour reference point, assume PM times
+    if (endHour <= 4) {
+      // Very early end (e.g. "4-6" with endHour=6) → 4pm-6pm
+      startHour += 12
+      endHour += 12
+    } else if (endHour > startHour) {
+      // Normal range like 4-7 with no suffix: assume PM
+      if (startHour < 12) startHour += 12
+      if (endHour < 12) endHour += 12
+    }
+    // else: ambiguous, leave as-is
+  }
+
+  // Handle midnight crossing (e.g. "10pm-2am")
+  if (endHour < startHour) {
+    return currentHour >= startHour || currentHour < endHour
+  }
+
+  return currentHour >= startHour && currentHour < endHour
+}
+
 const CLOSE_DEFAULT = 2 * 60 // 2:00 AM in minutes since midnight
 
 function minsSinceMidnight(): number {
@@ -197,9 +248,11 @@ export function hasActiveHappyHour(venue: Partial<Venue>): boolean {
     return false
   }
 
-  // Legacy fallback: hh_time string
+  // Legacy fallback: hh_time string — actually evaluate the time
   const hhTime = venue.hh_time as string | null | undefined
-  if (hhTime && hhTime.trim().length > 0) return true
+  if (hhTime && hhTime.trim().length > 0) {
+    return isLegacyHhTimeActive(hhTime.trim())
+  }
 
   return false
 }

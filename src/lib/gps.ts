@@ -31,8 +31,16 @@ export async function extractGpsFromPhoto(file: File): Promise<GpsCoords | null>
 
 /**
  * Get browser's current geolocation.
- * Falls back to IP-based geolocation if browser GPS is unavailable or times out.
- * This ensures the app loads at the user's actual location — not a hardcoded city.
+ * 
+ * Strategy:
+ * 1. Try browser GPS — give it 10s to get a fix
+ * 2. If GPS succeeds → return real coordinates (accurate to ~5m)
+ * 3. If GPS fails after 10s → fall back to IP geolocation (~500m accuracy in Portland)
+ *    BUT: when using IP geolocation, the app uses a wider radius so venues still load.
+ *    This is handled in loadVenues, not here — we just return the IP coords.
+ * 
+ * We deliberately do NOT race GPS vs IP — IP is only used when GPS genuinely can't get a fix.
+ * This prevents IP's coarse coordinates from polluting the 200m-radius venue query.
  */
 export function getBrowserLocation(): Promise<GpsCoords> {
   return new Promise((resolve, reject) => {
@@ -41,13 +49,28 @@ export function getBrowserLocation(): Promise<GpsCoords> {
       fetchIpLocation().then(resolve).catch(reject)
       return
     }
+
+    let settled = false
+    const settle = (coords: GpsCoords | null) => {
+      if (settled) return
+      settled = true
+      if (coords) resolve(coords)
+      else fetchIpLocation().then(resolve).catch(reject)
+    }
+
+    // Give GPS 10 seconds to resolve before falling back to IP
+    const timer = setTimeout(() => settle(null), 10_000)
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {
-        // GPS failed — try IP geolocation before giving up
-        fetchIpLocation().then(resolve).catch(reject)
+      (pos) => {
+        clearTimeout(timer)
+        settle({ lat: pos.coords.latitude, lng: pos.coords.longitude })
       },
-      { timeout: 5000, maximumAge: 60000, enableHighAccuracy: true }
+      () => {
+        clearTimeout(timer)
+        settle(null) // Trigger IP fallback
+      },
+      { timeout: 10_000, maximumAge: 60_000, enableHighAccuracy: true }
     )
   })
 }

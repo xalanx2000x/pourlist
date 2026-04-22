@@ -142,6 +142,8 @@ export default function Home() {
     setSearchedLocation(coords)
     setUserLocation(coords)
     setMapBounds(null)
+    // Immediately reload venues at the search location
+    loadVenues({ lat: coords.lat, lng: coords.lng })
   }
 
   function handleVenueSelect(venue: Venue) {
@@ -151,6 +153,10 @@ export default function Home() {
       if (prev.some(v => v.id === venue.id)) return prev
       return [venue, ...prev]
     })
+    // Reload nearby venues at the selected venue's location so it appears on map
+    if (venue.lat != null && venue.lng != null) {
+      loadVenues({ lat: venue.lat, lng: venue.lng })
+    }
   }
 
   // ── Scan workflow handlers ───────────────────────────────────────────────

@@ -30,12 +30,22 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
 
   // Photo viewer state
   const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
+  const [photoSetsLoading, setPhotoSetsLoading] = useState(false)
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false)
   const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0)
   const [allPhotos, setAllPhotos] = useState<{ url: string; setIndex: number; photoIndex: number }[]>([])
 
-  // All flattened photos from all sets
-  const [photoSetsLoading, setPhotoSetsLoading] = useState(false)
+  // Swipe-down to close
+  const touchStartY = useRef<number | null>(null)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+  }
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY.current === null) return
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current
+    touchStartY.current = null
+    if (deltaY > 60) onClose()
+  }
 
   // Fetch all photo sets for this venue
   useEffect(() => {
@@ -145,19 +155,15 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   }
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto z-50">
-      {/* Handle bar */}
-      <div className="flex justify-center pt-3 pb-2">
+    <div
+      className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto z-50"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Handle bar — swipe indicator */}
+      <div className="flex justify-center pt-3 pb-1">
         <div className="w-12 h-1 bg-gray-300 rounded-full" />
       </div>
-
-      {/* Back to map button */}
-      <button
-        onClick={onClose}
-        className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 rounded-full text-amber-700 text-sm font-semibold transition-colors"
-      >
-        ← Back to Map
-      </button>
 
       <div className="p-5">
         {/* Header */}

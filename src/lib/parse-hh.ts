@@ -123,8 +123,6 @@ function parseDayRange(rangeStr: string): number[] {
 
 /**
  * Classify a HH type from a text string using keyword detection.
- * This is the "human-in-the-loop" preprocessor that identifies the semantic type
- * before opening_hours.js parses the time portion.
  *
  * Returns { type, adjustedText } where adjustedText has type keywords removed.
  */
@@ -133,16 +131,15 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
 
   // ALL DAY: any mention of "all day" or "24/7" or "around the clock"
   if (/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/.test(lower)) {
-    // Strip the keyword, keep remaining text for time parsing
     const adjusted = lower.replace(/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/gi, '').trim()
     return { type: 'all_day', adjustedText: adjusted }
   }
 
-  // OPEN THROUGH: "open through", "open til", "open to", "until Xpm", "til Xpm", "thru Xpm"
-  if (/\b(open\s*(through|til|till|to|t'\s*t|thru)|until|til|till|thru)\b/.test(lower)) {
+  // OPEN THROUGH: "open through", "open til", "open to", "until", "til", "thru", "before"
+  if (/\b(open\s*(through|til|till|to|t'\s*t|thru)|until|til|till|thru|before)\b/.test(lower)) {
     const adjusted = lower
       .replace(/\b(open\s*(through|til|till|to|t'\s*t|thru))\b/gi, '')
-      .replace(/\b(until|til|till|thru)\b/gi, '')
+      .replace(/\b(until|til|till|thru|before)\b/gi, '')
       .trim()
     return { type: 'open_through', adjustedText: adjusted }
   }
@@ -154,32 +151,51 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
   }
 
   // TYPICAL: anything with a time window (e.g. "4-7pm", "3pm to 6pm")
-  // opening_hours.js will parse this
   return { type: 'typical', adjustedText: lower }
 }
 
 /**
- * Parse a single time window text (like "4-7pm" or "Mon-Fri 3-6pm")
- * into an HHWindow. Used both for primary and secondary windows.
+ * Parse a single clause (no commas) into one HHWindow.
+ * Handles: "M-F 4-6", "W all day", "before 5", "10pm-close", etc.
  */
-function parseOneWindow(text: string): HHWindow | null {
+function parseOneClause(text: string): HHWindow | null {
   const lower = text.trim()
   if (!lower) return null
 
-  // Classify type first
   const { type, adjustedText } = classifyHHType(lower)
 
+  // ── ALL DAY ──────────────────────────────────────────────────────────
   if (type === 'all_day') {
-    return { type: 'all_day', days: [], excludeDays: [], startMin: null, endMin: null }
+    // Try to extract a day that follows "all day" — e.g. "all day Monday" or "Monday all day"
+    // Pattern: "all day [Day]" or "[Day] all day"
+    let days: number[] = []
+
+    // Try "all day Monday" form (keyword first)
+    const afterMatch = lower.match(/\ball\s?day\b\s+([a-z]+)/i)
+    if (afterMatch) {
+      const d = parseDay(afterMatch[1])
+      if (d !== null) days = [d]
+    }
+
+    // Try "Monday all day" form (day first)
+    if (days.length === 0) {
+      const beforeMatch = lower.match(/([a-z]+)\s+\ball\s?day\b/i)
+      if (beforeMatch) {
+        const d = parseDay(beforeMatch[1])
+        if (d !== null) days = [d]
+      }
+    }
+
+    return { type: 'all_day', days, excludeDays: [], startMin: null, endMin: null }
   }
 
+  // ── NO EXPLICIT TIME for open_through / late_night ──────────────────
   if (!adjustedText && (type === 'open_through' || type === 'late_night')) {
-    // Keyword present but no explicit time — treat as "open" or "close" only
     return { type, days: [], excludeDays: [], startMin: null, endMin: null }
   }
 
-  // Extract days from the text (before the time portion)
-  // e.g. "Mon-Fri 4-7pm" → day range = "Mon-Fri", time = "4-7pm"
+  // ── EXTRACT DAYS from the text ──────────────────────────────────────
+  // e.g. "Mon-Fri 4-7pm" → day part = "Mon-Fri", time part = "4-7pm"
   const dayTimeMatch = adjustedText.match(/^([a-zA-Z\-,]+)\s+(.+)$/)
   let timePortion = adjustedText
   let days: number[] = []
@@ -190,52 +206,82 @@ function parseOneWindow(text: string): HHWindow | null {
     days = parseDayRange(dayPart)
   }
 
-  // Try to parse the time portion with opening_hours.js
+  // ── EXTRACT TIMES ───────────────────────────────────────────────────
   let startMin: number | null = null
   let endMin: number | null = null
 
-  // Build an OSM-compatible time string for opening_hours.js
-  // e.g. "4-7pm" → "16:00-19:00"
-  const osmTimeMatch = timePortion.match(
-    /(\d{1,2})(?::(\d{2}))?\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/i
+  // Pattern: "4-7pm", "4pm-7pm", "4 to 7pm", "4:30-6:30pm"
+  const rangeMatch = timePortion.match(
+    /^(\d{1,2})(?::(\d{2}))?\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?$/i
   )
 
-  if (osmTimeMatch) {
-    const startStr = osmTimeMatch[1]
-    const startMinPart = osmTimeMatch[2]
-    const endStr = osmTimeMatch[3]
-    const endMinPart = osmTimeMatch[4]
-    const suffix = osmTimeMatch[5]
+  if (rangeMatch) {
+    const startStr = rangeMatch[1]
+    const startMinPart = rangeMatch[2]
+    const endStr = rangeMatch[3]
+    const endMinPart = rangeMatch[4]
+    const suffix = rangeMatch[5]
 
-    startMin = parseTimeToMin(startStr + (startMinPart ? ':' + startMinPart : '') + (suffix ? suffix[0] : ''))
-    endMin = parseTimeToMin(endStr + (endMinPart ? ':' + endMinPart : '') + (suffix ? suffix[0] : ''))
+    const startSuffix = suffix ? suffix[0] : ''
+    const endSuffix = suffix ? suffix[0] : (endMinPart ? '' : startSuffix)
 
-    // For open_through: "open to 6pm" means from 2pm until end
-    // For late_night: "until close" means start until close (endMin = null)
+    startMin = parseTimeToMin(startStr + (startMinPart ? ':' + startMinPart : '') + startSuffix)
+    endMin = parseTimeToMin(endStr + (endMinPart ? ':' + endMinPart : '') + endSuffix)
+
     if (type === 'open_through') {
-      endMin = endMin ?? parseTimeToMin(endStr + (suffix ? suffix[0] : ''))
-      startMin = startMin ?? 14 * 60  // "open" = 2pm default
+      // "open to 6pm": start is implicit (venue open = 2pm), end is explicit
+      endMin = endMin ?? parseTimeToMin(endStr + endSuffix)
+      startMin = startMin ?? (14 * 60)
     } else if (type === 'late_night') {
-      startMin = startMin ?? parseTimeToMin(startStr + (suffix ? suffix[0] : ''))
-      endMin = null  // "until close" — we don't know closing time
+      // "10pm-close": end is implicit (bar close), start is explicit
+      startMin = startMin ?? parseTimeToMin(startStr + startSuffix)
+      endMin = null
     }
-  } else if (timePortion && /^\d/.test(timePortion)) {
-    // Try opening_hours.js as fallback for complex time expressions
+  }
+
+  // ── FALLBACK: opening_hours.js for complex expressions ──────────────
+  if (startMin === null && endMin === null && timePortion && /^\d/.test(timePortion)) {
     try {
       const oh = new openingHoursLib(timePortion)
       const intervals = oh.getOpenIntervals(new Date(), new Date(Date.now() + 24 * 3600 * 1000))
       if (intervals.length > 0) {
-        const start = intervals[0][0]
-        const end = intervals[0][1]
-        startMin = start.getHours() * 60 + start.getMinutes()
-        endMin = end.getHours() * 60 + end.getMinutes()
+        startMin = intervals[0][0].getHours() * 60 + intervals[0][0].getMinutes()
+        endMin = intervals[0][1].getHours() * 60 + intervals[0][1].getMinutes()
       }
     } catch {
-      // opening_hours.js couldn't parse it — leave null
+      // leave null
     }
   }
 
-  // If we got nothing, return null
+  // ── "before X" in open_through: "before 5" → 2pm-5pm ──────────────
+  // "before" was stripped from adjustedText by classifyHHType, so we check original `lower`
+  if (type === 'open_through' && startMin === null && endMin === null) {
+    // Look for a bare number at the start of adjustedText (the "X" in "before X")
+    const bareMatch = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?(?:\s*(?:am|pm|a|p))?$/i)
+    if (bareMatch) {
+      const rawMin = parseTimeToMin(bareMatch[0])
+      if (rawMin !== null) {
+        // Bare number in "before X" → treat as PM (e.g. "before 5" = before 5pm)
+        endMin = rawMin < 12 * 60 ? rawMin + 12 * 60 : rawMin
+        // Start = 2pm (typical HH start)
+        startMin = 14 * 60
+      }
+    }
+  }
+
+  // ── LATE NIGHT "X-close": e.g. "10pm-close" ───────────────────────
+  if (type === 'late_night' && startMin === null && endMin === null) {
+    // e.g. "10pm-close", "10-close", "10 p.m. to close"
+    const lnMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:am|pm|p)?\s*[-–—to]+\s*close/i)
+    if (lnMatch) {
+      const suffix = lnMatch[0].includes('pm') || lnMatch[0].includes('p.m') ? 'pm' :
+                    lnMatch[0].includes('am') || lnMatch[0].includes('a.m') ? 'am' : ''
+      startMin = parseTimeToMin(lnMatch[1] + (lnMatch[2] ? ':' + lnMatch[2] : '') + suffix)
+      endMin = null
+    }
+  }
+
+  // Nothing usable found
   if (startMin === null && endMin === null && type === 'typical') return null
 
   return {
@@ -248,42 +294,122 @@ function parseOneWindow(text: string): HHWindow | null {
 }
 
 /**
+ * Split a day array into non-overlapping pieces by removing overlapDays.
+ * e.g. splitPieces([1,2,3,4,5], [3,5]) → [[1,2], [4]]
+ * e.g. splitPieces([1,2,3,4,5], [3]) → [[1,2], [4,5]]
+ */
+function splitIntoPieces(allDays: number[], removeDays: number[]): number[][] {
+  const removeSet = new Set(removeDays)
+  const pieces: number[][] = []
+  let current: number[] = []
+
+  for (const day of allDays) {
+    if (removeSet.has(day)) {
+      if (current.length > 0) {
+        pieces.push(current)
+        current = []
+      }
+    } else {
+      current.push(day)
+    }
+  }
+  if (current.length > 0) pieces.push(current)
+  return pieces
+}
+
+/**
+ * Add a window to the stored list, splitting any existing window that overlaps
+ * with the new window's days. Single data points take priority over ranges.
+ *
+ * @param stored - current list of windows (mutated)
+ * @param newWindow - new window to add
+ */
+function addWindowWithOverlap(stored: HHWindow[], newWindow: HHWindow): void {
+  const newDaysSet = new Set(newWindow.days)
+  let insertAt = stored.length // where to insert new window
+
+  for (let i = stored.length - 1; i >= 0; i--) {
+    const existing = stored[i]
+    if (existing.days.length === 0) continue // "all days" — can't split meaningfully
+
+    const overlap = existing.days.filter(d => newDaysSet.has(d))
+    if (overlap.length === 0) continue
+
+    // Split existing into non-overlapping pieces
+    const pieces = splitIntoPieces(existing.days, newWindow.days)
+
+    // Remove the old entry
+    stored.splice(i, 1)
+
+    // Insert the non-overlap pieces back at the same position
+    for (let p = pieces.length - 1; p >= 0; p--) {
+      stored.splice(i, 0, { ...existing, days: pieces[p] })
+    }
+
+    // Adjust insertAt since we added pieces.length - 1 new entries before it
+    insertAt = i
+  }
+
+  // Insert the new window at the correct position (before any windows that come after it)
+  stored.splice(insertAt, 0, newWindow)
+}
+
+/**
  * Parse a menu text string into an HHSchedule.
  *
- * Handles up to two HH windows separated by common conjunctions.
- * Falls back gracefully if the text can't be parsed.
+ * Handles comma-separated clauses with overlap detection:
+ * - Comma splits into separate clauses (each = one potential window)
+ * - "and"/"&"/"also" within a clause splits into sub-clauses
+ * - Single data points (e.g. "Wednesday") take priority over ranges (e.g. "M-F")
+ * - Overlapping days cause the range to be split into non-overlapping parts
  *
- * @param text - raw menu text (e.g. from AI extraction or user input)
- * @returns HHSchedule with windows and original text
+ * @param text - raw menu text
+ * @returns HHSchedule with up to 3 windows
  */
 export function parseHHSchedule(text: string): HHSchedule {
   if (!text || !text.trim()) {
     return { windows: [null, null, null], rawText: text }
   }
 
-  const lower = text.toLowerCase()
+  // Step 1: Split on commas
+  const commaClauses = text.split(',').map(c => c.trim()).filter(c => c.length > 0)
 
-  // Split on " and " or " & " or " also " to detect two windows
-  // But be careful not to split on "Mon-Fri and Sat" (that's a day range)
-  // Strategy: look for patterns like " - " or " to " between numbers that suggest time windows
-  const windowTexts: string[] = []
+  const stored: HHWindow[] = []
 
-  // Split on patterns that clearly separate two HH windows
-  // "4-7pm and 10pm-midnight" or "4pm-7pm & 10pm-12am"
-  const splitMatch = lower.match(/^(.+?)\s*(?:,?\s*(?:and|&|also)\s*)+(.+)$/)
-  if (splitMatch) {
-    const w1 = splitMatch[1].trim()
-    const w2 = splitMatch[2].trim()
-    if (w1) windowTexts.push(w1)
-    if (w2) windowTexts.push(w2)
-  } else {
-    windowTexts.push(lower)
+  for (const clause of commaClauses) {
+    // Step 2: Within each clause, split on "and"/"&"/"also"
+    const lower = clause.toLowerCase()
+    const splitMatch = lower.match(/^(.+?)\s*(?:,?\s*(?:and|&|also)\s*)+(.+)$/)
+
+    const subClauses: string[] = []
+    if (splitMatch) {
+      // Extract the original-case text for the two parts
+      const orig1 = clause.slice(0, splitMatch[1].length).trim()
+      const orig2 = clause.slice(clause.length - splitMatch[2].length).trim()
+      if (orig1) subClauses.push(orig1)
+      if (orig2) subClauses.push(orig2)
+    } else {
+      subClauses.push(clause)
+    }
+
+    // Step 3: Parse each sub-clause and add with overlap detection
+    for (const sub of subClauses) {
+      const window = parseOneClause(sub)
+      if (!window || !window.type) continue
+
+      // If window has no days (e.g. just "4-6pm" without a day), default to all days
+      if (window.days.length === 0) {
+        window.days = [1, 2, 3, 4, 5, 6, 7]
+      }
+
+      addWindowWithOverlap(stored, window)
+    }
   }
 
+  // Step 4: Cap at 3 windows
   const windows: [HHWindow | null, HHWindow | null, HHWindow | null] = [null, null, null]
-
-  for (let i = 0; i < Math.min(windowTexts.length, 3); i++) {
-    windows[i] = parseOneWindow(windowTexts[i])
+  for (let i = 0; i < Math.min(stored.length, 3); i++) {
+    windows[i] = stored[i]
   }
 
   return { windows, rawText: text }
@@ -320,20 +446,16 @@ export function formatHHDays(days: number[]): string {
  * Returns an error message or null if valid.
  */
 export function validateHHWindow(window: HHWindow | null): string | null {
-  if (!window) return null  // null is fine (no HH)
+  if (!window) return null
   if (!window.type) return null
 
-  // For all_day, no time needed
   if (window.type === 'all_day') return null
 
-  // At least one of start/end should be set
   if (window.startMin === null && window.endMin === null) {
     return 'Please set a start time, end time, or both.'
   }
 
-  // If both set, start should be before end (with some tolerance for late-night)
   if (window.startMin !== null && window.endMin !== null) {
-    // Allow crossing midnight (e.g. 10pm-2am = 1320 to 120)
     const crossesMidnight = window.startMin > window.endMin
     if (!crossesMidnight && window.startMin >= window.endMin) {
       return 'Start time must be before end time.'

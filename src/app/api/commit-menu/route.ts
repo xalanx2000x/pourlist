@@ -27,14 +27,31 @@ function storagePathFromUrl(url: string): string {
  *   lng?: number
  *   deviceHash: string
  *   hhTime?: string                 // legacy: stored in venues.hh_time
- *   hh_type?: string                // all_day | open_through | typical | late_night
- *   hh_day?: string                 // comma-separated ISO weekdays, e.g. "1,2,3,4,5"
+ *
+ *   // Window 1 (all_day | open_through | typical | late_night)
+ *   hh_type?: string
+ *   hh_days?: string               // comma-separated ISO weekdays, e.g. "1,2,3,4,5"
+ *   hh_exclude_days?: string        // comma-separated ISO weekdays to exclude
  *   hh_start?: string               // minutes since midnight, or empty
  *   hh_end?: string                 // minutes since midnight, or empty
- *   hh_type_2?: string              // second window (optional)
- *   hh_day_2?: string
+ *
+ *   // Window 2
+ *   hh_type_2?: string
+ *   hh_days_2?: string
+ *   hh_exclude_days_2?: string
  *   hh_start_2?: string
  *   hh_end_2?: string
+ *
+ *   // Window 3
+ *   hh_type_3?: string
+ *   hh_days_3?: string
+ *   hh_exclude_days_3?: string
+ *   hh_start_3?: string
+ *   hh_end_3?: string
+ *
+ *   // Venue opening time (minutes since midnight; e.g. 840 = 2pm)
+ *   opening_min?: string
+ *
  *   photos?: File[]
  */
 export async function POST(req: NextRequest) {
@@ -50,13 +67,21 @@ export async function POST(req: NextRequest) {
       deviceHash,
       hhTime,
       hh_type,
-      hh_day,
+      hh_days,
+      hh_exclude_days,
       hh_start,
       hh_end,
       hh_type_2,
-      hh_day_2,
+      hh_days_2,
+      hh_exclude_days_2,
       hh_start_2,
-      hh_end_2
+      hh_end_2,
+      hh_type_3,
+      hh_days_3,
+      hh_exclude_days_3,
+      hh_start_3,
+      hh_end_3,
+      opening_min
     } = body as {
       venueId?: string
       venueName?: string
@@ -65,13 +90,21 @@ export async function POST(req: NextRequest) {
       deviceHash: string
       hhTime?: string
       hh_type?: string
-      hh_day?: string
+      hh_days?: string
+      hh_exclude_days?: string
       hh_start?: string
       hh_end?: string
       hh_type_2?: string
-      hh_day_2?: string
+      hh_days_2?: string
+      hh_exclude_days_2?: string
       hh_start_2?: string
       hh_end_2?: string
+      hh_type_3?: string
+      hh_days_3?: string
+      hh_exclude_days_3?: string
+      hh_start_3?: string
+      hh_end_3?: string
+      opening_min?: string
     }
 
     const numLat = typeof lat === 'string' ? parseFloat(lat) : lat
@@ -127,27 +160,30 @@ export async function POST(req: NextRequest) {
         const { data: newVenue, error: venueError } = await supabase
           .from('venues')
           .insert({
-            name: venueName.trim(),
+            name: venueName!.trim(),
             lat: numLat ?? null,
             lng: numLng ?? null,
-            address_backup: null,
             status: 'unverified',
             contributor_trust: 'new',
-            zip: null,
-            phone: null,
-            website: null,
-            type: null,
             menu_text: null,
             latest_menu_image_url: null,
             hh_time: hhTime?.trim() || null,
             hh_type: hh_type || null,
-            hh_day: hh_day ? parseInt(hh_day.split(',')[0]) || null : null,
+            hh_days: hh_days || null,
+            hh_exclude_days: hh_exclude_days || null,
             hh_start: hh_start ? parseInt(hh_start) : null,
             hh_end: hh_end ? parseInt(hh_end) : null,
             hh_type_2: hh_type_2 || null,
-            hh_day_2: hh_day_2 ? parseInt(hh_day_2.split(',')[0]) || null : null,
+            hh_days_2: hh_days_2 || null,
+            hh_exclude_days_2: hh_exclude_days_2 || null,
             hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
             hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
+            hh_type_3: hh_type_3 || null,
+            hh_days_3: hh_days_3 || null,
+            hh_exclude_days_3: hh_exclude_days_3 || null,
+            hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
+            hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
+            opening_min: opening_min ? parseInt(opening_min) : null,
           })
           .select('id')
           .single()
@@ -165,13 +201,21 @@ export async function POST(req: NextRequest) {
         .update({
           hh_time: hhTime?.trim() || null,
           hh_type: hh_type || null,
-          hh_day: hh_day ? parseInt(hh_day.split(',')[0]) || null : null,
+          hh_days: hh_days || null,
+          hh_exclude_days: hh_exclude_days || null,
           hh_start: hh_start ? parseInt(hh_start) : null,
           hh_end: hh_end ? parseInt(hh_end) : null,
           hh_type_2: hh_type_2 || null,
-          hh_day_2: hh_day_2 ? parseInt(hh_day_2.split(',')[0]) || null : null,
+          hh_days_2: hh_days_2 || null,
+          hh_exclude_days_2: hh_exclude_days_2 || null,
           hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
           hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
+          hh_type_3: hh_type_3 || null,
+          hh_days_3: hh_days_3 || null,
+          hh_exclude_days_3: hh_exclude_days_3 || null,
+          hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
+          hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
+          opening_min: opening_min ? parseInt(opening_min) : null,
         })
         .eq('id', targetVenueId)
 

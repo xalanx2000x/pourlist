@@ -1,16 +1,20 @@
 /**
  * Checks if a venue's structured HH schedule is currently active.
  *
- * Uses hh_type, hh_day, hh_start, hh_end (and _2 variants) to determine
- * if the current day/time falls within an active happy hour window.
+ * Handles 3 windows with:
+ * - Comma-separated ISO weekday lists (e.g. "1,2,3,4,5" = Mon-Fri)
+ * - Day exclusions (e.g. "daily except Tue" = hh_days="1,2,3,4,5,6,7", hh_exclude_days="3")
+ * - all_day: constrained by venue's opening_min + city's closeMin from bar-close-times.ts
+ * - open_through: endMin defaults to city's closeMin
+ * - late_night: endMin defaults to city's closeMin (bar close)
+ * - typical: explicit start/end times required
  *
- * Falls back to hhTime (string) for venues that haven't been migrated yet.
+ * Falls back to hhTime (string) for venues not yet migrated.
  */
 import type { Venue } from '@/lib/supabase'
+import { getCityCloseMin } from '@/lib/bar-close-times'
 
-// Default bar closing time (2 AM) — used when endMin is null for late_night windows
-// Most US states mandate 2 AM or earlier; some cities/districts vary but 2 AM is the safest default
-const CLOSE_DEFAULT = 2 * 60 // 120 mins = 2:00 AM
+const CLOSE_DEFAULT = 2 * 60 // 2:00 AM in minutes since midnight
 
 function minsSinceMidnight(): number {
   const now = new Date()
@@ -24,68 +28,139 @@ function currentISOWeekday(): number {
 }
 
 /**
- * Returns true if the given HH window is active right now.
+ * Parse a comma-separated ISO weekday string into an array of numbers.
+ * "1,2,3,4,5" → [1, 2, 3, 4, 5]
+ * "1,2,3,4,5,6,7" → [1, 2, 3, 4, 5, 6, 7]
+ * "" → []
+ */
+function parseDays(daysStr: string | null | undefined): number[] {
+  if (!daysStr || !daysStr.trim()) return []
+  return daysStr.split(',').map(s => parseInt(s.trim())).filter(n => n >= 1 && n <= 7)
+}
+
+/**
+ * Parse exclusion days (same format as parseDays).
+ */
+function parseExcludeDays(exclStr: string | null | undefined): number[] {
+  return parseDays(exclStr)
+}
+
+/**
+ * Check if a day matches the HH day criteria.
+ * - If days is empty → applies to all days
+ * - If days has values → current ISO weekday must be in the list
+ * - If excludeDays has values → current ISO weekday must NOT be in the exclusion list
+ */
+function isDayActive(days: number[], excludeDays: number[]): boolean {
+  const today = currentISOWeekday()
+
+  if (excludeDays.length > 0 && excludeDays.includes(today)) return false
+
+  if (days.length === 0) return true  // no restriction — applies to all days
+  return days.includes(today)
+}
+
+/**
+ * Get the effective end minute for a window.
+ * - If endMin is set → use it
+ * - If null and type is open_through or late_night → use city closeMin
+ * - If null and type is all_day → use city closeMin
+ * - Otherwise → null (open-ended)
+ */
+function getEffectiveEndMin(
+  endMin: number | null | undefined,
+  type: string | null | undefined,
+  venueState: string | null | undefined
+): number | null {
+  if (endMin !== null && endMin !== undefined) return endMin
+  if (type === 'open_through' || type === 'late_night' || type === 'all_day') {
+    const cityClose = getCityCloseMin('', venueState ?? '')
+    return cityClose ?? CLOSE_DEFAULT
+  }
+  return null
+}
+
+/**
+ * Check if a single HH window is active right now.
  */
 function isWindowActive(
   type: string | null | undefined,
-  day: number | null | undefined,
+  daysStr: string | null | undefined,
+  excludeDaysStr: string | null | undefined,
   startMin: number | null | undefined,
-  endMin: number | null | undefined
+  endMin: number | null | undefined,
+  openingMin: number | null | undefined,
+  venueState: string | null | undefined
 ): boolean {
   if (!type) return false
 
-  const now = new Date()
-  const currentDay = currentISOWeekday()
-  const currentMin = minsSinceMidnight()
+  const days = parseDays(daysStr)
+  const excludeDays = parseExcludeDays(excludeDaysStr)
 
-  // Day check — if hh_day is set, today must match
-  if (day !== null && day !== undefined && day !== currentDay) {
-    return false
-  }
+  // Day check
+  if (!isDayActive(days, excludeDays)) return false
+
+  const currentMin = minsSinceMidnight()
+  const effectiveEndMin = getEffectiveEndMin(endMin, type, venueState)
 
   switch (type) {
-    case 'all_day':
-      return true
+    case 'all_day': {
+      // HH runs from venue open to bar close
+      const start = openingMin ?? (14 * 60)  // default 2pm if opening_min not set
+      return currentMin >= start && currentMin < (effectiveEndMin ?? CLOSE_DEFAULT)
+    }
 
     case 'open_through':
-      // No start time (venue open), ends at endMin
-      if (endMin === null || endMin === undefined) return false
-      return currentMin < endMin
+      // No explicit start (venue open), ends at effectiveEndMin
+      if (effectiveEndMin === null) return false
+      return currentMin < effectiveEndMin
 
     case 'late_night':
-      // Starts at startMin, ends at CLOSE_DEFAULT (2 AM) or venue close
+      // Starts at startMin, ends at effectiveEndMin
       if (startMin === null || startMin === undefined) return false
-      const end = endMin ?? CLOSE_DEFAULT
+      const end = effectiveEndMin ?? CLOSE_DEFAULT
       if (startMin > end) {
-        // Crosses midnight: active if currentMin >= start OR currentMin < end
+        // Crosses midnight: active if currentMin >= startMin OR currentMin < end
         return currentMin >= startMin || currentMin < end
       }
       return currentMin >= startMin && currentMin < end
 
     case 'typical':
+      // Explicit start + end required
       if (startMin === null || startMin === undefined) return false
-      if (endMin === null || endMin === undefined) return false
-      // Handle late-night crossing midnight (e.g. 22:00-02:00)
-      if (startMin > endMin) {
-        // Crosses midnight: active if currentMin >= start OR currentMin < end
-        return currentMin >= startMin || currentMin < endMin
+      if (effectiveEndMin === null) return false
+      // Handle midnight crossing (e.g. 22:00-02:00)
+      if (startMin > effectiveEndMin) {
+        return currentMin >= startMin || currentMin < effectiveEndMin
       }
-      return currentMin >= startMin && currentMin < endMin
+      return currentMin >= startMin && currentMin < effectiveEndMin
 
     default:
       return false
   }
 }
 
+/**
+ * Returns true if the venue's happy hour is currently active.
+ *
+ * Checks up to 3 windows (window 1, 2, 3). If any window is active, returns true.
+ * Falls back to hh_time string for venues not yet migrated.
+ */
 export function hasActiveHappyHour(venue: Partial<Venue>): boolean {
-  // Structured fields (primary) — migrated venues
+  // Read opening_min from venue (minutes since midnight venue opens)
+  const openingMin = venue.opening_min as number | null | undefined
+
+  // Window 1
   const type = venue.hh_type as string | null | undefined
   if (type) {
     const active1 = isWindowActive(
       type,
-      venue.hh_day as number | null | undefined,
+      venue.hh_days as string | null | undefined,
+      venue.hh_exclude_days as string | null | undefined,
       venue.hh_start as number | null | undefined,
-      venue.hh_end as number | null | undefined
+      venue.hh_end as number | null | undefined,
+      openingMin,
+      null  // TODO: derive state from venue GPS for city-specific close times
     )
     if (active1) return true
 
@@ -94,19 +169,49 @@ export function hasActiveHappyHour(venue: Partial<Venue>): boolean {
     if (type2) {
       const active2 = isWindowActive(
         type2,
-        venue.hh_day_2 as number | null | undefined,
+        venue.hh_days_2 as string | null | undefined,
+        venue.hh_exclude_days_2 as string | null | undefined,
         venue.hh_start_2 as number | null | undefined,
-        venue.hh_end_2 as number | null | undefined
+        venue.hh_end_2 as number | null | undefined,
+        openingMin,
+        null
       )
       if (active2) return true
+    }
+
+    // Window 3
+    const type3 = venue.hh_type_3 as string | null | undefined
+    if (type3) {
+      const active3 = isWindowActive(
+        type3,
+        venue.hh_days_3 as string | null | undefined,
+        venue.hh_exclude_days_3 as string | null | undefined,
+        venue.hh_start_3 as number | null | undefined,
+        venue.hh_end_3 as number | null | undefined,
+        openingMin,
+        null
+      )
+      if (active3) return true
     }
 
     return false
   }
 
-  // Legacy fallback: hh_time string — venues not yet migrated
+  // Legacy fallback: hh_time string
   const hhTime = venue.hh_time as string | null | undefined
   if (hhTime && hhTime.trim().length > 0) return true
 
   return false
+}
+
+/**
+ * Format minutes since midnight as a human-readable time string.
+ * e.g. 960 → "4:00 PM", 1380 → "11:00 PM"
+ */
+export function formatMin(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return `${hour12}:${m.toString().padStart(2, '0')} ${period}`
 }

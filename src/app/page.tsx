@@ -313,7 +313,7 @@ export default function Home() {
    * Commit the menu: upload photos + save venue with structured HH schedule.
    */
   async function handleMenuCommit(data: {
-    hhWindows: [import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null]
+    hhWindows: [import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null]
     hhTime: string
   }) {
     const { hhWindows, hhTime } = data
@@ -338,21 +338,30 @@ export default function Home() {
     formData.append('deviceHash', deviceHash)
     if (hhTime) formData.append('hhTime', hhTime)
 
-    // Structured HH windows
+    // Structured HH windows (up to 3)
     const w1 = hhWindows[0]
     const w2 = hhWindows[1]
-    if (w1?.type) {
-      formData.append('hh_type', w1.type)
-      formData.append('hh_day', String(w1.days.join(',')))
-      formData.append('hh_start', w1.startMin != null ? String(w1.startMin) : '')
-      formData.append('hh_end', w1.endMin != null ? String(w1.endMin) : '')
+    const w3 = hhWindows[2]
+
+    function appendWindow(
+      w: import('@/lib/parse-hh').HHWindow,
+      prefix: string,
+      daysKey: string,
+      exclKey: string
+    ) {
+      if (!w.type) return
+      formData.append(prefix, w.type)
+      formData.append(daysKey, String(w.days.join(',')))
+      formData.append('hh_start', w.startMin != null ? String(w.startMin) : '')
+      formData.append('hh_end', w.endMin != null ? String(w.endMin) : '')
+      if (w.excludeDays && w.excludeDays.length > 0) {
+        formData.append(exclKey, String(w.excludeDays.join(',')))
+      }
     }
-    if (w2?.type) {
-      formData.append('hh_type_2', w2.type)
-      formData.append('hh_day_2', String(w2.days.join(',')))
-      formData.append('hh_start_2', w2.startMin != null ? String(w2.startMin) : '')
-      formData.append('hh_end_2', w2.endMin != null ? String(w2.endMin) : '')
-    }
+
+    if (w1?.type) appendWindow(w1, 'hh_type', 'hh_days', 'hh_exclude_days')
+    if (w2?.type) appendWindow(w2, 'hh_type_2', 'hh_days_2', 'hh_exclude_days_2')
+    if (w3?.type) appendWindow(w3, 'hh_type_3', 'hh_days_3', 'hh_exclude_days_3')
 
     let venueId: string | undefined
     let createdVenueId: string | undefined

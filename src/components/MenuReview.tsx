@@ -13,7 +13,7 @@ interface MenuReviewProps {
   /** Raw menu text (from AI parse) — used to pre-populate the HH schedule */
   menuText?: string | null
   onCommit: (data: {
-    hhWindows: [HHWindow | null, HHWindow | null]
+    hhWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
     hhTime: string   // legacy string for old API compatibility
   }) => Promise<void>
   onDiscard: () => void
@@ -32,7 +32,7 @@ export default function MenuReview({
   onRetry,
   onClose
 }: MenuReviewProps) {
-  const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null]>([null, null])
+  const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const [legacyHhTime, setLegacyHhTime] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [isCommitting, setIsCommitting] = useState(false)

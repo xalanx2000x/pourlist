@@ -117,7 +117,7 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
 
   // ── Texas (state default: null = varies by city) ──
   'Austin, TX': { closeMin: 120 },
-  'Houston, TX': { closeMin: 0, note: 'Midnight Mon–Sat, 1am Sun (Harris County)' },
+  'Houston, TX': { closeMin: 120, note: 'Standard 2am; Harris County allows midnight–2am depending on license' },
   'Dallas, TX': { closeMin: 120 },
   'San Antonio, TX': { closeMin: 120 },
   'Fort Worth, TX': { closeMin: 120 },

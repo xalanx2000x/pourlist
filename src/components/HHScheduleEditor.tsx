@@ -1,17 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { HHWindow, HHType, DAY_NAMES, formatHHTime, validateHHWindow } from '@/lib/parse-hh'
 
 interface HHScheduleEditorProps {
-  /**
-   * Initial schedule from the parser.
-   * null = no HH detected yet.
-   */
-  initialWindows: [HHWindow | null, HHWindow | null]
-  /** Called when user confirms a valid schedule */
-  onConfirm: (windows: [HHWindow | null, HHWindow | null]) => void
-  /** "Looks good" was pressed — short-circuit re-validation */
+  initialWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
+  onConfirm: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
   onAgreed: () => void
 }
 
@@ -29,8 +23,18 @@ const TYPE_OPTIONS: { value: HHType; label: string }[] = [
   { value: 'late_night', label: TYPE_LABELS.late_night },
 ]
 
+const TIMES = Array.from({ length: 48 }, (_, i) => {
+  const min = i * 30
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  const label = `${hour12}:${m.toString().padStart(2, '0')} ${period}`
+  return { value: min, label }
+})
+
 function WindowEditor({
-  window,
+  window: w,
   index,
   onChange,
 }: {
@@ -39,20 +43,10 @@ function WindowEditor({
   onChange: (w: HHWindow) => void
 }) {
   const toggleDay = (day: number) => {
-    const days = window.days.includes(day)
-      ? window.days.filter(d => d !== day)
-      : [...window.days, day].sort((a, b) => a - b)
-    onChange({ ...window, days })
-  }
-
-  const handleStartChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value
-    onChange({ ...window, startMin: val === '' ? null : parseInt(val) })
-  }
-
-  const handleEndChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value
-    onChange({ ...window, endMin: val === '' ? null : parseInt(val) })
+    const days = w.days.includes(day)
+      ? w.days.filter(d => d !== day)
+      : [...w.days, day].sort((a, b) => a - b)
+    onChange({ ...w, days })
   }
 
   return (
@@ -60,16 +54,16 @@ function WindowEditor({
       {/* Type selector */}
       <div>
         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-          Window {index === 0 ? '1' : '2'}
+          Window {index + 1}
         </label>
         <div className="flex flex-wrap gap-2 mt-1.5">
           {TYPE_OPTIONS.map(opt => (
             <button
-              key={opt.value}
+              key={String(opt.value)}
               type="button"
-              onClick={() => onChange({ ...window, type: opt.value })}
+              onClick={() => onChange({ ...w, type: opt.value })}
               className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                window.type === opt.value
+                w.type === opt.value
                   ? 'bg-amber-100 border-amber-400 text-amber-800'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
               }`}
@@ -84,47 +78,48 @@ function WindowEditor({
       <div>
         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Days</label>
         <div className="flex flex-wrap gap-1.5 mt-1.5">
-          {[1, 2, 3, 4, 5, 6, 7].map(day => (
-            <button
-              key={day}
-              type="button"
-              onClick={() => toggleDay(day)}
-              className={`w-10 h-10 rounded-full text-sm font-medium border transition-colors ${
-                window.days.includes(day)
-                  ? 'bg-amber-500 border-amber-500 text-white'
-                  : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
-              }`}
-            >
-              {DAY_NAMES[day - 1]}
-            </button>
-          ))}
+          {DAY_NAMES.map((name, i) => {
+            const day = i + 1
+            const excluded = w.excludeDays?.includes(day)
+            return (
+              <button
+                key={day}
+                type="button"
+                onClick={() => toggleDay(day)}
+                className={`w-10 h-10 rounded-full text-sm font-medium border transition-colors ${
+                  w.days.includes(day)
+                    ? 'bg-amber-500 border-amber-500 text-white'
+                    : excluded
+                      ? 'bg-gray-100 border-gray-300 text-gray-400 line-through'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300'
+                }`}
+              >
+                {name}
+              </button>
+            )
+          })}
         </div>
+        {w.days.length === 0 && (
+          <p className="text-xs text-gray-400 mt-1">All days — tap above to select specific days</p>
+        )}
       </div>
 
       {/* Time selectors */}
-      {window.type !== 'all_day' && (
+      {w.type !== 'all_day' && (
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {window.type === 'open_through' ? 'Opens at' : window.type === 'late_night' ? 'Starts at' : 'Start'}
+              {w.type === 'open_through' ? 'Opens at' : w.type === 'late_night' ? 'Starts at' : 'Start'}
             </label>
             <select
-              value={window.startMin ?? ''}
-              onChange={handleStartChange}
+              value={w.startMin ?? ''}
+              onChange={e => onChange({ ...w, startMin: e.target.value === '' ? null : parseInt(e.target.value) })}
               className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
             >
               <option value="">—</option>
-              {Array.from({ length: 48 }, (_, i) => {
-                const min = i * 30
-                const h = Math.floor(min / 60)
-                const m = min % 60
-                const period = h < 12 ? 'AM' : 'PM'
-                const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-                const label = `${hour12}:${m.toString().padStart(2, '0')} ${period}`
-                return (
-                  <option key={min} value={min}>{label}</option>
-                )
-              })}
+              {TIMES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
             </select>
           </div>
 
@@ -132,38 +127,32 @@ function WindowEditor({
 
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {window.type === 'open_through' ? 'Until' : window.type === 'late_night' ? 'Closes at' : 'End'}
+              {w.type === 'open_through' ? 'Until' : w.type === 'late_night' ? 'Closes at' : 'End'}
             </label>
             <select
-              value={window.endMin ?? ''}
-              onChange={handleEndChange}
+              value={w.endMin ?? ''}
+              onChange={e => onChange({ ...w, endMin: e.target.value === '' ? null : parseInt(e.target.value) })}
               className="mt-1 w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
             >
               <option value="">—</option>
-              {Array.from({ length: 48 }, (_, i) => {
-                const min = i * 30
-                const h = Math.floor(min / 60)
-                const m = min % 60
-                const period = h < 12 ? 'AM' : 'PM'
-                const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-                const label = `${hour12}:${m.toString().padStart(2, '0')} ${period}`
-                return (
-                  <option key={min} value={min}>{label}</option>
-                )
-              })}
+              {TIMES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
             </select>
           </div>
         </div>
       )}
 
       {/* Validation error */}
-      {window.type && (
-        <p className="text-xs text-red-500">
-          {validateHHWindow(window)}
-        </p>
+      {w.type && (
+        <p className="text-xs text-red-500">{validateHHWindow(w)}</p>
       )}
     </div>
   )
+}
+
+function makeEmptyWindow(): HHWindow {
+  return { type: 'typical', days: [], excludeDays: [], startMin: null, endMin: null }
 }
 
 export default function HHScheduleEditor({
@@ -171,55 +160,46 @@ export default function HHScheduleEditor({
   onConfirm,
   onAgreed,
 }: HHScheduleEditorProps) {
-  const [windows, setWindows] = useState<[HHWindow | null, HHWindow | null]>(
-    initialWindows
-  )
+  const [windows, setWindows] = useState(initialWindows)
   const [agreed, setAgreed] = useState(false)
   const [touched, setTouched] = useState(false)
 
-  // Check if editor has been touched
-  const hasWindow = windows[0] !== null || windows[1] !== null
+  const activeWindows = windows.filter(w => w !== null)
+  const hasWindow = activeWindows.length > 0
 
-  function handleWindow1Change(w: HHWindow) {
-    setWindows([w, windows[1]])
+  function setWindow(index: number, w: HHWindow | null) {
+    const next = [...windows] as [HHWindow | null, HHWindow | null, HHWindow | null]
+    next[index] = w
+    setWindows(next)
     setTouched(true)
     setAgreed(false)
   }
 
-  function handleWindow2Change(w: HHWindow) {
-    setWindows([windows[0], w])
-    setTouched(true)
-    setAgreed(false)
-  }
-
-  function addWindow2() {
-    setWindows([windows[0], { type: 'typical', days: [], startMin: null, endMin: null }])
+  function addWindow() {
+    // Find first null slot
+    const idx = windows.findIndex(w => w === null)
+    if (idx !== -1) setWindow(idx, makeEmptyWindow())
     setTouched(true)
   }
 
-  function removeWindow2() {
-    setWindows([windows[0], null])
+  function removeWindow(index: number) {
+    setWindow(index, null)
     setTouched(true)
   }
 
   function handleConfirm() {
-    // Validate
-    const err1 = validateHHWindow(windows[0])
-    const err2 = validateHHWindow(windows[1])
-    if (err1 || err2) return
+    const errors = windows.map(w => w ? validateHHWindow(w) : null)
+    if (errors.some(e => e !== null)) return
     onConfirm(windows)
   }
 
-  // User has seen and agreed
   function handleAgree() {
     setAgreed(true)
     onAgreed()
   }
 
-  // Total validation
-  const err1 = validateHHWindow(windows[0])
-  const err2 = validateHHWindow(windows[1])
-  const hasError = !!err1 || !!err2
+  const errors = windows.map(w => w ? validateHHWindow(w) : null)
+  const hasError = errors.some(e => e !== null)
 
   return (
     <div className="space-y-4">
@@ -233,70 +213,46 @@ export default function HHScheduleEditor({
           </p>
         </div>
         {!agreed && hasWindow && !touched && (
-          <button
-            type="button"
-            onClick={handleAgree}
-            className="text-xs text-amber-600 font-medium hover:text-amber-700"
-          >
+          <button type="button" onClick={handleAgree} className="text-xs text-amber-600 font-medium hover:text-amber-700">
             ✓ Looks right
           </button>
         )}
-        {agreed && (
-          <span className="text-xs text-green-600 font-medium">✓ Confirmed</span>
-        )}
+        {agreed && <span className="text-xs text-green-600 font-medium">✓ Confirmed</span>}
       </div>
 
-      {/* Window 1 */}
-      {windows[0] !== null ? (
-        <WindowEditor
-          window={windows[0]}
-          index={0}
-          onChange={handleWindow1Change}
-        />
-      ) : (
-        <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
-          <p className="text-sm text-gray-400">No happy hour detected in this menu.</p>
-          <button
-            type="button"
-            onClick={() =>
-              setWindows([{ type: 'typical', days: [], startMin: null, endMin: null }, null])
-            }
-            className="mt-2 text-sm text-amber-600 font-medium hover:text-amber-700"
-          >
-            + Add happy hour
-          </button>
-        </div>
-      )}
-
-      {/* Window 2 */}
-      {windows[1] !== null && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Second Window</span>
-            <button
-              type="button"
-              onClick={removeWindow2}
-              className="text-xs text-gray-400 hover:text-red-500"
-            >
-              ✕ Remove
-            </button>
+      {/* Window editors (up to 3) */}
+      {windows.map((w, i) => (
+        w !== null && (
+          <div key={i} className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                Window {i + 1} {i === 0 ? '(Primary)' : i === 1 ? '(Second)' : '(Third)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeWindow(i)}
+                className="text-xs text-gray-400 hover:text-red-500"
+              >
+                ✕ Remove
+              </button>
+            </div>
+            <WindowEditor
+              window={w}
+              index={i}
+              onChange={newW => setWindow(i, newW)}
+            />
           </div>
-          <WindowEditor
-            window={windows[1]}
-            index={1}
-            onChange={handleWindow2Change}
-          />
-        </div>
-      )}
+        )
+      ))}
 
-      {/* Add second window */}
-      {windows[0] !== null && windows[1] === null && (
+      {/* Add window button — shown when there are fewer than 3 active windows */}
+      {windows.filter(w => w !== null).length < 3 && (
         <button
           type="button"
-          onClick={addWindow2}
+          onClick={addWindow}
           className="w-full border-2 border-dashed border-gray-200 rounded-xl py-2.5 text-sm text-gray-500 hover:border-amber-300 hover:text-amber-600 transition-colors"
         >
-          + Add second happy hour window
+          + Add happy hour window
         </button>
       )}
 

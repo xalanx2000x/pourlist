@@ -26,13 +26,21 @@ export type Venue = {
   latest_menu_image_url: string | null
   hh_time: string | null
   hh_type: string | null        // 'all_day' | 'open_through' | 'typical' | 'late_night'
-  hh_day: number | null         // ISO weekday 1=Mon ... 7=Sun (first day of range)
+  hh_days: string | null        // comma-separated ISO weekdays, e.g. "1,2,3,4,5" (Window 1)
+  hh_exclude_days: string | null // comma-separated ISO weekdays to exclude from Window 1
   hh_start: number | null       // minutes since midnight; null = "open"
   hh_end: number | null         // minutes since midnight; null = "close"
   hh_type_2: string | null     // second HH window
-  hh_day_2: number | null
+  hh_days_2: string | null
+  hh_exclude_days_2: string | null
   hh_start_2: number | null
   hh_end_2: number | null
+  hh_type_3: string | null     // third HH window
+  hh_days_3: string | null
+  hh_exclude_days_3: string | null
+  hh_start_3: number | null
+  hh_end_3: number | null
+  opening_min: number | null    // minutes since midnight venue opens (e.g. 840 = 2pm)
 }
 
 export type Photo = {

@@ -17,13 +17,14 @@ export type HHType = 'all_day' | 'open_through' | 'typical' | 'late_night' | nul
 
 export interface HHWindow {
   type: HHType          // null = not a HH window
-  days: number[]        // ISO weekday 1=Mon ... 7=Sun; empty = no day restriction
-  startMin: number | null  // minutes since midnight; null = "open"
-  endMin: number | null   // minutes since midnight; null = "close"
+  days: number[]         // ISO weekday 1=Mon ... 7=Sun; empty = all days
+  excludeDays: number[]  // ISO weekday(s) to EXCLUDE from this window
+  startMin: number | null  // minutes since midnight; null = "open" / all_day uses venue open
+  endMin: number | null   // minutes since midnight; null = "close" / all_day uses city close
 }
 
 export interface HHSchedule {
-  windows: [HHWindow | null, HHWindow | null]  // [window1, window2]
+  windows: [HHWindow | null, HHWindow | null, HHWindow | null]  // [window1, window2, window3]
   rawText: string                                  // original text
 }
 
@@ -169,12 +170,12 @@ function parseOneWindow(text: string): HHWindow | null {
   const { type, adjustedText } = classifyHHType(lower)
 
   if (type === 'all_day') {
-    return { type: 'all_day', days: [], startMin: null, endMin: null }
+    return { type: 'all_day', days: [], excludeDays: [], startMin: null, endMin: null }
   }
 
   if (!adjustedText && (type === 'open_through' || type === 'late_night')) {
     // Keyword present but no explicit time — treat as "open" or "close" only
-    return { type, days: [], startMin: null, endMin: null }
+    return { type, days: [], excludeDays: [], startMin: null, endMin: null }
   }
 
   // Extract days from the text (before the time portion)
@@ -240,6 +241,7 @@ function parseOneWindow(text: string): HHWindow | null {
   return {
     type: type ?? 'typical',
     days: days.length > 0 ? days : [],
+    excludeDays: [],
     startMin,
     endMin
   }
@@ -256,7 +258,7 @@ function parseOneWindow(text: string): HHWindow | null {
  */
 export function parseHHSchedule(text: string): HHSchedule {
   if (!text || !text.trim()) {
-    return { windows: [null, null], rawText: text }
+    return { windows: [null, null, null], rawText: text }
   }
 
   const lower = text.toLowerCase()
@@ -278,9 +280,9 @@ export function parseHHSchedule(text: string): HHSchedule {
     windowTexts.push(lower)
   }
 
-  const windows: [HHWindow | null, HHWindow | null] = [null, null]
+  const windows: [HHWindow | null, HHWindow | null, HHWindow | null] = [null, null, null]
 
-  for (let i = 0; i < Math.min(windowTexts.length, 2); i++) {
+  for (let i = 0; i < Math.min(windowTexts.length, 3); i++) {
     windows[i] = parseOneWindow(windowTexts[i])
   }
 

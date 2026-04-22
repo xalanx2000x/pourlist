@@ -127,7 +127,7 @@ function parseDayRange(rangeStr: string): number[] {
  * Returns { type, adjustedText } where adjustedText has type keywords removed.
  */
 function classifyHHType(text: string): { type: HHType; adjustedText: string } {
-  const lower = text.toLowerCase()
+  const lower = normalizeText(text)
 
   // ALL DAY: any mention of "all day" or "24/7" or "around the clock"
   if (/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/.test(lower)) {
@@ -145,13 +145,47 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
   }
 
   // LATE NIGHT: "to close", "until close", "till close", "close"
-  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only)\b/.test(lower)) {
-    const adjusted = lower.replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only)\b/gi, '').trim()
+  // Also catches bare X-close and X - close patterns (no "to/until" needed)
+  // Also: "after [time]" → late_night (e.g. "after 9" = 9pm-close)
+  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|after\s+\d)\b/.test(lower)) {
+    const adjusted = lower
+      .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
+      .replace(/\bafter\s+/i, '')  // strip "after " but keep the time number
+      .trim()
     return { type: 'late_night', adjustedText: adjusted }
   }
 
   // TYPICAL: anything with a time window (e.g. "4-7pm", "3pm to 6pm")
   return { type: 'typical', adjustedText: lower }
+}
+
+/**
+ * Normalize common typos and variants in HH text.
+ * Runs before classifyHHType to maximize match rates.
+ */
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    // Fix common typos
+    .replace(/\btil\b/g, 'till')          // "til" → "till"
+    .replace(/\bthru\b/g, 'through')       // "thru" → "through"
+    .replace(/\btill\b(?!\s+close)/g, 'till') // keep "till" as-is (not a typo)
+    // Normalize dashes/hyphens to a consistent separator
+    .replace(/\s*-\s*/g, '-')              // "4 - 6" → "4-6"
+    .replace(/\s*–\s*/g, '-')              // en-dash
+    .replace(/\s*—\s*/g, '-')              // em-dash
+    // Normalize "to close" variants
+    .replace(/\bto\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close"
+    // Normalize "from X" prefix (remove, keep the time)
+    .replace(/\bfrom\s+/g, '')
+    // Normalize "after X" (treat as late_night: X → close)
+    // Normalize "starting at" → "from"
+    .replace(/\bstarting\s+at\b/g, '')
+    .replace(/\bstarts?\s+at\b/g, '')
+    // Normalize "happy hour" mentions that don't add semantic meaning
+    .replace(/\bhap*y\s*hour\b/gi, '')
+    // Remove extra whitespace
+    .replace(/\s+/g, ' ').trim()
 }
 
 /**
@@ -270,15 +304,29 @@ export function parseOneClause(text: string): HHWindow | null {
     }
   }
 
-  // ── LATE NIGHT "X-close": e.g. "10pm-close" ───────────────────────
+  // ── LATE NIGHT "X-close" / "after X": e.g. "10pm-close", "10-close", "after 9" ──
   if (type === 'late_night' && startMin === null && endMin === null) {
-    // e.g. "10pm-close", "10-close", "10 p.m. to close"
-    const lnMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:am|pm|p)?\s*[-–—to]+\s*close/i)
+    // e.g. "10pm-close", "10-close", "10 p.m. to close", "4-close", "after 9", "after 10"
+    const lnMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:am|pm|p\.?m\.?)?\s*[-–—to]*\s*close/i)
     if (lnMatch) {
-      const suffix = lnMatch[0].includes('pm') || lnMatch[0].includes('p.m') ? 'pm' :
-                    lnMatch[0].includes('am') || lnMatch[0].includes('a.m') ? 'am' : ''
+      const hasExplicitPm = /pm|p\.?m\.?/i.test(lnMatch[0])
+      const rawNum = parseInt(lnMatch[1])
+      const assumePm = !hasExplicitPm && !/am/i.test(lnMatch[0]) && rawNum >= 4
+      const suffix = hasExplicitPm ? 'pm' : (assumePm ? 'pm' : '')
       startMin = parseTimeToMin(lnMatch[1] + (lnMatch[2] ? ':' + lnMatch[2] : '') + suffix)
       endMin = null
+    } else {
+      // "after X" — no "close" word, treat as late_night from X to close
+      // Try to match a bare number at the end: "after 9", "after 10"
+      const afterMatch = lower.match(/\bafter\s+(\d{1,2})(?::(\d{2}))?(?:\s*(?:am|pm|p\.?m\.?))?/i)
+      if (afterMatch) {
+        const hasExplicitPm = /pm|p\.?m\.?/i.test(afterMatch[0])
+        const rawNum = parseInt(afterMatch[1])
+        const assumePm = !hasExplicitPm && !/am/i.test(afterMatch[0]) && rawNum >= 4
+        const suffix = hasExplicitPm ? 'pm' : (assumePm ? 'pm' : '')
+        startMin = parseTimeToMin(afterMatch[1] + (afterMatch[2] ? ':' + afterMatch[2] : '') + suffix)
+        endMin = null
+      }
     }
   }
 

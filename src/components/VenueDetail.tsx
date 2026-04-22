@@ -20,7 +20,7 @@ interface PhotoSet {
 }
 
 export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
-  const isActiveHH = hasActiveHappyHour(venue.menu_text, venue.hh_time)
+  const isActiveHH = hasActiveHappyHour(venue)
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
   const [flagError, setFlagError] = useState<string | null>(null)

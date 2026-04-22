@@ -25,6 +25,14 @@ export type Venue = {
   menu_text_updated_at: string | null
   latest_menu_image_url: string | null
   hh_time: string | null
+  hh_type: string | null        // 'all_day' | 'open_through' | 'typical' | 'late_night'
+  hh_day: number | null         // ISO weekday 1=Mon ... 7=Sun (first day of range)
+  hh_start: number | null       // minutes since midnight; null = "open"
+  hh_end: number | null         // minutes since midnight; null = "close"
+  hh_type_2: string | null     // second HH window
+  hh_day_2: number | null
+  hh_start_2: number | null
+  hh_end_2: number | null
 }
 
 export type Photo = {

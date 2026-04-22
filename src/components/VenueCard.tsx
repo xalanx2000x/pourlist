@@ -10,7 +10,7 @@ interface VenueCardProps {
 }
 
 export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps) {
-  const isActiveHH = hasActiveHappyHour(venue.menu_text, venue.hh_time)
+  const isActiveHH = hasActiveHappyHour(venue)
 
   return (
     <button

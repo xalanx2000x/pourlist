@@ -33,7 +33,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
           name: venue.name,
           address: venue.address_backup || '',
           status: venue.status || 'unverified',
-          hasHH: hasActiveHappyHour(venue.menu_text, venue.hh_time)
+          hasHH: hasActiveHappyHour(venue)
         },
         geometry: {
           type: 'Point',

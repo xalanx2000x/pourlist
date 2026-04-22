@@ -11,7 +11,7 @@ interface VenueListProps {
 }
 
 export default function VenueList({ venues, selectedVenue, onVenueSelect }: VenueListProps) {
-  const activeHHCount = venues.filter(v => hasActiveHappyHour(v.menu_text)).length
+  const activeHHCount = venues.filter(v => hasActiveHappyHour(v)).length
 
   if (venues.length === 0) {
     return (

@@ -18,16 +18,24 @@ function storagePathFromUrl(url: string): string {
 /**
  * POST /api/commit-menu
  *
- * Simplified scan flow — no text parsing, just photos + HH time.
+ * Scan flow: photos + HH schedule (structured) + optional legacy hhTime.
  *
  * Body (multipart/form-data):
  *   venueId?: string
- *   venueName?: string          // required if venueId not provided
+ *   venueName?: string              // required if venueId not provided
  *   lat?: number
  *   lng?: number
  *   deviceHash: string
- *   hhTime?: string             // stored in venues.hh_time
- *   photos?: File[]             // photo files to upload
+ *   hhTime?: string                 // legacy: stored in venues.hh_time
+ *   hh_type?: string                // all_day | open_through | typical | late_night
+ *   hh_day?: string                 // comma-separated ISO weekdays, e.g. "1,2,3,4,5"
+ *   hh_start?: string               // minutes since midnight, or empty
+ *   hh_end?: string                 // minutes since midnight, or empty
+ *   hh_type_2?: string              // second window (optional)
+ *   hh_day_2?: string
+ *   hh_start_2?: string
+ *   hh_end_2?: string
+ *   photos?: File[]
  */
 export async function POST(req: NextRequest) {
   try {
@@ -40,7 +48,15 @@ export async function POST(req: NextRequest) {
       lat,
       lng,
       deviceHash,
-      hhTime
+      hhTime,
+      hh_type,
+      hh_day,
+      hh_start,
+      hh_end,
+      hh_type_2,
+      hh_day_2,
+      hh_start_2,
+      hh_end_2
     } = body as {
       venueId?: string
       venueName?: string
@@ -48,6 +64,14 @@ export async function POST(req: NextRequest) {
       lng?: string | number
       deviceHash: string
       hhTime?: string
+      hh_type?: string
+      hh_day?: string
+      hh_start?: string
+      hh_end?: string
+      hh_type_2?: string
+      hh_day_2?: string
+      hh_start_2?: string
+      hh_end_2?: string
     }
 
     const numLat = typeof lat === 'string' ? parseFloat(lat) : lat
@@ -115,7 +139,15 @@ export async function POST(req: NextRequest) {
             type: null,
             menu_text: null,
             latest_menu_image_url: null,
-            hh_time: hhTime?.trim() || null
+            hh_time: hhTime?.trim() || null,
+            hh_type: hh_type || null,
+            hh_day: hh_day ? parseInt(hh_day.split(',')[0]) || null : null,
+            hh_start: hh_start ? parseInt(hh_start) : null,
+            hh_end: hh_end ? parseInt(hh_end) : null,
+            hh_type_2: hh_type_2 || null,
+            hh_day_2: hh_day_2 ? parseInt(hh_day_2.split(',')[0]) || null : null,
+            hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
+            hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
           })
           .select('id')
           .single()
@@ -127,10 +159,20 @@ export async function POST(req: NextRequest) {
         targetVenueId = newVenue.id
       }
     } else {
-      // ── Update existing venue's hh_time ─────────────────────────────────
+      // ── Update existing venue's HH schedule ─────────────────────────────
       const { error: updateError } = await supabase
         .from('venues')
-        .update({ hh_time: hhTime?.trim() || null })
+        .update({
+          hh_time: hhTime?.trim() || null,
+          hh_type: hh_type || null,
+          hh_day: hh_day ? parseInt(hh_day.split(',')[0]) || null : null,
+          hh_start: hh_start ? parseInt(hh_start) : null,
+          hh_end: hh_end ? parseInt(hh_end) : null,
+          hh_type_2: hh_type_2 || null,
+          hh_day_2: hh_day_2 ? parseInt(hh_day_2.split(',')[0]) || null : null,
+          hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
+          hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
+        })
         .eq('id', targetVenueId)
 
       if (updateError) {

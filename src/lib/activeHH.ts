@@ -1,65 +1,103 @@
 /**
- * Checks if a venue's menu text or hh_time field currently qualifies as
- * having an active happy hour. Accounts for time windows, day-of-week
- * restrictions, and HH terminology.
+ * Checks if a venue's structured HH schedule is currently active.
  *
- * hhTime is checked as a fallback when menuText is absent — any non-empty
- * hh_time is treated as a signal that a HH exists (for map highlighting).
+ * Uses hh_type, hh_day, hh_start, hh_end (and _2 variants) to determine
+ * if the current day/time falls within an active happy hour window.
+ *
+ * Falls back to hhTime (string) for venues that haven't been migrated yet.
  */
-export function hasActiveHappyHour(
-  menuText: string | null | undefined,
-  hhTime?: string | null
-): boolean {
-  // If hh_time is set, treat the venue as having a known HH (for highlighting)
-  if (hhTime && hhTime.trim().length > 0) return true
+import type { Venue } from '@/lib/supabase'
 
-  if (!menuText) return false
+function minsSinceMidnight(): number {
+  const now = new Date()
+  return now.getHours() * 60 + now.getMinutes()
+}
+
+function currentISOWeekday(): number {
+  // ISO: 1=Mon ... 7=Sun
+  const dow = new Date().getDay() // 0=Sun ... 6=Sat
+  return dow === 0 ? 7 : dow
+}
+
+/**
+ * Returns true if the given HH window is active right now.
+ */
+function isWindowActive(
+  type: string | null | undefined,
+  day: number | null | undefined,
+  startMin: number | null | undefined,
+  endMin: number | null | undefined
+): boolean {
+  if (!type) return false
 
   const now = new Date()
-  const currentDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()]
-  const currentHour = now.getHours()
+  const currentDay = currentISOWeekday()
+  const currentMin = minsSinceMidnight()
 
-  const text = menuText.toLowerCase()
-
-  // Pattern 1: Explicit time windows like "3-6pm", "4pm - 7pm", "5 to 8"
-  const timeWindowMatch = text.match(
-    /\b(\d{1,2})\s*[-–—to]+\s*(\d{1,2})(pm|am)?\b/i
-  )
-  if (timeWindowMatch) {
-    let startHour = parseInt(timeWindowMatch[1])
-    let endHour = parseInt(timeWindowMatch[2])
-    const suffix = timeWindowMatch[3]?.toLowerCase()
-
-    if (suffix === 'am' && endHour < 12) endHour += 12
-    if (suffix === 'pm' && startHour < 12) startHour += 12
-    if (!suffix && endHour < 12) endHour += 12
-
-    if (currentHour >= startHour && currentHour < endHour) return true
+  // Day check — if hh_day is set, today must match
+  if (day !== null && day !== undefined && day !== currentDay) {
+    return false
   }
 
-  // Pattern 2: Day-of-week with time, e.g. "Mon-Fri 4-7pm"
-  const dayMatch = text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i)
-  if (dayMatch) {
-    const mentionedDay = dayMatch[1].toLowerCase()
-    if (mentionedDay === currentDay && /\b(\d{1,2})\s*[-–—to]+\s*(\d{1,2})(pm|am)?\b/i.test(text)) {
+  switch (type) {
+    case 'all_day':
       return true
+
+    case 'open_through':
+      // No start time (venue open), ends at endMin
+      if (endMin === null || endMin === undefined) return false
+      return currentMin < endMin
+
+    case 'late_night':
+      // Starts at startMin, no end (venue close)
+      if (startMin === null || startMin === undefined) return false
+      return currentMin >= startMin
+
+    case 'typical':
+      if (startMin === null || startMin === undefined) return false
+      if (endMin === null || endMin === undefined) return false
+      // Handle late-night crossing midnight (e.g. 22:00-02:00)
+      if (startMin > endMin) {
+        // Crosses midnight: active if currentMin >= start OR currentMin < end
+        return currentMin >= startMin || currentMin < endMin
+      }
+      return currentMin >= startMin && currentMin < endMin
+
+    default:
+      return false
+  }
+}
+
+export function hasActiveHappyHour(venue: Partial<Venue>): boolean {
+  // Structured fields (primary) — migrated venues
+  const type = venue.hh_type as string | null | undefined
+  if (type) {
+    const active1 = isWindowActive(
+      type,
+      venue.hh_day as number | null | undefined,
+      venue.hh_start as number | null | undefined,
+      venue.hh_end as number | null | undefined
+    )
+    if (active1) return true
+
+    // Window 2
+    const type2 = venue.hh_type_2 as string | null | undefined
+    if (type2) {
+      const active2 = isWindowActive(
+        type2,
+        venue.hh_day_2 as number | null | undefined,
+        venue.hh_start_2 as number | null | undefined,
+        venue.hh_end_2 as number | null | undefined
+      )
+      if (active2) return true
     }
+
+    return false
   }
 
-  // Pattern 3: Day range like "Mon-Fri" (assumes weekdays include today unless weekend)
-  const rangeMatch = text.match(/\b(mon|tue|wed|thu|fri|sat|sun)[sd]?\s*[-–—to]+\s*(mon|tue|wed|thu|fri|sat|sun)[sd]?\b/i)
-  if (rangeMatch && !text.includes('saturday') && !text.includes('sunday')) {
-    const isWeekend = currentDay === 'saturday' || currentDay === 'sunday'
-    if (!isWeekend && /\b(\d{1,2})\s*[-–—to]+\s*(\d{1,2})(pm|am)?\b/i.test(text)) return true
-  }
-
-  // Pattern 4: HH terminology without explicit day/time restrictions
-  if (/\bhh\b|\bh\.?h\.?\b|happy\s*hour|angry\s*hour\b/i.test(text)) {
-    if (!/\bno\s*hh\b|\bno\s*happy\s*hour\b|\bhh\s*ended\b/i.test(text)) {
-      const anyTimeMatch = /\b(\d{1,2})\s*[-–—to]+\s*(\d{1,2})(pm|am)?\b/i.test(text)
-      if (anyTimeMatch || !/\b(closed|ended|over|done)\b/i.test(text)) return true
-    }
-  }
+  // Legacy fallback: hh_time string — venues not yet migrated
+  const hhTime = venue.hh_time as string | null | undefined
+  if (hhTime && hhTime.trim().length > 0) return true
 
   return false
 }

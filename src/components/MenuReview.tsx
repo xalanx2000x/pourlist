@@ -1,14 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Venue } from '@/lib/supabase'
+import { HHWindow, parseHHSchedule } from '@/lib/parse-hh'
+import HHScheduleEditor from './HHScheduleEditor'
 
 interface MenuReviewProps {
   files: File[]
   gps: { lat: number; lng: number } | null
   venue: Venue | null
   newVenueName?: string | null
-  onCommit: (hhTime: string) => Promise<void>
+  /** Raw menu text (from AI parse) — used to pre-populate the HH schedule */
+  menuText?: string | null
+  onCommit: (data: {
+    hhWindows: [HHWindow | null, HHWindow | null]
+    hhTime: string   // legacy string for old API compatibility
+  }) => Promise<void>
   onDiscard: () => void
   onRetry: () => void
   onClose: () => void
@@ -19,20 +26,31 @@ export default function MenuReview({
   gps,
   venue,
   newVenueName,
+  menuText,
   onCommit,
   onDiscard,
   onRetry,
   onClose
 }: MenuReviewProps) {
-  const [hhTime, setHhTime] = useState('')
+  const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null]>([null, null])
+  const [legacyHhTime, setLegacyHhTime] = useState('')
+  const [agreed, setAgreed] = useState(false)
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
+
+  // Parse menu text on mount to pre-populate HH schedule
+  useEffect(() => {
+    if (menuText) {
+      const schedule = parseHHSchedule(menuText)
+      setHhWindows(schedule.windows)
+    }
+  }, [menuText])
 
   async function handleCommit() {
     setCommitError('')
     setIsCommitting(true)
     try {
-      await onCommit(hhTime.trim())
+      await onCommit({ hhWindows, hhTime: legacyHhTime })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {
@@ -62,9 +80,9 @@ export default function MenuReview({
         <div className="w-10" />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Venue label */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
           <span className="text-sm">🏠</span>
           <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
           {venue?.address_backup && (
@@ -74,7 +92,7 @@ export default function MenuReview({
 
         {/* Photo strip (read-only) */}
         {previewUrls.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          <div className="flex gap-2 overflow-x-auto pb-2">
             {previewUrls.map((url, i) => (
               <img
                 key={i}
@@ -86,24 +104,38 @@ export default function MenuReview({
           </div>
         )}
 
-        {/* HH Time — only input */}
-        <div className="mb-4">
+        {/* HH Schedule editor */}
+        <HHScheduleEditor
+          initialWindows={hhWindows}
+          onConfirm={setHhWindows}
+          onAgreed={() => setAgreed(true)}
+        />
+
+        {/* Divider */}
+        <div className="border-t border-gray-100" />
+
+        {/* Legacy HH time input (for old API / fallback) */}
+        <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1.5">
             Happy Hour Time
           </label>
           <input
             type="text"
-            value={hhTime}
-            onChange={(e) => setHhTime(e.target.value)}
-            placeholder="e.g. Mon-Fri 4-7pm, Daily 2-6pm, 5pm - 7pm"
+            value={legacyHhTime}
+            onChange={(e) => setLegacyHhTime(e.target.value)}
+            placeholder="e.g. Mon-Fri 4-7pm — or leave blank"
             className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
           />
-          <p className="text-xs text-gray-400 mt-1">Optional — leave blank if no happy hour</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {hhWindows[0] !== null
+              ? 'Above schedule will be stored as structured data.'
+              : 'Optional — leave blank if no happy hour.'}
+          </p>
         </div>
 
         {/* Commit error */}
         {commitError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mb-3">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
             <p className="text-sm font-medium text-red-700">Save failed</p>
             <p className="text-xs text-red-600 mt-0.5">{commitError}</p>
           </div>

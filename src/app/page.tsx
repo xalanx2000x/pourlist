@@ -40,6 +40,7 @@ type ScanState = {
   gps: { lat: number; lng: number } | null
   confirmedVenue: Venue | null
   newVenueName: string | null
+  menuText: string | null   // AI-parsed menu text, used to extract HH schedule
 }
 
 const RADIUS_OPTIONS = [
@@ -57,7 +58,8 @@ function emptyScanState(): ScanState {
     files: [],
     gps: null,
     confirmedVenue: null,
-    newVenueName: null
+    newVenueName: null,
+    menuText: null,
   }
 }
 
@@ -190,8 +192,53 @@ export default function Home() {
    *   - GPS available → venue_picker (show nearby venues to snap to)
    *   - No GPS → name_entry
    */
+  /**
+   * Parse menu photos in parallel using the AI parse-menu endpoint.
+   * Accumulates all extracted text into one string.
+   * Silently fails — MenuReview falls back to manual HH entry on error.
+   */
+  async function parseMenuPhotos(files: File[]): Promise<string> {
+    if (files.length === 0) return ''
+    try {
+      const results = await Promise.all(
+        files.map(async (file) => {
+          const base64 = await fileToBase64NoResize(file)
+          const res = await fetch('/api/parse-menu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageData: base64,
+              deviceHash: getDeviceHash()
+            })
+          })
+          if (!res.ok) return ''
+          const { text } = await res.json()
+          return text ?? ''
+        })
+      )
+      return results.filter(Boolean).join('\n---\n')
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * Convert a File to a base64 data URL without resizing.
+   */
+  async function fileToBase64NoResize(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
     const confirmedVenue = scan.confirmedVenue
+
+    // Parse menu photos immediately so text is ready for MenuReview
+    const menuText = await parseMenuPhotos(files)
 
     if (confirmedVenue) {
       // Venue was pre-selected — verify user GPS is near the venue before proceeding.
@@ -201,13 +248,13 @@ export default function Home() {
           setGpsWarning('Your location seems far from this venue. Are you sure you\'re here?')
         }
       }
-      setScan(prev => ({ ...prev, files, gps: gps ?? null }))
+      setScan(prev => ({ ...prev, files, gps: gps ?? null, menuText }))
       await transitionToReview(confirmedVenue, null)
       return
     }
 
     // No venue pre-selected — use GPS to find nearby venues
-    setScan(prev => ({ ...prev, files, gps }))
+    setScan(prev => ({ ...prev, files, gps, menuText }))
 
     if (gps != null) {
       setScanStep('venue_picker')
@@ -263,9 +310,13 @@ export default function Home() {
   }
 
   /**
-   * Commit the menu: upload photos + save venue.
+   * Commit the menu: upload photos + save venue with structured HH schedule.
    */
-  async function handleMenuCommit(hhTime: string) {
+  async function handleMenuCommit(data: {
+    hhWindows: [import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null]
+    hhTime: string
+  }) {
+    const { hhWindows, hhTime } = data
     const deviceHash = getDeviceHash()
     const limit = checkRateLimit(deviceHash)
     if (!limit.allowed) {
@@ -286,6 +337,22 @@ export default function Home() {
     }
     formData.append('deviceHash', deviceHash)
     if (hhTime) formData.append('hhTime', hhTime)
+
+    // Structured HH windows
+    const w1 = hhWindows[0]
+    const w2 = hhWindows[1]
+    if (w1?.type) {
+      formData.append('hh_type', w1.type)
+      formData.append('hh_day', String(w1.days.join(',')))
+      formData.append('hh_start', w1.startMin != null ? String(w1.startMin) : '')
+      formData.append('hh_end', w1.endMin != null ? String(w1.endMin) : '')
+    }
+    if (w2?.type) {
+      formData.append('hh_type_2', w2.type)
+      formData.append('hh_day_2', String(w2.days.join(',')))
+      formData.append('hh_start_2', w2.startMin != null ? String(w2.startMin) : '')
+      formData.append('hh_end_2', w2.endMin != null ? String(w2.endMin) : '')
+    }
 
     let venueId: string | undefined
     let createdVenueId: string | undefined
@@ -592,6 +659,7 @@ export default function Home() {
           gps={scan.gps}
           venue={venueToReview}
           newVenueName={newVenueNameToReview}
+          menuText={scan.menuText}
           onCommit={handleMenuCommit}
           onDiscard={handleMenuDiscard}
           onRetry={handleMenuRetry}

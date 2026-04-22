@@ -319,6 +319,76 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
           </div>
         )}
 
+        {/* Happy Hour Schedule — dedicated section */}
+        {(getHhLabel(venue) ?? venue.hh_time) && (
+          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🍺</span>
+                <h3 className="text-sm font-semibold text-amber-800">Happy Hour</h3>
+              </div>
+              {isActiveHH && (
+                <span className="text-xs bg-amber-600 text-white px-2.5 py-0.5 rounded-full font-bold">
+                  ● Active now
+                </span>
+              )}
+            </div>
+
+            {/* Window rows */}
+            <div className="space-y-2">
+              {[
+                {
+                  type: venue.hh_type,
+                  daysStr: venue.hh_days ?? null,
+                  excludeStr: venue.hh_exclude_days ?? null,
+                  startMin: venue.hh_start,
+                  endMin: venue.hh_end,
+                },
+                {
+                  type: venue.hh_type_2,
+                  daysStr: venue.hh_days_2 ?? null,
+                  excludeStr: venue.hh_exclude_days_2 ?? null,
+                  startMin: venue.hh_start_2,
+                  endMin: venue.hh_end_2,
+                },
+                {
+                  type: venue.hh_type_3,
+                  daysStr: venue.hh_days_3 ?? null,
+                  excludeStr: venue.hh_exclude_days_3 ?? null,
+                  startMin: venue.hh_start_3,
+                  endMin: venue.hh_end_3,
+                },
+              ].map((w, i) => {
+                const label = formatWindow(w.type, w.daysStr, w.startMin, w.endMin, w.excludeStr)
+                if (!label) return null
+                return (
+                  <div key={i} className="flex items-start gap-2.5">
+                    {/* Window type icon */}
+                    <span className="mt-0.5 text-sm">
+                      {w.type === 'all_day' ? '💍' :
+                       w.type === 'late_night' ? '🌙' :
+                       w.type === 'open_through' ? '🕐' : '⏰'}
+                    </span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-amber-900">{label}</p>
+                      <p className="text-xs text-amber-600 capitalize">
+                        {w.type === 'all_day' ? 'All day (open to close)' :
+                         w.type === 'late_night' ? 'Late night' :
+                         w.type === 'open_through' ? 'Open through' : 'Happy hour'}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Legacy HH time (for pre-migration venues) */}
+            {!venue.hh_type && venue.hh_time && (
+              <p className="text-sm font-medium text-amber-900">{venue.hh_time}</p>
+            )}
+          </div>
+        )}
+
         {/* Moderation buttons */}
         {/* Flag as closed — discreet text link */}
         {showModeration && (

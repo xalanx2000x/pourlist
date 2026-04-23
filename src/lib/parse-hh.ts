@@ -160,6 +160,11 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
     return { type: 'late_night', adjustedText: adjusted }
   }
 
+  // MIDNIGHT TO CLOSE: "midnight to close" → start=midnight, end=close (late_night)
+  if (/\bmidnight\s+to\s+close\b/.test(lower)) {
+    return { type: 'late_night', adjustedText: 'midnight' }  // startMin=0, endMin=null
+  }
+
   // TYPICAL: anything with a time window (e.g. "4-7pm", "3pm to 6pm")
   return { type: 'typical', adjustedText: lower }
 }
@@ -175,13 +180,14 @@ function normalizeText(text: string): string {
     .replace(/\s*-\s*/g, '-')              // "4 - 6" → "4-6"
     .replace(/\s*–\s*/g, '-')              // en-dash
     .replace(/\s*—\s*/g, '-')              // em-dash
-    // Normalize "to close" variants
-    .replace(/\bto\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close"
-    .replace(/\buntil\s+(?:the\s+)?close\b/g, 'close')
+    // Normalize "to close" variants — negative lookbehind prevents "X to close" from matching
+    .replace(/(?<![a-z])to\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close" (but not "midnight to close")
+    .replace(/(?<![a-z])until\s+(?:the\s+)?close\b/g, 'close')
     .replace(/\btil\s+close\b/g, 'till close')
-    .replace(/\bto\s+midnight\b/g, '-midnight')        // "to midnight" → time range "-midnight"
-    .replace(/\buntil\s+midnight\b/g, '-midnight')
-    .replace(/\btil\s+midnight\b/g, 'till midnight')   // "10 til midnight" → "10 till midnight" → late_night handled below
+    // Normalize "to midnight" → time range marker "-midnight" (e.g. "10 to midnight" → start=10pm, end=midnight)
+    .replace(/(?<!\d)to\s+midnight\b/g, '-midnight')
+    .replace(/(?<!\d)until\s+midnight\b/g, '-midnight')
+    .replace(/\btil\s+midnight\b/g, 'till midnight')   // "10 til midnight" → "10 till midnight"
     // Normalize "from X" prefix (remove, keep the time)
     .replace(/\bfrom\s+/g, '')
     // Normalize "after X" (treat as late_night: X → close)

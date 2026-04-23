@@ -35,6 +35,10 @@ export interface HHSchedule {
 function parseTimeToMin(timeStr: string): number | null {
   const s = timeStr.trim().toLowerCase()
 
+  // "midnight" → 0 minutes (12:00 AM)
+  if (s === 'midnight') return 0
+
+  // "4pm", "4 pm", "4p"
   // "4pm", "4 pm", "4p"
   const pmMatch = s.match(/^(\d{1,2})\s*(p|pm|p\.m\.?)?$/i)
   if (pmMatch) {
@@ -147,7 +151,8 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
   // LATE NIGHT: "to close", "until close", "till close", "close"
   // Also catches bare X-close and X - close patterns (no "to/until" needed)
   // Also: "after [time]" → late_night (e.g. "after 9" = 9pm-close)
-  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|after\s+\d)\b/.test(lower)) {
+  // Also: "till midnight" → late_night (e.g. "10 till midnight" = 10pm-midnight)
+  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|after\s+\d|till\s*midnight)\b/.test(lower)) {
     const adjusted = lower
       .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
       .replace(/\bafter\s+/i, '')  // strip "after " but keep the time number
@@ -166,16 +171,17 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
-    // Fix common typos
-    .replace(/\btil\b/g, 'till')          // "til" → "till"
-    .replace(/\bthru\b/g, 'through')       // "thru" → "through"
-    .replace(/\btill\b(?!\s+close)/g, 'till') // keep "till" as-is (not a typo)
     // Normalize dashes/hyphens to a consistent separator
     .replace(/\s*-\s*/g, '-')              // "4 - 6" → "4-6"
     .replace(/\s*–\s*/g, '-')              // en-dash
     .replace(/\s*—\s*/g, '-')              // em-dash
     // Normalize "to close" variants
     .replace(/\bto\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close"
+    .replace(/\buntil\s+(?:the\s+)?close\b/g, 'close')
+    .replace(/\btil\s+close\b/g, 'till close')
+    .replace(/\bto\s+midnight\b/g, '-midnight')        // "to midnight" → time range "-midnight"
+    .replace(/\buntil\s+midnight\b/g, '-midnight')
+    .replace(/\btil\s+midnight\b/g, 'till midnight')   // "10 til midnight" → "10 till midnight" → late_night handled below
     // Normalize "from X" prefix (remove, keep the time)
     .replace(/\bfrom\s+/g, '')
     // Normalize "after X" (treat as late_night: X → close)
@@ -184,6 +190,9 @@ function normalizeText(text: string): string {
     .replace(/\bstarts?\s+at\b/g, '')
     // Normalize "happy hour" mentions that don't add semantic meaning
     .replace(/\bhap*y\s*hour\b/gi, '')
+    // Normalize "til" between letters → "till" (day ranges like "Mon til Fri")
+    .replace(/(\D)til(\s|$)/g, '$1till$2')          // "Mon til Fri" → "Mon till Fri"
+    .replace(/\bthru\b/g, 'through')                 // "thru" → "through"
     // Remove extra whitespace
     .replace(/\s+/g, ' ').trim()
 }

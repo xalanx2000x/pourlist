@@ -148,16 +148,25 @@ export default function Home() {
     loadVenues({ lat: coords.lat, lng: coords.lng })
   }
 
-  function handleVenueSelect(venue: Venue) {
+  async function handleVenueSelect(venue: Venue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
-    setSelectedVenue(venue)
+
+    // Always re-fetch from DB by ID — ensures the detail page has fresh HH and all other fields,
+    // regardless of whether the venue was reached via map or search (two different discovery paths).
+    const freshVenue = await getVenueById(venue.id)
+    const finalVenue = freshVenue ?? venue
+
+    setSelectedVenue(finalVenue)
     setVenues(prev => {
-      if (prev.some(v => v.id === venue.id)) return prev
-      return [venue, ...prev]
+      if (prev.some(v => v.id === finalVenue.id)) {
+        return prev.map(v => v.id === finalVenue.id ? finalVenue : v)
+      }
+      return [finalVenue, ...prev]
     })
+
     // Reload nearby venues at the selected venue's location so it appears on map
-    if (venue.lat != null && venue.lng != null) {
-      loadVenues({ lat: venue.lat, lng: venue.lng })
+    if (finalVenue.lat != null && finalVenue.lng != null) {
+      loadVenues({ lat: finalVenue.lat, lng: finalVenue.lng })
     }
   }
 

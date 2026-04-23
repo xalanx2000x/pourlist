@@ -70,7 +70,20 @@ export async function getVenuesByProximity(
     return R * c <= radiusMeters
   })
 
-  return filtered.sort((a, b) => a.name.localeCompare(b.name))
+  // Deduplicate by name (case-insensitive, strip leading "The"):
+  // Keep the venue with the best status (verified > stale > unverified > new)
+  const statusRank: Record<string, number> = { verified: 0, stale: 1, unverified: 2, new: 3 }
+  const seen = new Map<string, Venue>()
+  for (const v of filtered) {
+    const key = v.name.replace(/^the\s+/i, '').toLowerCase().trim()
+    const existing = seen.get(key)
+    if (!existing || (statusRank[existing.status] ?? 3) > (statusRank[v.status] ?? 3)) {
+      seen.set(key, v)
+    }
+  }
+  const deduped = Array.from(seen.values())
+
+  return deduped.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function getVenueById(id: string): Promise<Venue | null> {

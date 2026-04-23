@@ -145,8 +145,10 @@ export async function POST(req: NextRequest) {
                       Math.cos(latRad) * Math.cos(v.lat * Math.PI / 180) *
                       Math.sin(dLng / 2) ** 2
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-            return R * c <= 50 &&
-                   v.name.toLowerCase().trim() === venueName!.toLowerCase().trim()
+            if (R * c > 50) return false
+            // Normalize both names: strip leading "The", lowercase, trim
+            const norm = (n: string) => n.replace(/^the\s+/i, '').toLowerCase().trim()
+            return norm(v.name) === norm(venueName!)
           })
           if (exactMatch) {
             console.log(`[commit-menu] geo-dedup: using existing venue ${exactMatch.id} for "${venueName}"`)

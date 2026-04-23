@@ -63,12 +63,18 @@ function formatWindow(
 
   if (type === 'all_day') return dayLabel ? `${dayLabel} all day` : 'All day'
   if (type === 'open_through') {
-    const end = endMin != null ? formatMin(endMin) : 'close'
+    // null end means "to close" — "midnight" is clearer than "close" for the HH context
+    const end = endMin != null ? formatMin(endMin) : 'midnight'
     return dayLabel ? `${dayLabel} until ${end}` : `Until ${end}`
   }
   if (type === 'late_night') {
-    const start = startMin != null ? formatMin(startMin) : ''
-    return dayLabel ? `${dayLabel} ${start}–late` : `${start}–late`
+    // endMin=null means "to close"; startMin=null means no start specified
+    if (startMin == null) {
+      return dayLabel ? `${dayLabel} late night` : 'Late night'
+    }
+    const start = formatMin(startMin)
+    const end = endMin != null ? formatMin(endMin) : 'midnight'
+    return dayLabel ? `${dayLabel} ${start}–${end}` : `${start}–${end}`
   }
   if (type === 'typical') {
     if (startMin == null || endMin == null) return null
@@ -258,15 +264,12 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
         {/* Header */}
         <div className="mb-4">
           <div className="flex items-start gap-2 flex-wrap">
-            <h2 className="text-xl font-bold text-gray-900">{venue.name}</h2>
-            {(() => {
-              const hhLabel = getHhLabel(venue) ?? venue.hh_time
-              return hhLabel ? (
-                <span className="text-xs bg-purple-100 text-purple-700 px-2.5 py-0.5 rounded-full font-semibold mt-1">
-                  {hhLabel}
-                </span>
-              ) : null
-            })()}
+            <h2
+              className={`text-xl font-bold ${isActiveHH ? 'text-purple-600' : 'text-gray-900'}`}
+              style={isActiveHH ? { textShadow: '0 0 18px rgba(147,51,234,0.6), 0 0 36px rgba(147,51,234,0.25)' } : undefined}
+            >
+              {venue.name}
+            </h2>
             {isActiveHH && (
               <span className="text-xs bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-semibold mt-1">
                 HH Active
@@ -321,14 +324,14 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
 
         {/* Happy Hour Schedule — dedicated section */}
         {(getHhLabel(venue) ?? venue.hh_time) && (
-          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <div className="mb-5 bg-purple-50 border border-purple-200 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-base">🍺</span>
-                <h3 className="text-sm font-semibold text-amber-800">Happy Hour</h3>
+                <h3 className="text-sm font-semibold text-purple-800">Happy Hour</h3>
               </div>
               {isActiveHH && (
-                <span className="text-xs bg-amber-600 text-white px-2.5 py-0.5 rounded-full font-bold">
+                <span className="text-xs bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-bold">
                   ● Active now
                 </span>
               )}

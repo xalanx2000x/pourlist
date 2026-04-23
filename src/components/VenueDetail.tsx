@@ -102,8 +102,8 @@ function getHhLabel(venue: Venue): string | null {
   if (w3) parts.push(w3)
 
   // If we got no structured text, fall back to hh_summary (the raw user input text)
-  if (parts.length === 0 && (venue as any).hh_summary) {
-    return (venue as any).hh_summary
+  if (parts.length === 0 && venue.hh_summary) {
+    return venue.hh_summary
   }
 
   return parts.length > 0 ? parts.join(' · ') : null

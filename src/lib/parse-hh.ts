@@ -336,7 +336,7 @@ export function parseOneClause(text: string): HHWindow | null {
     }
   }
 
-  // ── LATE NIGHT "X-close" / "after X": e.g. "10pm-close", "10-close", "after 9" ──
+  // ── LATE NIGHT "X-close" / "after X" / "midnight": e.g. "10pm-close", "after 9", "midnight" ──
   if (type === 'late_night' && startMin === null && endMin === null) {
     // e.g. "10pm-close", "10-close", "10 p.m. to close", "4-close", "after 9", "after 10"
     const lnMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(?:am|pm|p\.?m\.?)?\s*[-–—to]*\s*close/i)
@@ -357,6 +357,10 @@ export function parseOneClause(text: string): HHWindow | null {
         const assumePm = !hasExplicitPm && !/am/i.test(afterMatch[0]) && rawNum >= 4
         const suffix = hasExplicitPm ? 'pm' : (assumePm ? 'pm' : '')
         startMin = parseTimeToMin(afterMatch[1] + (afterMatch[2] ? ':' + afterMatch[2] : '') + suffix)
+        endMin = null
+      } else if (adjustedText === 'midnight') {
+        // "midnight" from classifyHHType("midnight to close") → start at midnight, end = close
+        startMin = 0
         endMin = null
       }
     }

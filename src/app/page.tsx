@@ -315,8 +315,9 @@ export default function Home() {
   async function handleMenuCommit(data: {
     hhWindows: [import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null]
     hhTime: string
+    hhSummary: string
   }) {
-    const { hhWindows, hhTime } = data
+    const { hhWindows, hhTime, hhSummary } = data
     const deviceHash = getDeviceHash()
     const limit = checkRateLimit(deviceHash)
     if (!limit.allowed) {
@@ -337,6 +338,7 @@ export default function Home() {
     }
     formData.append('deviceHash', deviceHash)
     if (hhTime) formData.append('hhTime', hhTime)
+    if (hhSummary) formData.append('hhSummary', hhSummary)
 
     // Structured HH windows (up to 3)
     const w1 = hhWindows[0]

@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       lng,
       deviceHash,
       hhTime,
+      hhSummary,
       hh_type,
       hh_days,
       hh_exclude_days,
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
       lng?: string | number
       deviceHash: string
       hhTime?: string
+      hhSummary?: string
       hh_type?: string
       hh_days?: string
       hh_exclude_days?: string
@@ -170,6 +172,7 @@ export async function POST(req: NextRequest) {
             menu_text: null,
             latest_menu_image_url: null,
             hh_time: hhTime?.trim() || null,
+            hh_summary: hhSummary?.trim() || null,
             hh_type: hh_type || null,
             hh_days: hh_days || null,
             hh_exclude_days: hh_exclude_days || null,
@@ -202,6 +205,7 @@ export async function POST(req: NextRequest) {
         .from('venues')
         .update({
           hh_time: hhTime?.trim() || null,
+          hh_summary: hhSummary?.trim() || null,
           hh_type: hh_type || null,
           hh_days: hh_days || null,
           hh_exclude_days: hh_exclude_days || null,

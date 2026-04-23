@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { Venue } from '@/lib/supabase'
 import { HHWindow } from '@/lib/parse-hh'
 import HHScheduleInput from './HHScheduleInput'
@@ -15,6 +15,7 @@ interface MenuReviewProps {
   onCommit: (data: {
     hhWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
     hhTime: string   // legacy string for old API compatibility
+    hhSummary: string // raw user input text for the HH windows
   }) => Promise<void>
   onDiscard: () => void
   onRetry: () => void
@@ -32,16 +33,21 @@ export default function MenuReview({
   onRetry,
   onClose
 }: MenuReviewProps) {
+  // Ref to always hold the current windows — avoids stale closure in handleSave
+  const hhWindowsRef = useRef<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
+  const hhSummaryRef = useRef('')
   const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
 
   // Called by HHScheduleInput when user clicks "Confirm Happy Hour"
-  function handleHhScheduleCommit(windows: [HHWindow | null, HHWindow | null, HHWindow | null]) {
+  function handleHhScheduleCommit(windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) {
+    hhWindowsRef.current = windows
+    hhSummaryRef.current = hhSummary
     setHhWindows(windows)
     setCommitError('')
     setIsCommitting(true)
-    onCommit({ hhWindows: windows, hhTime: '' })
+    onCommit({ hhWindows: windows, hhTime: '', hhSummary })
       .catch((err: unknown) => {
         setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
       })
@@ -53,7 +59,8 @@ export default function MenuReview({
     setCommitError('')
     setIsCommitting(true)
     try {
-      await onCommit({ hhWindows, hhTime: '' })
+      // Use ref to avoid stale closure — always reads the latest value
+      await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {

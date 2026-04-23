@@ -8,8 +8,8 @@ interface HHScheduleInputProps {
   initialBox1?: string | null
   /** Called whenever the parsed result changes — use this to keep parent in sync */
   onChange?: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
-  /** Internal commit callback (still fires for the Confirm flow) */
-  onCommit: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
+  /** Called when user clicks "Confirm Happy Hour" — passes both windows and the raw user input text */
+  onCommit: (windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) => void
 }
 
 interface ParseResult {
@@ -145,6 +145,13 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
     }
   }, [box1, result1])
 
+  function buildHhSummary(): string {
+    const parts: string[] = []
+    if (box1.trim()) parts.push(box1.trim())
+    if (hasLateNight && box2.trim()) parts.push(box2.trim())
+    return parts.join(' · ')
+  }
+
   // Manual commit trigger (used by parent Save button flow via hhWindows state)
   function handleCommit() {
     setBox1Error('')
@@ -160,7 +167,7 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
       return
     }
 
-    onCommit(buildWindows())
+    onCommit(buildWindows(), buildHhSummary())
   }
 
   return (

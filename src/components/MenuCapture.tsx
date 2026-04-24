@@ -15,7 +15,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback(async (newFiles: File[]) => {
     const allFiles = [...files, ...newFiles]
@@ -132,16 +132,15 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         {/* Instructions */}
         {files.length === 0 && (
           <p className="text-sm text-gray-500 mb-4 shrink-0">
-            Take a photo of the happy hour menu. You can add up to 4 photos.
+            Take or choose a photo of the happy hour menu. You can add up to 4 photos.
           </p>
         )}
 
-        {/* Hidden camera input — opens camera directly on mobile (no file picker) */}
+        {/* Hidden photo input — shows Camera + Photo Library on mobile (NOT Files) */}
         <input
-          ref={cameraInputRef}
+          ref={photoInputRef}
           type="file"
           accept="image/*,image/heic,image/heif,image/heif-compressed"
-          capture="environment"
           onChange={onFileInput}
           className="hidden"
         />
@@ -172,7 +171,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
               {/* "Add another" slot — also uses camera */}
               {files.length < MAX_PHOTOS && (
                 <button
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={() => photoInputRef.current?.click()}
                   disabled={loading}
                   className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-amber-500 hover:text-amber-500 transition-colors disabled:opacity-50"
                 >
@@ -192,14 +191,14 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         <div className="mt-auto space-y-3 shrink-0">
           {files.length === 0 ? (
             <>
-              {/* Camera — opens directly on mobile, no file picker */}
+              {/* Photo — shows Camera + Photo Library picker on mobile, file picker on desktop */}
               <button
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={() => photoInputRef.current?.click()}
                 disabled={loading}
                 className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
               >
                 <span className="text-xl">📷</span>
-                Take a Photo
+                Take or Choose Photo
               </button>
             </>
           ) : (

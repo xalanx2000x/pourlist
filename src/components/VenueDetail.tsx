@@ -147,9 +147,8 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (touchStartY.current === null) return
-    const scrollEl = (e.currentTarget as HTMLElement).querySelector('.overflow-y-auto') as HTMLElement | null
-    if (!scrollEl) return
-
+    // The scrollable element IS the currentTarget (has overflow-y-auto), not a child
+    const scrollEl = e.currentTarget as HTMLElement
     const scrollTop = scrollEl.scrollTop
     const currentY = e.touches[0].clientY
     const deltaY = currentY - touchStartY.current

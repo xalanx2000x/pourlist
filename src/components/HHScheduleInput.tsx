@@ -131,11 +131,6 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
   const previewFinal = buildWindows()
   const previewWindows = previewFinal.filter(w => w !== null) as HHWindow[]
 
-  // Fire onChange whenever the parsed result changes (live preview sync)
-  useEffect(() => {
-    onChange?.(previewFinal)
-  }, [previewFinal, onChange])
-
   // Live error: fires on every keystroke when box1 has text but parser returns nothing
   useEffect(() => {
     if (box1.trim() && !result1.windows.some(w => w !== null)) {
@@ -248,36 +243,7 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
         </div>
       )}
 
-      {/* Box 2 preview */}
-      {hasLateNight && box2.trim() && w2 && (
-        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Late Night Preview</p>
-          <div className="flex items-start gap-2 text-sm">
-            <span className="text-gray-400 mt-0.5">🌙 Late night</span>
-            <div>
-              <span className="text-gray-700 font-medium">
-                {w2.days.length === 0
-                  ? 'Every day'
-                  : w2.days.map((d: number) => ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][d - 1]).join(', ')}
-              </span>
-              <span className="text-gray-500 ml-2">
-                {(() => {
-                  const fmt = (m: number | null) => {
-                    if (m === null) return '—'
-                    const h = Math.floor(m / 60)
-                    const min = m % 60
-                    const period = h < 12 ? 'AM' : 'PM'
-                    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-                    return `${h12}:${min.toString().padStart(2, '0')} ${period}`
-                  }
-                  if (w2.startMin === null) return `Until ${fmt(w2.endMin)}`
-                  return `${fmt(w2.startMin)} → close`
-                })()}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       </div>
   )

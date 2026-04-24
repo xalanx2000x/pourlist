@@ -116,8 +116,14 @@ export default function MenuReview({
 
         {/* HH Schedule — two-box input */}
         <HHScheduleInput
-          onChange={(windows) => setHhWindows(windows)}
-          onCommit={() => {}}
+          onChange={(windows) => {
+            setHhWindows(windows)
+            hhWindowsRef.current = windows
+          }}
+          onCommit={(windows, hhSummary) => {
+            hhWindowsRef.current = windows
+            hhSummaryRef.current = hhSummary
+          }}
         />
 
         {/* Commit error */}

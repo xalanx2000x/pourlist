@@ -31,6 +31,9 @@ export default function VenueList({ venues, mapBounds, areaName, selectedVenue, 
       <div className="p-2 text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
         {venues.length} venue{venues.length !== 1 ? 's' : ''}
         {areaName ? ` in ${areaName}` : ' nearby'}
+        {mapBounds && (
+          <span className="ml-1 text-gray-400">· swipe map for full list</span>
+        )}
         {activeHHCount > 0 && (
           <span className="ml-2 text-purple-600 font-semibold">· {activeHHCount} with active HH</span>
         )}

@@ -260,7 +260,9 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   }
 
   // Only show moderation buttons for verified/stale venues
-  const showModeration = venue.status === 'verified' || venue.status === 'stale'
+  // Show "Does this place not have Happy Hour?" for any venue that could still be on the map.
+  // Flagging 'no_hh' closes a venue immediately (1 flag), so all statuses are eligible.
+  const showModeration = venue.status !== 'closed'
 
   function formatSetDate(dateStr: string) {
     const date = new Date(dateStr)

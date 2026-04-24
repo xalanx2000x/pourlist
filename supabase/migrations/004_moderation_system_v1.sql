@@ -169,6 +169,8 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- ── 11. submit_flag ────────────────────────────────────────────
+-- no_hh special case: 1 flag immediately closes the venue
+-- (these venues have no HH data worth preserving — flag means "no HH program exists")
 CREATE OR REPLACE FUNCTION submit_flag(
   p_venue_id UUID, p_device_hash TEXT, p_reason TEXT,
   p_lat DOUBLE PRECISION, p_lng DOUBLE PRECISION
@@ -178,6 +180,30 @@ DECLARE
   v_can_flag BOOLEAN; v_reason TEXT;
   v_weighted_sum INT; v_new_status TEXT;
 BEGIN
+  -- Special case: no_hh closes immediately (1 flag is sufficient)
+  IF p_reason = 'no_hh' THEN
+    -- Check not already flagged by this device today
+    IF EXISTS(SELECT 1 FROM flags
+      WHERE venue_id = p_venue_id AND device_hash = p_device_hash
+        AND active = TRUE AND DATE(created_at) = CURRENT_DATE) THEN
+      RETURN QUERY SELECT FALSE, 'daily_limit'::TEXT, NULL; RETURN;
+    END IF;
+
+    INSERT INTO flags (venue_id, device_hash, reason, lat, lng, active)
+    VALUES (p_venue_id, p_device_hash, p_reason, p_lat, p_lng, TRUE);
+
+    BEGIN
+      INSERT INTO venue_flag_events (venue_id, device_hash, action)
+      VALUES (p_venue_id, p_device_hash, 'flag');
+    EXCEPTION WHEN unique_violation THEN
+      RETURN QUERY SELECT FALSE, 'already_flagged'::TEXT, NULL; RETURN;
+    END;
+
+    UPDATE venues SET status = 'closed' WHERE id = p_venue_id;
+    RETURN QUERY SELECT TRUE, 'flag_submitted'::TEXT, 'closed'::TEXT; RETURN;
+  END IF;
+
+  -- Standard flag path for 'wrong' and other reasons
   SELECT can_flag, reason INTO v_can_flag, v_reason
   FROM can_device_flag_venue(p_device_hash, p_venue_id);
   IF NOT v_can_flag THEN

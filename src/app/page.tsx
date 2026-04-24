@@ -71,6 +71,9 @@ export default function Home() {
   const [radius, setRadius] = useState(10) // default: happy hour is a local activity, 10mi covers most use cases
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
+  // listBounds mirrors mapBounds — keeps list in sync when switching views
+  const [listBounds, setListBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
+  const [areaName, setAreaName] = useState<string | null>(null)
   const [zoomToUserTick, setZoomToUserTick] = useState(0)
   const showOnboarding = useOnboarding()
   const [onboardingOpen, setOnboardingOpen] = useState(false)
@@ -109,6 +112,7 @@ export default function Home() {
       // Reset map bounds so newly loaded venues show in full (unfiltered)
       // until map moves again via moveend
       setMapBounds(null)
+      setListBounds(null)
       return data
     } catch (err) {
       console.error('Failed to load venues:', err)
@@ -133,17 +137,35 @@ export default function Home() {
       .catch(() => {})
   }, [])
 
+  // Reverse-geocode user location to get a human-readable area name (e.g. "Pearl District")
+  useEffect(() => {
+    if (!userLocation) return
+    const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+    if (!MAPBOX_TOKEN) return
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${userLocation.lng},${userLocation.lat}.json?access_token=${MAPBOX_TOKEN}&limit=1&types=neighborhood,locality,place`
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        const feat = data.features?.[0]
+        if (feat?.text) setAreaName(feat.text)
+      })
+      .catch(() => {})
+  }, [userLocation])
+
 
   function handleSearchClear() {
     setSearchedLocation(originalGpsLocation)
     setUserLocation(originalGpsLocation)
     setMapBounds(null)
+    setListBounds(null)
   }
 
   function handleSearch(coords: { lat: number; lng: number }) {
     setSearchedLocation(coords)
     setUserLocation(coords)
     setMapBounds(null)
+    setListBounds(null)
     // Immediately reload venues at the search location
     loadVenues({ lat: coords.lat, lng: coords.lng })
   }
@@ -475,7 +497,9 @@ export default function Home() {
     )
   }
 
-  const visibleVenues = venues.filter(v => isVenueInBounds(v, mapBounds))
+  // Both map and list use the same bounds — listBounds mirrors mapBounds when switching views
+  const currentBounds = listBounds ?? mapBounds
+  const visibleVenues = venues.filter(v => isVenueInBounds(v, currentBounds))
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -532,7 +556,7 @@ export default function Home() {
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
                 showUserLocation={true}
-                onBoundsChange={setMapBounds}
+                onBoundsChange={(bounds) => { setMapBounds(bounds); setListBounds(bounds) }}
                 zoomToUser={zoomToUserTick}
               />
               {/* Zoom to user button */}
@@ -573,6 +597,8 @@ export default function Home() {
             <div className="hidden md:block w-80 bg-white border-l border-gray-200 overflow-y-auto">
               <VenueList
                 venues={visibleVenues}
+                mapBounds={currentBounds}
+                areaName={areaName}
                 selectedVenue={selectedVenue}
                 onVenueSelect={handleVenueSelect}
               />
@@ -580,7 +606,9 @@ export default function Home() {
           </>
         ) : (
           <VenueList
-            venues={venues}
+            venues={visibleVenues}
+            mapBounds={currentBounds}
+            areaName={areaName}
             selectedVenue={selectedVenue}
             onVenueSelect={handleVenueSelect}
           />

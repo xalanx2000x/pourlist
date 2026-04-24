@@ -6,11 +6,13 @@ import { hasActiveHappyHour } from '@/lib/activeHH'
 
 interface VenueListProps {
   venues: Venue[]
+  mapBounds: { north: number; south: number; east: number; west: number } | null
+  areaName: string | null
   selectedVenue: Venue | null
   onVenueSelect: (venue: Venue) => void
 }
 
-export default function VenueList({ venues, selectedVenue, onVenueSelect }: VenueListProps) {
+export default function VenueList({ venues, mapBounds, areaName, selectedVenue, onVenueSelect }: VenueListProps) {
   const activeHHCount = venues.filter(v => hasActiveHappyHour(v)).length
 
   if (venues.length === 0) {
@@ -27,7 +29,8 @@ export default function VenueList({ venues, selectedVenue, onVenueSelect }: Venu
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="p-2 text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
-        {venues.length} venue{venues.length !== 1 ? 's' : ''} in Pearl District (97209)
+        {venues.length} venue{venues.length !== 1 ? 's' : ''}
+        {areaName ? ` in ${areaName}` : ' nearby'}
         {activeHHCount > 0 && (
           <span className="ml-2 text-purple-600 font-semibold">· {activeHHCount} with active HH</span>
         )}

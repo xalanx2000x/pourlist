@@ -363,8 +363,10 @@ export default function Home() {
       if (!w.type) return
       formData.append(prefix, w.type)
       formData.append(daysKey, String(w.days.join(',')))
-      formData.append('hh_start', w.startMin != null ? String(w.startMin) : '')
-      formData.append('hh_end', w.endMin != null ? String(w.endMin) : '')
+      const startKey = prefix.replace('type', 'start')
+      const endKey = prefix.replace('type', 'end')
+      formData.append(startKey, w.startMin != null ? String(w.startMin) : '')
+      formData.append(endKey, w.endMin != null ? String(w.endMin) : '')
       if (w.excludeDays && w.excludeDays.length > 0) {
         formData.append(exclKey, String(w.excludeDays.join(',')))
       }

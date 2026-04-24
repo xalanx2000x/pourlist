@@ -169,9 +169,6 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
     <div className="space-y-4">
       <div>
         <h3 className="font-semibold text-gray-800">When is Happy Hour?</h3>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Type your happy hour — use commas for multiple windows
-        </p>
       </div>
 
       {/* Box 1: Typical HH */}

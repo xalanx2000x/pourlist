@@ -136,16 +136,19 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0)
   const [allPhotos, setAllPhotos] = useState<{ url: string; setIndex: number; photoIndex: number }[]>([])
 
-  // Swipe-down to close
+  // Swipe-down to close — only when at top of scroll
   const touchStartY = useRef<number | null>(null)
+  const isAtTopRef = useRef(true)
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
+    touchStartY.current = e.changedTouches[0].clientY
+    isAtTopRef.current = (e.target as HTMLElement).closest('.overflow-y-auto')?.scrollTop === 0
   }
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartY.current === null) return
     const deltaY = e.changedTouches[0].clientY - touchStartY.current
     touchStartY.current = null
-    if (deltaY > 60) onClose()
+    // Only close if swiping down AND we're at the top of the scroll
+    if (deltaY > 60 && isAtTopRef.current) onClose()
   }
 
   // Fetch all photo sets for this venue

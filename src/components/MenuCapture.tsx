@@ -212,7 +212,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Getting location...
+                    Uploading...
                   </>
                 ) : (
                   <>✓ Done — {files.length} photo{files.length > 1 ? 's' : ''}</>

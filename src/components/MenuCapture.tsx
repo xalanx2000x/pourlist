@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
 
 interface MenuCaptureProps {
-  onCapture: (files: File[], gps: { lat: number; lng: number } | null) => void
+  onCapture: (files: File[], phoneGps: { lat: number; lng: number } | null, exifGps: { lat: number; lng: number } | null) => void
   onClose: () => void
 }
 
@@ -81,24 +81,25 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
     setError('')
 
     try {
-      // Try EXIF GPS from first photo first
-      let gps: { lat: number; lng: number } | null = null
+      // EXIF GPS from first photo = authoritative venue location
+      let exifGps: { lat: number; lng: number } | null = null
       try {
-        gps = await extractGpsFromPhoto(files[0])
+        exifGps = await extractGpsFromPhoto(files[0])
       } catch {
         // No EXIF GPS
       }
 
-      // Fallback to browser location
-      if (!gps) {
-        try {
-          gps = await getBrowserLocation()
-        } catch {
-          // Location unavailable
-        }
+      // Phone's current GPS = used only as fraud signal (not venue location)
+      let phoneGps: { lat: number; lng: number } | null = null
+      try {
+        phoneGps = await getBrowserLocation()
+      } catch {
+        // Location unavailable
       }
 
-      onCapture(files, gps)
+      // exifGps is the authoritative venue location source
+      // phoneGps is the fraud check signal
+      onCapture(files, phoneGps, exifGps)
     } catch {
       setError('Could not read photos. Please try again.')
     } finally {

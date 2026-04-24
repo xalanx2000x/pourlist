@@ -7,15 +7,17 @@ import HHScheduleInput from './HHScheduleInput'
 
 interface MenuReviewProps {
   files: File[]
-  gps: { lat: number; lng: number } | null
+  /** Phone's current GPS — used for fraud/proximity warning check */
+  phoneGps: { lat: number; lng: number } | null
+  /** Authoritative venue location — EXIF GPS from first photo (new venue) or venue.lat/lng (existing) */
+  venueGps: { lat: number; lng: number } | null
   venue: Venue | null
   newVenueName?: string | null
-  /** Raw menu text (from AI parse) — used to pre-populate the HH schedule */
   menuText?: string | null
   onCommit: (data: {
     hhWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
-    hhTime: string   // legacy string for old API compatibility
-    hhSummary: string // raw user input text for the HH windows
+    hhTime: string
+    hhSummary: string
   }) => Promise<void>
   onDiscard: () => void
   onRetry: () => void
@@ -24,7 +26,8 @@ interface MenuReviewProps {
 
 export default function MenuReview({
   files,
-  gps,
+  phoneGps,
+  venueGps,
   venue,
   newVenueName,
   menuText,

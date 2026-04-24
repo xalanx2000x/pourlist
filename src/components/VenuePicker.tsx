@@ -6,7 +6,10 @@ import type { Venue } from '@/lib/supabase'
 
 interface VenuePickerProps {
   files: File[]
-  gps: { lat: number; lng: number } | null
+  /** User's current location — used to find nearby venues and verify proximity */
+  phoneGps: { lat: number; lng: number } | null
+  /** Authoritative venue location from photo EXIF — used to verify user is at venue */
+  exifGps: { lat: number; lng: number } | null
   onVenueConfirmed: (venue: Venue) => void
   onVenueNotListed: () => void
   onClose: () => void
@@ -31,7 +34,8 @@ function formatDistance(meters: number): string {
 
 export default function VenuePicker({
   files,
-  gps,
+  phoneGps,
+  exifGps,
   onVenueConfirmed,
   onVenueNotListed,
   onClose
@@ -41,7 +45,9 @@ export default function VenuePicker({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!gps) {
+    // Use phone GPS to find nearby venues
+    const searchGps = phoneGps ?? exifGps
+    if (!searchGps) {
       setLoading(false)
       return
     }
@@ -49,14 +55,14 @@ export default function VenuePicker({
     setLoading(true)
     setError('')
 
-    getVenuesByProximity(gps.lat, gps.lng, 50)
+    getVenuesByProximity(searchGps.lat, searchGps.lng, 50)
       .then((results) => {
         // Sort by distance to user
         const sorted = results.sort((a, b) => {
           if (a.lat == null || a.lng == null) return 1
           if (b.lat == null || b.lng == null) return -1
-          const da = haversineDistance(gps.lat, gps.lng, a.lat, a.lng)
-          const db = haversineDistance(gps.lat, gps.lng, b.lat, b.lng)
+          const da = haversineDistance(searchGps.lat, searchGps.lng, a.lat, a.lng)
+          const db = haversineDistance(searchGps.lat, searchGps.lng, b.lat, b.lng)
           return da - db
         })
         setVenues(sorted)
@@ -75,7 +81,7 @@ export default function VenuePicker({
       .finally(() => {
         setLoading(false)
       })
-  }, [gps, onVenueNotListed])
+  }, [phoneGps, exifGps, onVenueNotListed])
 
   // If loading, show spinner
   if (loading) {
@@ -138,8 +144,8 @@ export default function VenuePicker({
         <div className="space-y-3">
           {venues.map((venue) => {
             const distance =
-              venue.lat != null && venue.lng != null && gps
-                ? haversineDistance(gps.lat, gps.lng, venue.lat, venue.lng)
+              venue.lat != null && venue.lng != null && phoneGps
+                ? haversineDistance(phoneGps.lat, phoneGps.lng, venue.lat, venue.lng)
                 : null
 
             return (

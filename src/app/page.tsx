@@ -38,10 +38,11 @@ type ScanStep =
 
 type ScanState = {
   files: File[]
-  gps: { lat: number; lng: number } | null
+  phoneGps: { lat: number; lng: number } | null   // phone's current GPS — fraud signal, not venue location
+  exifGps: { lat: number; lng: number } | null    // EXIF GPS from first photo — authoritative venue location
   confirmedVenue: Venue | null
   newVenueName: string | null
-  menuText: string | null   // AI-parsed menu text, used to extract HH schedule
+  menuText: string | null
 }
 
 const RADIUS_OPTIONS = [
@@ -57,7 +58,8 @@ const RADIUS_OPTIONS = [
 function emptyScanState(): ScanState {
   return {
     files: [],
-    gps: null,
+    phoneGps: null,
+    exifGps: null,
     confirmedVenue: null,
     newVenueName: null,
     menuText: null,
@@ -267,29 +269,34 @@ export default function Home() {
     })
   }
 
-  async function handleCapture(files: File[], gps: { lat: number; lng: number } | null) {
+  async function handleCapture(files: File[], phoneGps: { lat: number; lng: number } | null, exifGps: { lat: number; lng: number } | null) {
     const confirmedVenue = scan.confirmedVenue
 
     // Parse menu photos immediately so text is ready for MenuReview
     const menuText = await parseMenuPhotos(files)
 
     if (confirmedVenue) {
-      // Venue was pre-selected — verify user GPS is near the venue before proceeding.
-      if (gps && confirmedVenue.lat != null && confirmedVenue.lng != null) {
-        const withinRange = isWithinRadius(gps.lat, gps.lng, confirmedVenue.lat, confirmedVenue.lng, 100)
+      // Existing venue path — verify user GPS is near the venue before proceeding.
+      // (phoneGps is the fraud check signal, compared against venue's known coordinates)
+      if (phoneGps && confirmedVenue.lat != null && confirmedVenue.lng != null) {
+        const withinRange = isWithinRadius(phoneGps.lat, phoneGps.lng, confirmedVenue.lat, confirmedVenue.lng, 100)
         if (!withinRange) {
           setGpsWarning('Your location seems far from this venue. Are you sure you\'re here?')
         }
       }
-      setScan(prev => ({ ...prev, files, gps: gps ?? null, menuText }))
+      setScan(prev => ({ ...prev, files, phoneGps, exifGps, menuText }))
       await transitionToReview(confirmedVenue, null)
       return
     }
 
-    // No venue pre-selected — use GPS to find nearby venues
-    setScan(prev => ({ ...prev, files, gps, menuText }))
+    // No venue pre-selected:
+    // - exifGps = authoritative venue location (from first photo's EXIF)
+    // - phoneGps = fraud check signal (phone's current location)
+    // Use EXIF GPS as venueProposedCoords; if absent, fall back to phone GPS
+    const venueProposedCoords = exifGps ?? phoneGps
+    setScan(prev => ({ ...prev, files, phoneGps, exifGps: venueProposedCoords, menuText }))
 
-    if (gps != null) {
+    if (venueProposedCoords != null) {
       setScanStep('venue_picker')
     } else {
       setScanStep('name_entry')
@@ -358,117 +365,136 @@ export default function Home() {
       throw new Error(`Slow down! Please wait ${s}s before submitting again.`)
     }
 
-    const { confirmedVenue, newVenueName, files, gps } = scan
+    const { confirmedVenue, newVenueName, files, phoneGps, exifGps } = scan
 
-    // Upload photos + save venue
-    const formData = new FormData()
-    for (const file of files) {
-      formData.append('photos', file)
-    }
-    if (gps) {
-      formData.append('lat', String(gps.lat))
-      formData.append('lng', String(gps.lng))
-    }
-    formData.append('deviceHash', deviceHash)
-    if (hhTime) formData.append('hhTime', hhTime)
-    if (hhSummary) formData.append('hhSummary', hhSummary)
-
-    // Structured HH windows (up to 3)
-    const w1 = hhWindows[0]
-    const w2 = hhWindows[1]
-    const w3 = hhWindows[2]
-
-    function appendWindow(
-      w: import('@/lib/parse-hh').HHWindow,
-      prefix: string,
-      daysKey: string,
-      exclKey: string
-    ) {
-      if (!w.type) return
-      formData.append(prefix, w.type)
-      formData.append(daysKey, String(w.days.join(',')))
-      const startKey = prefix.replace('type', 'start')
-      const endKey = prefix.replace('type', 'end')
-      formData.append(startKey, w.startMin != null ? String(w.startMin) : '')
-      formData.append(endKey, w.endMin != null ? String(w.endMin) : '')
-      if (w.excludeDays && w.excludeDays.length > 0) {
-        formData.append(exclKey, String(w.excludeDays.join(',')))
-      }
-    }
-
-    if (w1?.type) appendWindow(w1, 'hh_type', 'hh_days', 'hh_exclude_days')
-    if (w2?.type) appendWindow(w2, 'hh_type_2', 'hh_days_2', 'hh_exclude_days_2')
-    if (w3?.type) appendWindow(w3, 'hh_type_3', 'hh_days_3', 'hh_exclude_days_3')
-
-    let venueId: string | undefined
-    let createdVenueId: string | undefined
-
+    // ── Existing venue path → commit-menu (unchanged) ────────────────────
     if (confirmedVenue) {
+      const formData = new FormData()
+      for (const file of files) formData.append('photos', file)
+      if (phoneGps) {
+        formData.append('lat', String(phoneGps.lat))
+        formData.append('lng', String(phoneGps.lng))
+      }
+      formData.append('deviceHash', deviceHash)
+      if (hhTime) formData.append('hhTime', hhTime)
+      if (hhSummary) formData.append('hhSummary', hhSummary)
+
+      const w1 = hhWindows[0]; const w2 = hhWindows[1]; const w3 = hhWindows[2]
+      function appendWindow(w: import('@/lib/parse-hh').HHWindow, prefix: string, daysKey: string, exclKey: string) {
+        if (!w.type) return
+        formData.append(prefix, w.type)
+        formData.append(daysKey, String(w.days.join(',')))
+        formData.append(prefix.replace('type', 'start'), w.startMin != null ? String(w.startMin) : '')
+        formData.append(prefix.replace('type', 'end'), w.endMin != null ? String(w.endMin) : '')
+        if (w.excludeDays?.length) formData.append(exclKey, String(w.excludeDays.join(',')))
+      }
+      if (w1?.type) appendWindow(w1, 'hh_type', 'hh_days', 'hh_exclude_days')
+      if (w2?.type) appendWindow(w2, 'hh_type_2', 'hh_days_2', 'hh_exclude_days_2')
+      if (w3?.type) appendWindow(w3, 'hh_type_3', 'hh_days_3', 'hh_exclude_days_3')
+
       formData.append('venueId', confirmedVenue.id)
-      venueId = confirmedVenue.id
-    } else if (newVenueName) {
-      // Create the new venue first
-      const createRes = await fetch('/api/create-venue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newVenueName,
-          lat: gps?.lat ?? null,
-          lng: gps?.lng ?? null,
-          address: null,
-          deviceHash
-        })
-      })
-      if (!createRes.ok) {
-        const err = await createRes.json().catch(() => ({}))
+
+      const commitRes = await fetch('/api/commit-menu', { method: 'POST', body: formData })
+      if (!commitRes.ok) {
+        const err = await commitRes.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to save menu')
+      }
+
+      const { venueId: savedVenueId } = await commitRes.json()
+      const updatedVenue = await getVenueById(savedVenueId)
+      if (updatedVenue) setSelectedVenue(updatedVenue)
+      const freshVenues = await loadVenues(phoneGps ?? undefined)
+      const refreshed = freshVenues.find(v => v.id === savedVenueId)
+      if (refreshed) setSelectedVenue(refreshed)
+
+      await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
+      await trackVenueEvent(savedVenueId, 'photo_upload', phoneGps)
+      if (hhWindows.some(w => w !== null)) {
+        await trackVenueEvent(savedVenueId, 'hh_confirm', phoneGps)
+      }
+
+      setSaveSuccess(true)
+      setLastSavedVenue(`${confirmedVenue.name} menu updated`)
+      setTimeout(() => setSaveSuccess(false), 3000)
+      resetScan()
+      return
+    }
+
+    // ── New venue path → submit-venue (single endpoint) ───────────────────
+    if (newVenueName) {
+      if (!exifGps) {
+        throw new Error('No location found. Please take the photo at the venue.')
+      }
+
+      const formData = new FormData()
+      formData.append('venueName', newVenueName)
+      formData.append('exifLat', String(exifGps.lat))
+      formData.append('exifLng', String(exifGps.lng))
+      if (phoneGps) {
+        formData.append('phoneLat', String(phoneGps.lat))
+        formData.append('phoneLng', String(phoneGps.lng))
+      }
+      formData.append('deviceHash', deviceHash)
+      if (hhSummary) formData.append('hhSummary', hhSummary)
+
+      const w1 = hhWindows[0]; const w2 = hhWindows[1]; const w3 = hhWindows[2]
+      function appendWindow(w: import('@/lib/parse-hh').HHWindow, prefix: string, daysKey: string, exclKey: string) {
+        if (!w.type) return
+        formData.append(prefix, w.type)
+        formData.append(daysKey, String(w.days.join(',')))
+        formData.append(prefix.replace('type', 'start'), w.startMin != null ? String(w.startMin) : '')
+        formData.append(prefix.replace('type', 'end'), w.endMin != null ? String(w.endMin) : '')
+        if (w.excludeDays?.length) formData.append(exclKey, String(w.excludeDays.join(',')))
+      }
+      if (w1?.type) appendWindow(w1, 'hh_type', 'hh_days', 'hh_exclude_days')
+      if (w2?.type) appendWindow(w2, 'hh_type_2', 'hh_days_2', 'hh_exclude_days_2')
+      if (w3?.type) appendWindow(w3, 'hh_type_3', 'hh_days_3', 'hh_exclude_days_3')
+
+      for (const file of files) formData.append('photos', file)
+
+      const submitRes = await fetch('/api/submit-venue', { method: 'POST', body: formData })
+
+      if (!submitRes.ok) {
+        const err = await submitRes.json().catch(() => ({}))
         throw new Error(err.error || 'Failed to create venue')
       }
-      const newVenue = await createRes.json()
-      createdVenueId = newVenue.id
-      formData.append('venueId', newVenue.id)
-      venueId = newVenue.id
+
+      const result = await submitRes.json()
+
+      if (!result.success) {
+        if (result.reason === 'duplicate' && result.existingVenue) {
+          // Dedup: suggest updating existing venue instead
+          const existing = result.existingVenue
+          throw new Error(`"${newVenueName}" already exists nearby as "${existing.name}". Want to update that instead?`)
+        }
+        throw new Error(result.reason === 'photo_upload_failed'
+          ? 'Photos failed to upload. Please try again.'
+          : 'Failed to create venue. Please try again.')
+      }
+
+      const { venueId: savedVenueId } = result
+
+      // Refresh map and select the new venue
+      const updatedVenue = await getVenueById(savedVenueId)
+      if (updatedVenue) setSelectedVenue(updatedVenue)
+      const freshVenues = await loadVenues(exifGps ? { lat: exifGps.lat, lng: exifGps.lng } : undefined)
+      const refreshed = freshVenues.find(v => v.id === savedVenueId)
+      if (refreshed) setSelectedVenue(refreshed)
+
+      await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
+      await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
+      if (hhWindows.some(w => w !== null)) {
+        await trackVenueEvent(savedVenueId, 'hh_confirm', exifGps)
+      }
+
+      setSaveSuccess(true)
+      setLastSavedVenue(`"${newVenueName}" added`)
+      setTimeout(() => setSaveSuccess(false), 3000)
+      resetScan()
+      return
     }
 
-    // Step 2: Commit (upload photos + update venue)
-    const commitRes = await fetch('/api/commit-menu', {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!commitRes.ok) {
-      const err = await commitRes.json().catch(() => ({}))
-      throw new Error(err.error || 'Failed to save menu')
-    }
-
-    const { venueId: savedVenueId } = await commitRes.json()
-
-    // Fetch the saved venue directly by ID to update selectedVenue with fresh data.
-    // We use ID-based lookup (not proximity) so it works regardless of GPS location.
-    const updatedVenue = await getVenueById(savedVenueId)
-    if (updatedVenue) setSelectedVenue(updatedVenue)
-
-    // Refresh venues list so map markers update
-    const freshVenues = await loadVenues(scan.gps ?? undefined)
-    const refreshed = freshVenues.find(v => v.id === savedVenueId)
-    if (refreshed) setSelectedVenue(refreshed)
-
-    // Capture venue label before resetScan clears confirmedVenue
-    const venueLabel = scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'
-
-    await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
-    // Internal Supabase tracking
-    await trackVenueEvent(savedVenueId, 'photo_upload', gps)
-    if (hhWindows.some(w => w !== null)) {
-      await trackVenueEvent(savedVenueId, 'hh_confirm', gps)
-    }
-
-    // Success feedback
-    setSaveSuccess(true)
-    setLastSavedVenue(venueLabel)
-    setTimeout(() => setSaveSuccess(false), 3000)
-
-    // Reset scan workflow
-    resetScan()
+    throw new Error('No venue selected and no new venue name. Please start over.')
   }
 
   function handleMenuDiscard() {
@@ -694,7 +720,8 @@ export default function Home() {
       {scanStep === 'venue_picker' && (
         <VenuePicker
           files={scan.files}
-          gps={scan.gps}
+          phoneGps={scan.phoneGps}
+          exifGps={scan.exifGps}
           onVenueConfirmed={handleVenueConfirmed}
           onVenueNotListed={handleVenueNotListed}
           onClose={handleScanClose}
@@ -703,7 +730,7 @@ export default function Home() {
 
       {scanStep === 'name_entry' && (
         <NameEntry
-          gps={scan.gps}
+          gps={scan.phoneGps}
           onVenueMatched={handleVenueMatched}
           onVenueCreated={handleVenueCreated}
           onClose={handleScanClose}
@@ -713,7 +740,10 @@ export default function Home() {
       {scanStep === 'review' && (
         <MenuReview
           files={scan.files}
-          gps={scan.gps}
+          phoneGps={scan.phoneGps}
+          venueGps={venueToReview && venueToReview.lat != null && venueToReview.lng != null
+            ? { lat: venueToReview.lat, lng: venueToReview.lng }
+            : scan.exifGps}
           venue={venueToReview}
           newVenueName={newVenueNameToReview}
           menuText={scan.menuText}

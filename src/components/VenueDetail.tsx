@@ -136,19 +136,35 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
   const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0)
   const [allPhotos, setAllPhotos] = useState<{ url: string; setIndex: number; photoIndex: number }[]>([])
 
-  // Swipe-down to close — only when at top of scroll
+  // Swipe-down to close — only when at top of scroll (not mid-scroll)
   const touchStartY = useRef<number | null>(null)
-  const isAtTopRef = useRef(true)
+  const hasMovedDownRef = useRef(false)
+
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.changedTouches[0].clientY
-    isAtTopRef.current = (e.target as HTMLElement).closest('.overflow-y-auto')?.scrollTop === 0
+    touchStartY.current = e.touches[0].clientY
+    hasMovedDownRef.current = false
   }
-  const handleTouchEnd = (e: React.TouchEvent) => {
+
+  const handleTouchMove = (e: React.TouchEvent) => {
     if (touchStartY.current === null) return
-    const deltaY = e.changedTouches[0].clientY - touchStartY.current
+    const scrollEl = (e.currentTarget as HTMLElement).querySelector('.overflow-y-auto') as HTMLElement | null
+    if (!scrollEl) return
+
+    const scrollTop = scrollEl.scrollTop
+    const currentY = e.touches[0].clientY
+    const deltaY = currentY - touchStartY.current
+
+    if (scrollTop === 0 && deltaY > 10) {
+      hasMovedDownRef.current = true
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (hasMovedDownRef.current) {
+      onClose()
+    }
     touchStartY.current = null
-    // Only close if swiping down AND we're at the top of the scroll
-    if (deltaY > 60 && isAtTopRef.current) onClose()
+    hasMovedDownRef.current = false
   }
 
   // Fetch all photo sets for this venue
@@ -262,6 +278,7 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
     <div
       className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[70vh] overflow-y-auto z-50"
       onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
       {/* Handle bar — swipe indicator */}

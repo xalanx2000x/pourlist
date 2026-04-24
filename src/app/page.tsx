@@ -16,6 +16,7 @@ import NameEntry from '@/components/NameEntry'
 import SupportScreen from '@/components/SupportScreen'
 import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
 import { trackEvent } from '@/lib/analytics'
+import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getDeviceHash } from '@/lib/device'
 import { getBrowserLocation } from '@/lib/gps'
@@ -172,6 +173,7 @@ export default function Home() {
 
   async function handleVenueSelect(venue: Venue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
+    trackVenueEvent(venue.id, 'view', userLocation)
 
     // Always re-fetch from DB by ID — ensures the detail page has fresh HH and all other fields,
     // regardless of whether the venue was reached via map or search (two different discovery paths).
@@ -454,6 +456,11 @@ export default function Home() {
     const venueLabel = scan.confirmedVenue ? `${scan.confirmedVenue.name} menu updated` : 'New venue added'
 
     await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
+    // Internal Supabase tracking
+    await trackVenueEvent(savedVenueId, 'photo_upload', gps)
+    if (hhWindows.some(w => w !== null)) {
+      await trackVenueEvent(savedVenueId, 'hh_confirm', gps)
+    }
 
     // Success feedback
     setSaveSuccess(true)

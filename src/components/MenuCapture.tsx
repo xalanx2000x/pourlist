@@ -89,6 +89,15 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         // No EXIF GPS
       }
 
+      // BLOCK: If photo has no EXIF GPS, venue location cannot be determined reliably.
+      // Phone GPS is a fraud signal only — it is NOT a fallback for venue location.
+      // Require the user to take a photo that has location data embedded.
+      if (!exifGps) {
+        setError('No location data found in this photo. Please take a new photo at the venue, and make sure Location Services are enabled for your camera app.')
+        setLoading(false)
+        return
+      }
+
       // Phone's current GPS = used only as fraud signal (not venue location)
       let phoneGps: { lat: number; lng: number } | null = null
       try {

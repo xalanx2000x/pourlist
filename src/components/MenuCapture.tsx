@@ -15,7 +15,6 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const galleryInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const addFiles = useCallback(async (newFiles: File[]) => {
@@ -133,19 +132,10 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         {/* Instructions */}
         {files.length === 0 && (
           <p className="text-sm text-gray-500 mb-4 shrink-0">
-            Take photos of the happy hour menu pages. You can add up to 4 photos.
+            Take a photo of the happy hour menu. You can add up to 4 photos.
           </p>
         )}
 
-        {/* Hidden gallery input */}
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*,image/heic,image/heif,image/heif-compressed"
-          multiple
-          onChange={onFileInput}
-          className="hidden"
-        />
         {/* Hidden camera input — opens camera directly on mobile (no file picker) */}
         <input
           ref={cameraInputRef}
@@ -179,10 +169,10 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
                 </div>
               ))}
 
-              {/* "Add another" slot */}
+              {/* "Add another" slot — also uses camera */}
               {files.length < MAX_PHOTOS && (
                 <button
-                  onClick={() => galleryInputRef.current?.click()}
+                  onClick={() => cameraInputRef.current?.click()}
                   disabled={loading}
                   className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-amber-500 hover:text-amber-500 transition-colors disabled:opacity-50"
                 >
@@ -211,15 +201,6 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
                 <span className="text-xl">📷</span>
                 Take a Photo
               </button>
-              {/* Gallery — opens photo library picker */}
-              <button
-                onClick={() => galleryInputRef.current?.click()}
-                disabled={loading}
-                className="w-full bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
-              >
-                <span className="text-xl">🖼️</span>
-                Choose from Gallery
-              </button>
             </>
           ) : (
             <>
@@ -239,30 +220,17 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
                 )}
               </button>
 
-              {/* Add more / Retake */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => galleryInputRef.current?.click()}
-                  disabled={loading || files.length >= MAX_PHOTOS}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                >
-                  <span>🖼️</span> Add more
-                </button>
-                <button
-                  onClick={onClose}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+              {/* Retake */}
+              <button
+                onClick={onClose}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                Cancel
+              </button>
             </>
           )}
 
-          {files.length === 0 && (
-            <p className="text-xs text-gray-400 text-center">
-              Select multiple photos to capture both pages of a two-sided menu
-            </p>
-          )}
+
         </div>
       </div>
     </div>

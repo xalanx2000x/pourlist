@@ -2,136 +2,140 @@
 
 ---
 
-## Flow 1: Browse Map / List (Existing, Unchanged)
+## Flow 1: Browse Map / List
 
 **Goal:** Find a venue with an active happy hour near you.
 
 ### Steps
 
-1. **App opens** to Pearl District by default, centered on your live GPS location (if permission granted) or on a fallback coordinate (45.523, -122.676).
-2. **Map loads** with venue pins. Purple pins = currently active happy hour. Amber = has menu but HH not active now.
-3. **Search** by venue name or location (address, neighborhood, or zip code). The SearchBar queries Supabase for venue name matches, or falls back to Nominatim for geocoding.
-4. **Tap a pin** to open the venue detail sheet:
-   - Venue name, address, phone, website
-   - Menu photo (if any)
-   - Happy hour menu text (scrollable)
-   - Status badge (New / HH Active)
-   - "Directions" and "on Google" links
-5. **Switch to List view** using the tabs to see venues sorted by name.
+1. **App opens** — centered on your live GPS location or a fallback (Pearl District, Portland).
+2. **Map loads** with venue pins. Purple = happy hour active right now. Amber = has menu but HH not active.
+3. **Search** by venue name or location. `SearchBar` queries Supabase for name matches, or Nominatim for geocoding.
+4. **Tap a pin** → `VenueDetail` bottom sheet: name, address, phone, website, menu photo, HH schedule, status badge, directions.
+5. **Switch to List view** → venues sorted by distance (symmetric with map bounds filter).
 
-### How "Active HH" is Determined
+### Active HH Detection
 
-`src/lib/activeHH.ts` runs on the stored `menu_text` each time the map loads. It checks:
-- Current hour vs. stored time window (e.g., "4–6pm" → active if current hour is between 4 and 18)
-- Day-of-week restrictions (e.g., "Mon–Fri 4–7pm" → inactive on weekends unless time matches)
-- HH terminology without time (requires both explicit HH language AND a time window, or absence of "closed/ended/done")
+`src/lib/activeHH.ts` checks stored HH windows (`hh_type`/`hh_start`/`hh_end`) against current time and day-of-week. No longer relies on `menu_text` parsing.
 
 ---
 
-## Flow 2: Scan and Add Menu to Existing Venue
+## Flow 2: Scan + Update Existing Venue
 
-**Goal:** You walk into a bar, snap a photo of their HH menu, and it gets attached to the venue that's already on the map.
+**Goal:** You're at a venue that already exists on the map. Snap a photo to update its HH data.
 
 ### Steps
 
-1. **Tap "Scan Happy Hour Menu / Add Venue"** button at the bottom.
-2. **MenuCapture opens** — tap "Take Photos / Choose from Gallery" to open your camera or photo picker.
-   - Select 1–4 photos (supports both single and multi-page menus)
-   - GPS is extracted from the first photo's EXIF data, or falls back to browser geolocation
-   - You can remove any photo before proceeding
-   - Tap "Done"
-3. **Nearby venue check** — `getVenuesByProximity(gps, 10m)` is called.
-   - **If a venue is found:** `MenuConfirm` shows the matched venue name and address with a green "Adding to [Name]" notice.
-   - **If no venue found:** The app falls through to the new venue flow (Flow 3, Step 2 onward).
-4. **Parsing** (during the `confirm` step, before the screen appears):
-   - All selected photos are converted to base64
-   - Each photo is sent to `/api/parse-menu` → GPT-4o mini returns extracted text
-   - Text from all photos is concatenated with `"--- Page ---"` separators
-   - `checkHappyHour()` runs on the combined text
-   - If no HH signals found → `isNotHH = true` (shown as a warning in MenuConfirm)
-5. **MenuConfirm screen** shows:
-   - Matched venue (if any)
-   - Parsed menu text in a scrollable box (editable — tap "Edit")
-   - Source photo thumbnails
-   - "Save Menu" button (or "Type Menu Manually" if text extraction failed)
-6. **Save** triggers:
-   - Client-side rate limit check (fail-fast)
-   - Photo uploaded to Supabase Storage via `/api/upload-photo`
-   - Menu text submitted to `/api/submit-menu` with the matched `venueId`
-   - `menu_text` and `menu_text_updated_at` updated on the venue
-   - `latest_menu_image_url` set to the uploaded photo
-   - Photo retention cleanup: `cycle_old_photos` RPC called to keep only 3 most recent photos
-7. **Success banner** appears for 3 seconds: "✓ Saved — [Venue Name] menu updated"
-8. **Map refreshes** — venue list is reloaded and the updated venue appears with new data.
+1. Tap **"📷 Scan Happy Hour Menu"** button at the bottom.
+2. **`MenuCapture`** — tap "📷 Take or Choose Photo" to open camera/gallery. Select 1–4 photos. Tap "Done."
+   - `exifGps` = extracted from first photo's EXIF (authoritative venue location)
+   - `phoneGps` = current browser location (fraud signal only — not used for venue location)
+3. **`VenuePicker`** — shows venues within 50m of `exifGps` or `phoneGps`. Tap "✓ Yes, that's me" to confirm, or "✗ No, I'm not here" to skip to name entry.
+   - If 0 nearby venues → auto-advances to `name_entry`
+4. **`MenuReview`** — shows parsed HH schedule (from AI menu text) with editable HH window boxes. Tap "💾 Save Happy Hour" to commit.
+5. **API call** → `POST /api/commit-menu` with `venueId` + photos + HH data.
+6. **Success banner** for 3 seconds. Map refreshes with updated venue data.
 
-### Edge Cases
+### Key behavior
 
-- **No GPS:** If the photo has no EXIF GPS and browser geolocation is denied, `gps` is `null`. The app proceeds to name-entry/new-venue flow directly.
-- **HH detection failure:** Warning shown but user can still submit. The parsed text is preserved and editable.
-- **Rate limited:** Red banner appears: "Slow down! Please wait Xs before submitting again."
-- **Upload failure:** Non-fatal — the photo upload can fail but the menu text will still be saved. An error is logged but no user-facing error is shown.
+- **EXIF GPS = authoritative venue location.** No address entry required for new venues.
+- **Phone GPS = fraud check only.** Compared against venue coordinates to log `gps_mismatch` events if >500m apart.
+- **No duplicate venues created** — `VenuePicker` confirms against existing DB venues before creating.
 
 ---
 
 ## Flow 3: Add New Venue + Scan Menu
 
-**Goal:** You find a bar that isn't on the map yet. You photograph their menu, the app creates the venue record, and the menu gets attached.
+**Goal:** You find a bar that isn't on the map. Photograph the menu → app creates the venue record with EXIF GPS, attaches menu photos.
 
 ### Steps
 
-1–4. **Same as Flow 2, Steps 1–4** — photos captured, GPS extracted, nearby venue check returns **0 matches**.
-5. **AddVenueForm opens** (current implementation) or **NameEntry** (planned):
-   - User types the venue name
-   - If GPS was available, `AddVenueForm` reverse-geocodes it to fill the address automatically
-   - User can accept or correct the address
-   - (Planned `NameEntry` behavior: As user types, fuzzy Supabase search runs after 2+ characters; "Did you mean [Venue]?" shown if a match exists within ~5km)
-6. **On submit:** A new venue is created with `status = 'unverified'`, `contributor_trust = 'new'`, and GPS coords (if available).
-7. **Control returns to `confirm` step** — `matchedVenue` is set to the newly created venue object.
-8. **MenuConfirm** shows the new venue (blue "New venue" notice) and the parsed menu text.
-9. **Save** → same as Flow 2, Step 6 (but using the newly created `venueId`).
-10. **Success** → venue appears on the map immediately.
+1. Same as Flow 2, Step 2 — capture photos, extract `exifGps` + `phoneGps`.
+2. **`VenuePicker`** — no nearby matches found → tap "✗ No, I'm not here" (or auto-advances if 0 results).
+3. **`NameEntry`** — type the venue name. Fuzzy search runs after 2+ characters. "Did you mean [Venue]?" shown if a match exists within 5km.
+   - Tap a suggestion → routes to Flow 2 (existing venue path)
+   - No match → submit as new venue
+4. **`MenuReview`** — same as Flow 2, Step 4.
+5. **API call** → `POST /api/submit-venue` (single step):
+   - Name dedup: checks 50m radius for venue with same/similar name → `duplicate` conflict if found
+   - Venue created with EXIF GPS as authoritative coordinates
+   - Photos uploaded; if any fail, venue is rolled back (deleted)
+   - Success → venue appears on map immediately
 
-### What Happens to GPS
+### Error handling
 
-- **If photo had GPS:** Lat/lng stored on the venue record, address optionally reverse-geocoded from GPS.
-- **If no GPS available:** Venue created with `lat = null`, `lng = null`. It can still be found via search by name. A future geocoding pass could fill in coordinates.
-- **The spec says GPS is the primary location signal** and address is optional display sugar.
-
----
-
-## Photo Set Behavior (Per Spec — Planned)
-
-The spec describes photo set semantics that are **not yet implemented** in the current codebase:
-
-- Each submission (one scan session) creates one **photo set**
-- A photo set = all photos submitted together + a timestamp
-- The venue keeps the **last 4 photo sets**
-- On the 5th submission, the **oldest set is automatically deleted**
-- `menu_text` always reflects the **most recent** committed submission
-- Older photo sets are viewable in venue detail (most recent first)
-
-**Current behavior vs. spec:**
-- Current: Individual photos stored in `photos` table, 3-photo per-venue retention via `cycle_old_photos` RPC
-- Spec: Photo sets stored in `photo_sets` table, 4-set per-venue retention
-
-This discrepancy should be resolved when `photo_sets` migration (chunk 1) and commit-menu endpoint (chunk 6) are implemented.
+| Scenario | Behavior |
+|----------|----------|
+| Name dedup match found | Error: "Venue already exists nearby as [name]. Want to update that instead?" |
+| Photo upload fails | Venue deleted (rollback), error shown, user retries |
+| No EXIF GPS available | Error: "No location found. Please take the photo at the venue." |
+| Rate limited | "Slow down! Please wait Xs" error before submission |
 
 ---
 
-## Multi-Photo Upload Behavior
+## Flow 4: Pre-Selected Venue (from map/list)
 
-**Current (per MenuCapture.tsx):**
-- User can select multiple files at once (file input `multiple` attribute)
-- Or add one at a time via repeated file input clicks (no explicit "add another photo" button in current UI — it's just the native multi-select)
-- Max 10MB per individual file, 15MB total batch
-- EXIF GPS extracted from the **first** photo only
+**Goal:** User long-pressed/selected a venue on the map before scanning.
 
-**Spec behavior:**
-- "Add another photo" button visible while < 4 photos
-- GPS extracted from first photo if present
-- "Done" enabled when ≥1 photo captured
+### Steps
 
-The current `MenuCapture` doesn't have a 4-photo cap or a separate "add another" button — it accepts unlimited multi-select. This is a discrepancy to note.
+1. User taps venue pin → `VenueDetail` opens.
+2. Taps "📷 Scan Happy Hour Menu" — `confirmedVenue` is pre-set.
+3. `MenuCapture` → `handleCapture` detects `confirmedVenue` is set → skips `VenuePicker`, goes directly to `MenuReview`.
+4. `MenuReview` → same as Flow 2, Step 4.
+5. API: `commit-menu` with pre-set `venueId`.
+
+---
+
+## Scan Step State Machine
+
+```
+idle
+  │
+  └── 'capture'     → MenuCapture (take 1–4 photos, extract exifGps + phoneGps)
+                           │
+                           ▼
+                    'venue_picker' → VenuePicker (confirm against nearby venues)
+                           │                        │
+              ┌────────────┘                        │
+              ▼                                     ▼
+         'name_entry' ←─────────────── (no match or "not here")
+              │
+              ▼
+           'review' → MenuReview (edit HH schedule, commit)
+                              │
+                              ▼
+                          idle (resetScan)
+```
+
+| Step | Component | Trigger |
+|------|-----------|---------|
+| `idle` | Map/list | Default |
+| `capture` | `MenuCapture` | Scan button tapped |
+| `venue_picker` | `VenuePicker` | GPS available, 0+ nearby venues |
+| `name_entry` | `NameEntry` | "I'm not here" or no GPS |
+| `review` | `MenuReview` | Parsed menu ready, user ready to commit |
+
+---
+
+## Photo Behavior
+
+- **GPS source:** EXIF GPS from first photo only — used as venue coordinates
+- **Phone GPS:** Browser geolocation — fraud signal only (logs `gps_mismatch` if >500m from venue)
+- **Max photos per submission:** 4
+- **Retention:** Last 4 photo sets per venue. On 5th set, oldest is deleted (DB record + Storage files)
+- **Photo rollback:** If any photo in a `submit-venue` call fails to upload, the entire venue record is deleted (no orphan venues)
+
+---
+
+## GPS Signal Separation
+
+| Signal | Source | Stored on venue? | Purpose |
+|--------|--------|-----------------|---------|
+| `exifGps` | First photo's EXIF | **Yes** — `lat`/`lng` | Authoritative venue location |
+| `phoneGps` | Browser geolocation | **No** | Fraud signal: logged to `venue_events` if >500m from venue |
+
+This separation prevents the common bug where a user's phone GPS (which may be inaccurate indoors) overrides the photo's EXIF GPS (which was captured at the venue).
 
 ---
 
@@ -139,10 +143,10 @@ The current `MenuCapture` doesn't have a 4-photo cap or a separate "add another"
 
 | Error | Screen | Behavior |
 |-------|--------|----------|
-| Parse page failure | `MenuConfirm` | Shows inline error, user can retry or type manually |
-| No text extracted | `MenuConfirm` | Shows "Type Menu Manually" button |
-| No HH detected | `MenuConfirm` | Amber warning banner, submission still allowed |
-| Rate limit hit | `MenuConfirm` | Red "Slow down!" banner, submit button disabled |
-| Upload fails | `MenuConfirm` | Non-fatal, photo skipped, menu text still saves |
-| Geocode fails | `AddVenueForm` | "Couldn't find that address" message, form stays open |
-| Venue creation fails | `AddVenueForm` | Error state shown, form stays open |
+| Parse page failure | `MenuReview` | Inline error, retry or type manually |
+| No EXIF GPS | `MenuReview` | "No location found. Please take the photo at the venue." |
+| Dedup conflict | `MenuReview` | Error with existing venue name + option to update that venue |
+| Photo upload fails | `submit-venue` | Venue rolled back, error shown, user retries |
+| Rate limit hit | `MenuReview` | Red banner, submit button disabled |
+| No HH detected | `MenuReview` | Warning shown but submission allowed |
+| Geocode fails | `NameEntry` | "Couldn't find that address" — form stays open |

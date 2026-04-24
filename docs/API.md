@@ -14,7 +14,7 @@ Parses a happy hour menu photo using GPT-4o mini with vision.
 {
   "imageData": "data:image/jpeg;base64,...",  // base64 data URL (preferred)
   "imageUrl": "https://...",                   // public URL (fallback)
-  "deviceHash": "device_xxxxx"               // optional, for rate limiting
+  "deviceHash": "device_xxxxx"                // optional, for rate limiting
 }
 ```
 
@@ -47,87 +47,11 @@ Either `imageData` or `imageUrl` is required — not both (prefer `imageData`).
 
 **GPT-4o mini** — `max_tokens: 2048`, `signal: AbortController` with 30s timeout.
 
-### Notes
-
-- Photos are parsed **one at a time** in a loop (current code). The spec calls for **parallel** parsing of all photos in a session, but `page.tsx` currently calls parse sequentially with a `for` loop.
-- The prompt preserves prices, times, drink names. Illegible text is marked as `[illegible]`.
-- No correction or interpretation is applied — raw extraction only.
-- Server-side rate limit check calls `/api/rate-limit-check` with `action: 'parse-menu'`.
-
 ---
 
-## `POST /api/submit-menu`
+## `POST /api/submit-venue`
 
-Creates a new venue or updates an existing one with menu text. Also handles geo-check verification.
-
-### Request
-
-```json
-{
-  "menuText": "4-6pm\n$5 wells...",
-  "venueId": "uuid",           // if updating existing venue
-  "venueName": "Jolly Rodger", // required if no venueId
-  "address": "5627 S Kelly Ave, Portland, OR",
-  "lat": 45.523,
-  "lng": -122.676,
-  "deviceHash": "device_xxxxx",
-  "imageUrl": "https://..."   // optional, URL of uploaded photo
-}
-```
-
-### Behavior
-
-**If `venueId` is provided (updating existing venue):**
-1. HTML-escape `menuText` (XSS prevention — venue data is publicly readable)
-2. Check `menuText` length ≤ 10,000 chars
-3. Update `venues` row: set `menu_text`, `menu_text_updated_at`
-4. If `photoLat`/`photoLng` provided: verify photo location is within **10m** of venue coords (Haversine). If too far, return 400 error.
-5. If geo-check passes: update most recent pending photo from this device to `location_verified = true`
-
-**If `venueId` is NOT provided (creating new venue):**
-1. Validate `venueName` and `address` are present
-2. Reverse-geocode lat/lng to get an address string if `lat`/`lng` provided but no `address`
-3. Insert new row into `venues` with `status: 'unverified'`, `contributor_trust: 'new'` or `'anonymous'`
-4. Set `menu_text` and `menu_text_updated_at`
-
-### Response
-
-```json
-{ "venueId": "uuid", "success": true }
-```
-
-### Error responses
-
-| Status | Body | Cause |
-|--------|------|-------|
-| 400 | `{ "error": "menuText is required" }` | Missing menu text |
-| 400 | `{ "error": "...exceeds 10,000 characters" }` | Text too long |
-| 400 | `{ "error": "venueName and address are required..." }` | Creating venue without required fields |
-| 400 | `{ "error": "Unable to verify location..." }` | Photo GPS >10m from venue |
-| 429 | `{ "error": "Rate limit exceeded..." }` | Device hash blocked |
-| 500 | `{ "error": "Failed to create venue" }` | Supabase insert failed |
-| 500 | `{ "error": "Failed to update menu" }` | Supabase update failed |
-
-### XSS Sanitization
-
-All `menuText` is HTML-escaped before storing:
-```ts
-text.replace(/&/g, '&amp;')
-   .replace(/</g, '&lt;')
-   .replace(/>/g, '&gt;')
-   .replace(/"/g, '&quot;')
-   .replace(/'/g, '&#39;')
-```
-
-### Geo-check
-
-A 10-meter Haversine threshold is applied when a photo GPS is provided for an existing venue. If the photo was taken elsewhere, the submission is rejected. This prevents mismatched venue assignments.
-
----
-
-## `POST /api/upload-photo`
-
-Uploads a single photo to Supabase Storage and creates a `photos` DB record.
+**New (2026-04-24).** Single-step new venue creation: dedup check → insert venue → upload photos. Replaces the old two-step `create-venue → commit-menu` flow for new venues.
 
 ### Request
 
@@ -135,24 +59,188 @@ Uploads a single photo to Supabase Storage and creates a `photos` DB record.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `photo` | File | The image file (max 20MB) |
+| `venueName` | string | **Required.** New venue name |
+| `exifLat` | number | **Required.** Authoritative venue GPS — from first photo's EXIF |
+| `exifLng` | number | **Required.** Authoritative venue GPS — from first photo's EXIF |
+| `phoneLat` | number | Phone's current GPS — used only as fraud signal (>500m = gps_mismatch logged) |
+| `phoneLng` | number | Phone's current GPS — fraud signal |
+| `deviceHash` | string | **Required.** Anonymous device fingerprint |
+| `hhSummary` | string | Raw HH schedule text (e.g. "5pm-midnight daily") |
+| `hh_type`, `hh_days`, `hh_start`, `hh_end` | string | Window 1 HH data |
+| `hh_type_2`, `hh_days_2`, `hh_start_2`, `hh_end_2` | string | Window 2 HH data |
+| `hh_type_3`, `hh_days_3`, `hh_start_3`, `hh_end_3` | string | Window 3 HH data |
+| `photos` | File[] | 1–4 photo files |
+
+### Behavior
+
+1. **Validation** — `venueName`, `deviceHash`, `exifLat`, `exifLng` required
+2. **Dedup check** — queries Supabase for nearby venues (50m radius) with same/similar name using `normName()` (strips "The", lowercase, trims). If match found, returns `duplicate` conflict.
+3. **Insert venue** — creates row with `status: 'unverified'`, `contributor_trust: 'new'`, `address_backup: ''` (NOT NULL — backfill via reverse geocoding later). HH fields stored from structured args.
+4. **Photo upload** — uploads to Supabase Storage under `venue-photos/{venueId}/{timestamp}/`. If any photo fails, the venue record is **rolled back** (deleted) so no orphan exists. Max 4 photos per submission.
+5. **Photo set** — inserts a `photo_sets` row. If >4 sets exist for the venue, oldest set is deleted (both DB record and Storage files).
+6. **`latest_menu_image_url`** — set to the first uploaded photo's public URL.
+7. **Trust + moderation** — calls `clear_flags_on_menu_commit` RPC (clears all flags on venue) and `increment_device_submissions` RPC (increments device's submission count).
+8. **GPS fraud signal** — if `phoneLat`/`phoneLng` are provided and the phone is >500m from the venue, logs a `gps_mismatch` event to `venue_events` (non-blocking — venue creation still succeeds).
+
+### Response
+
+```json
+{ "success": true, "venueId": "uuid" }
+```
+
+### Error / conflict responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 400 | `{ "error": "venueName is required" }` | Missing name |
+| 400 | `{ "error": "exifLat and exifLng are required" }` | Missing GPS |
+| 400 | `{ "error": "Invalid coordinates" }` | NaN values |
+| 200 | `{ "success": false, "reason": "duplicate", "existingVenue": { "id", "name" } }` | Nearby venue with same name found |
+| 500 | `{ "success": false, "reason": "photo_upload_failed" }` | Photo upload failed — venue rolled back |
+
+---
+
+## `POST /api/commit-menu`
+
+**Existing venue path.** Updates an existing venue's HH data and uploads photos. Called when `confirmedVenue` is set (user selected from the map or venue picker).
+
+### Request
+
+`Content-Type: multipart/form-data`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `venueId` | string | **Required.** Existing venue UUID |
+| `photos` | File[] | 1–4 photo files |
+| `lat`, `lng` | number | Phone GPS (for proximity check, not stored) |
+| `deviceHash` | string | **Required.** Anonymous device fingerprint |
+| `hhTime` | string | Legacy HH time string (now superseded by structured hh_* fields) |
+| `hhSummary` | string | Raw HH schedule text |
+| `hh_type`, `hh_days`, `hh_start`, `hh_end` | string | Window 1 HH data |
+| `hh_type_2`, `hh_days_2`, `hh_start_2`, `hh_end_2` | string | Window 2 HH data |
+| `hh_type_3`, `hh_days_3`, `hh_start_3`, `hh_end_3` | string | Window 3 HH data |
+
+### Behavior
+
+1. Validates `venueId` exists
+2. Uploads photos to Supabase Storage
+3. Updates venue: `menu_text` from AI-parsed text, `latest_menu_image_url`, `hh_summary`, and all `hh_type/day/start/end` fields
+4. Creates `photo_sets` row (max 4 sets — oldest purged on insert)
+5. Calls `clear_flags_on_menu_commit` + `increment_device_submissions` RPCs
+
+### Response
+
+```json
+{ "success": true, "venueId": "uuid" }
+```
+
+---
+
+## `POST /api/create-venue`
+
+**Legacy — only for old two-step new venue flow.** Creates a minimal venue record with just name + GPS. Used only in the deprecated `create-venue → commit-menu` two-step path, which has been replaced by `submit-venue`.
+
+For new venue creation, use `/api/submit-venue` instead.
+
+---
+
+## `POST /api/flag`
+
+GPS-verified flag submission. Flagger's current GPS must be within **10m** of the venue (Haversine).
+
+### Request
+
+```json
+{
+  "venueId": "uuid",
+  "deviceHash": "device_xxxxx",
+  "lat": 45.523,
+  "lng": -122.676,
+  "reason": "Wrong hours"
+}
+```
+
+### Behavior
+
+- Haversine check: venue coords vs flagger GPS (10m threshold)
+- `flags` row inserted with `active: true`
+- `venue_flag_events` row inserted with `action: 'flag'` (idempotent — UNIQUE constraint)
+- `device_stats` submission count incremented
+- If device has <1 submission, flag is rejected (spam prevention)
+- Same device cannot flag the same venue twice in one day (DB constraint)
+- If flagging would bring distinct-device flag count to **2** → venue status set to `stale`
+- If flagging would bring distinct-device flag count to **4** → venue status set to `closed`
+
+### Response
+
+```json
+{ "success": true }
+```
+
+---
+
+## `POST /api/confirm`
+
+GPS-verified venue confirmation. Clears all active flags on a venue.
+
+### Request
+
+```json
+{
+  "venueId": "uuid",
+  "deviceHash": "device_xxxxx",
+  "lat": 45.523,
+  "lng": -122.676
+}
+```
+
+### Behavior
+
+- Same Haversine 10m check
+- Flagger cannot have flagged this venue before
+- `venue_flag_events` row with `action: 'confirm'` (idempotent)
+- Calls `clear_flags_on_menu_commit` RPC → sets all active flags to `active: false`
+- Venue status set to `verified`
+- `last_verified` set to now
+
+---
+
+## `POST /api/cron/decay-flags`
+
+Monthly flag decay. Triggered by Vercel cron. Removes the oldest active flag per venue (one per month). Devices cannot reflag after decay.
+
+### Behavior
+
+- For each venue with >0 active flags: removes the oldest flag
+- Sets `last_flag_decay_at` to now
+- Devices with a `reopen` event on that venue cannot reflag (enforced in DB)
+
+---
+
+## `POST /api/upload-photo`
+
+Uploads a single photo to Supabase Storage.
+
+### Request
+
+`Content-Type: multipart/form-data`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `photo` | File | Image file (max 20MB) |
 | `venueId` | string | Venue to attach to (optional) |
 | `deviceHash` | string | Anonymous fingerprint |
-| `lat` | string | GPS latitude (optional) |
-| `lng` | string | GPS longitude (optional) |
+| `lat`, `lng` | number | GPS coordinates (optional) |
 | `fingerprint` | string | Client-computed file fingerprint |
 
 ### Behavior
 
 1. Validate file size ≤ 20MB
-2. Server-side rate limit check (`action: 'upload-photo'`)
-3. Convert `File` to `Buffer` via `arrayBuffer()`
-4. Upload to Supabase Storage: `venue-photos/{filename}` with original MIME type
-5. Get public URL from Supabase
-6. If `venueId` provided: insert a row into `photos` table (status: `pending`)
-7. Call `cycle_old_photos` RPC to enforce 3-photo per-venue retention:
-   - Delete oldest DB records beyond 3 most recent
-   - Collect their storage paths and delete the actual files from Supabase Storage
+2. Server-side rate limit check
+3. Upload to Supabase Storage: `venue-photos/{filename}`
+4. Get public URL
+5. If `venueId` provided: insert `photos` row (status: `pending`)
+6. Call `cycle_old_photos` RPC to enforce 3-photo per-venue retention
 
 ### Response
 
@@ -165,95 +253,9 @@ Uploads a single photo to Supabase Storage and creates a `photos` DB record.
 }
 ```
 
-### Error responses
-
-| Status | Body | Cause |
-|--------|------|-------|
-| 400 | `{ "error": "No photo provided" }` | Missing file |
-| 400 | `{ "error": "File too large. Maximum size is 20MB." }` | Over limit |
-| 429 | `{ "error": "Rate limit exceeded..." }` | Device hash blocked |
-| 500 | `{ "error": "..." }` | Upload or DB insert failed |
-
-### Photo Retention
-
-Retention is per-venue, keeping the **3 most recent** photos. The `cycle_old_photos` RPC is called **after every successful upload** for venues with a `venueId`. Old photo DB records and their corresponding Storage files are both deleted.
-
-**Note:** The spec calls for **4 photo sets** retention (grouped by submission session), not individual photos. This is not yet implemented — the current system operates on individual photos with 3-photo retention.
-
 ---
 
-## `POST /api/create-venue` — **Planned, Not Yet Built**
-
-Per the spec: creates a new venue record without any menu text.
-
-### Expected behavior
-
-```ts
-// Body (expected):
-{
-  "name": "Jolly Rodger",
-  "lat": 45.523,       // or null
-  "lng": -122.676,     // or null
-  "address": "5627 S Kelly Ave", // optional
-  "deviceHash": "device_xxxxx"
-}
-
-// Response:
-{ "venue": { ...Venue object } }
-```
-
-**Status:** This route does not exist yet. Currently `AddVenueForm` calls `addVenue()` from `src/lib/venues.ts` directly. The spec calls for a dedicated `/api/create-venue` route to be used in the new upload flow.
-
----
-
-## `POST /api/commit-menu` — **Planned, Not Yet Built**
-
-Per the spec: the full commit flow — creates or confirms a venue, uploads photo set, saves menu text, manages photo sets.
-
-### Expected behavior
-
-```ts
-// Body (expected):
-{
-  "venueId": "uuid",              // null if new venue
-  "newVenueName": "Jolly Rodger", // set if venueId is null
-  "gps": { "lat": 45.523, "lng": -122.676 },
-  "menuText": "4-6pm\n$5 wells...",
-  "hhTime": "4-6pm, daily",
-  "photoUrls": ["https://...", "https://..."]  // URLs after upload
-}
-
-// Actions:
-// 1. If venueId is null → create new venue via /api/create-venue
-// 2. Upload photos via /api/upload-photo-set
-// 3. INSERT new photo_set row
-// 4. DELETE oldest photo_set if count > 4
-// 5. Update venue: menu_text, latest_menu_image_url, menu_text_updated_at
-// 6. Refresh map
-
-// Response:
-{ "success": true, "venueId": "uuid" }
-```
-
-**Status:** This route does not exist yet. The commit flow currently happens inline in `page.tsx` via `handleMenuConfirm()` which calls `/api/upload-photo` (single photo) and `/api/submit-menu` separately.
-
----
-
-## Other API Routes
-
-### `POST /api/check-duplicate`
-
-Not reviewed in detail — likely compares photo hash or menu text similarity against existing data for a venue. Used during the scan flow.
-
----
-
-### `POST /api/delete-old-photos`
-
-Not reviewed in detail — likely a manual trigger for photo retention cleanup.
-
----
-
-### `POST /api/rate-limit-check`
+## `POST /api/rate-limit-check`
 
 Server-side rate limit check. Called by other API routes before processing.
 
@@ -264,18 +266,18 @@ Server-side rate limit check. Called by other API routes before processing.
 { "allowed": boolean }
 ```
 
-Uses a combination of client-side localStorage (`rateLimit.ts`) and server-side check (likely stored in Supabase or in-memory). Server-side is fail-open — if the check fails, the request proceeds.
+Uses server-side check (Supabase). Server-side is **fail-open** — if the check fails, the request proceeds.
 
 ---
 
-### `POST /api/track-event`
+## `POST /api/track-event`
 
 Analytics event tracking.
 
 ```ts
 // Body:
 {
-  "event": "menu_parse_success" | "menu_save_success" | "onboarding_complete" | ...,
+  "event": "menu_save_success" | "scan_start" | "scan_abandon" | ...,
   "deviceHash": "device_xxxxx",
   "metadata": { ... }  // optional
 }
@@ -288,11 +290,15 @@ Analytics event tracking.
 | Route | Method | Status | Purpose |
 |-------|--------|--------|---------|
 | `/api/parse-menu` | POST | ✅ Built | GPT-4o mini menu OCR |
-| `/api/submit-menu` | POST | ✅ Built | Create/update venue + save menu text |
-| `/api/upload-photo` | POST | ✅ Built | Upload photo to Supabase Storage |
-| `/api/create-venue` | POST | 🔨 Planned | Create new venue (replaces direct `addVenue()` call) |
-| `/api/commit-menu` | POST | 🔨 Planned | Full commit flow: venue + photos + menu |
-| `/api/check-duplicate` | POST | ✅ Built | Duplicate detection |
-| `/api/delete-old-photos` | POST | ✅ Built | Photo retention |
+| `/api/submit-venue` | POST | ✅ Built | Single-step new venue: dedup + create + photo upload |
+| `/api/commit-menu` | POST | ✅ Built | Update existing venue HH + upload photos |
+| `/api/create-venue` | POST | ⚠️ Legacy | Old two-step path — use submit-venue instead |
+| `/api/upload-photo` | POST | ✅ Built | Upload single photo to Supabase Storage |
+| `/api/flag` | POST | ✅ Built | GPS-verified flag submission (moderation) |
+| `/api/confirm` | POST | ✅ Built | GPS-verified venue confirmation (moderation) |
+| `/api/cron/decay-flags` | POST | ✅ Built | Monthly flag decay (cron-triggered) |
 | `/api/rate-limit-check` | POST | ✅ Built | Rate limit enforcement |
-| `/api/track-event` | POST | ✅ Built | Analytics |
+| `/api/track-event` | POST | ✅ Built | Analytics events |
+| `/api/submit-menu` | POST | ✅ Built | Legacy path for simple menu text submission (pre-2026-04-24) |
+| `/api/delete-old-photos` | POST | ✅ Built | Photo retention |
+| `/api/check-duplicate` | POST | ✅ Built | Duplicate detection |

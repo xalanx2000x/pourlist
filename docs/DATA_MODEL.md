@@ -5,150 +5,188 @@
 | Table | Purpose |
 |-------|---------|
 | `venues` | Every bar or restaurant with a happy hour program |
-| `photos` | Individual photo submissions (reference images) |
-| `flags` | User-submitted moderation flags on venues or photos |
-| `photo_sets` | **Planned** — groups photos submitted together in one session |
+| `photo_sets` | Photo groupings per scan session (max 4 per venue) |
+| `venue_events` | Analytics events: gps_mismatch, photo_upload, hh_confirm, etc. |
+| `device_stats` | Per-device submission count (for trusted contributor logic) |
+| `flags` | GPS-verified moderation flags on venues |
+| `venue_flag_events` | Immutable log of flag/confirm/reopen actions (idempotency) |
 
 ---
 
 ## `venues` Table
 
-The primary table. Every bar/restaurant in the app is a row here.
+Primary table. GPS source is **EXIF from photo** — no address entry required.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | UUID | Primary key, auto-generated |
+| `id` | UUID | Primary key |
 | `name` | text | Venue name — required |
-| `address` | text | Street address (may be partial if GPS-only) |
-| `lat` | numeric | Latitude (null if geocoding failed or GPS not available) |
-| `lng` | numeric | Longitude |
-| `zip` | text | ZIP code — currently hardcoded to `97209` (Pearl District) |
-| `phone` | text | Phone number (optional, not captured in new upload flow) |
-| `website` | text | Website URL (optional, not captured in new upload flow) |
-| `type` | text | Venue type e.g. "bar", "restaurant" (optional, not captured in new upload flow) |
-| `status` | text | `unverified` \| `verified` \| `stale` \| `closed` — see Status Lifecycle below |
-| `contributor_trust` | text | `new` \| `trusted` \| `anonymous` — trust level of the last contributor |
-| `last_verified` | timestamptz | When the venue was last confirmed/updated |
-| `photo_count` | integer | Count of photos on file (not currently kept in sync) |
-| `created_at` | timestamptz | When the venue row was created |
-| `menu_text` | text | The most recent happy hour menu text (HTML-escaped on write) |
-| `menu_text_updated_at` | timestamptz | When `menu_text` was last changed |
-| `latest_menu_image_url` | text | Public URL of the most recent menu photo |
-| `address_normalized` | text | **Planned** — canonical single-line address (not yet implemented) |
+| `address_backup` | text | Legacy address field — preserved, phased out. Empty string for new venues. Reverse-geocoded later. |
+| `lat` | numeric | Latitude from photo EXIF (authoritative) |
+| `lng` | numeric | Longitude from photo EXIF (authoritative) |
+| `zip` | text | ZIP — currently hardcoded to `97209` (Pearl District) |
+| `phone` | text | Optional |
+| `website` | text | Optional |
+| `type` | text | e.g. "bar", "restaurant" — optional |
+| `status` | text | `unverified` \| `verified` \| `stale` \| `closed` |
+| `contributor_trust` | text | `new` \| `trusted` |
+| `last_verified` | timestamptz | Last GPS-verified confirm |
+| `last_flag_decay_at` | timestamptz | Last flag decay cron run |
+| `photo_count` | integer | Approximate count (not tightly synced) |
+| `created_at` | timestamptz | |
+| `menu_text` | text | Legacy HTML-escaped text — superseded by hh_* fields |
+| `menu_text_updated_at` | timestamptz | Legacy |
+| `latest_menu_image_url` | text | Public URL of most recent photo |
+| `hh_summary` | text | Raw text: "5pm-midnight daily" |
+| `hh_type` | text | Window 1: `typical` \| `all_day` \| `open_through` \| `late_night` |
+| `hh_days` | text | Window 1: comma-separated day numbers (1=Mon, 7=Sun) |
+| `hh_start` | integer | Window 1: minutes from midnight (e.g. 1020 = 5pm) |
+| `hh_end` | integer | Window 1: minutes from midnight, null = "close" |
+| `hh_type_2` | text | Window 2 (same enum) |
+| `hh_days_2` | text | Window 2 day list |
+| `hh_start_2` | integer | Window 2 start |
+| `hh_end_2` | integer | Window 2 end |
+| `hh_type_3` | text | Window 3 |
+| `hh_days_3` | text | Window 3 day list |
+| `hh_start_3` | integer | Window 3 start |
+| `hh_end_3` | integer | Window 3 end |
 
----
-
-## `photos` Table
-
-Individual photo records. Photos are uploaded to Supabase Storage; this table holds metadata.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `venue_id` | UUID (FK) | Which venue this photo belongs to |
-| `url` | text | Public Supabase Storage URL |
-| `uploader_device_hash` | text | Anonymous device fingerprint of uploader |
-| `lat` | numeric | **Not currently stored** — used only for geo-check during submission, then discarded |
-| `lng` | numeric | **Not currently stored** — same as above |
-| `status` | text | `pending` \| `approved` \| `rejected` — moderation status |
-| `flagged_count` | integer | Number of times this photo has been flagged |
-| `moderation_confidence` | numeric | **Planned** — AI confidence score for auto-moderation |
-| `created_at` | timestamptz | Upload timestamp |
-
-### Photo Retention Policy
-
-**Current behavior:** Each venue retains the **3 most recent** photos. The `cycle_old_photos` Supabase RPC is called after every upload to enforce this — oldest photos beyond the limit are deleted from both the DB and Supabase Storage.
-
-**Planned behavior (per spec):** Each venue should retain the **last 4 photo sets** (each set = photos from one scan session). The `photo_sets` table would track groupings, and retention would be based on photo sets rather than individual photos. **This is not yet implemented.**
-
----
-
-## `flags` Table
-
-User-submitted moderation reports.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | UUID | Primary key |
-| `venue_id` | UUID (FK, nullable) | Venue being flagged (null if flagging a photo instead) |
-| `photo_id` | UUID (FK, nullable) | Photo being flagged (null if flagging a venue instead) |
-| `reason` | text | Free-text reason for the flag |
-| `device_hash` | text | Anonymous fingerprint of flagger |
-| `created_at` | timestamptz | When flag was submitted |
-
----
-
-## `photo_sets` Table — **Planned, Not Yet Implemented**
-
-Per the spec, this table groups photos submitted together in one session:
-
-```sql
-CREATE TABLE photo_sets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  venue_id UUID REFERENCES venues(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  photo_urls TEXT[]  -- array of Supabase Storage URLs
-);
--- Index on (venue_id, created_at DESC)
-```
-
-**Current status:** This table does not exist in the codebase. Photo groupings are currently implicit (multiple files uploaded separately but associated with the same venue in sequence). The `photo_sets` migration is chunk 1 in the implementation plan but has not been applied yet.
-
----
-
-## Venue Deduplication Logic
-
-When a user scans a menu with GPS coordinates, the app checks for existing venues within **10 meters**.
-
-**How proximity is calculated:** Haversine formula (great-circle distance) — more accurate than a rectangular bounding box for small radii.
-
-```ts
-// src/lib/venues.ts — getVenuesByProximity()
-const R = 6371000  // Earth radius in meters
-// ... Haversine filter applied post-query ...
-return R * c <= radiusMeters  // radiusMeters = 10 for dedup
-```
-
-**If 0 nearby venues:** User proceeds to name-entry step. A new venue is created with GPS coordinates from the photo (or null if unavailable).
-
-**If 1+ nearby venues:** Shown in the `VenuePicker` screen (planned) for user confirmation. The code currently shows a single match in `MenuConfirm` without a picker UI.
-
-**Name-based dedup:** When the user types a venue name, `NameEntry` (planned) queries Supabase with `ILIKE '%name%'` and shows "Did you mean [Venue]?" if a match is found within ~5km.
-
----
-
-## Status Lifecycle
+### Status Lifecycle
 
 ```
 unverified → verified → stale → closed
 ```
 
-| Status | Meaning |
-|--------|---------|
-| `unverified` | New venue added by a community member. No manual confirmation yet. |
-| `verified` | The venue has been manually confirmed to exist and have a HH program. |
-| `stale` | The venue had a menu at some point but hasn't been updated in a long time. Still visible. |
-| `closed` | The venue is no longer operating. Hidden from normal results. |
+- **N=2 distinct devices flag** → `stale` (hidden from main map, still visible in search)
+- **N=4 distinct devices flag** → `closed` (fully hidden)
+- **`confirm` (GPS-verified)** → `verified` + all flags cleared
 
-### Status Transitions
+### Trust
 
-- **Any status** can have its `menu_text` updated by any user
-- `unverified` → `verified`: Manual admin action (moderation page — `src/app/admin/page.tsx`)
-- `verified` → `stale`: Happens automatically when `menu_text_updated_at` is old (exact threshold not currently enforced in code — admin page shows stale venues for review)
-- Any → `closed`: Admin action (currently no UI for this; would require DB update)
+- **New:** 0–9 lifetime submissions
+- **Trusted:** 10+ lifetime submissions (incremented by `increment_device_submissions` RPC on every successful submission)
 
 ---
 
-## Address Normalization — **Planned**
+## `photo_sets` Table
 
-The spec calls for a `normalizeAddress()` utility in `src/lib/addresses.ts` that converts full addresses to a canonical format. For example:
+Replaces individual `photos` table. Groups all photos from one scan session.
 
-- `"5627 S Kelly Avenue, Portland, OR 97239"` → `"5627 S Kelly Ave"`
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `venue_id` | UUID (FK) | Which venue |
+| `photo_urls` | text[] | Array of Supabase Storage public URLs |
+| `uploader_device_hash` | text | Anonymous fingerprint |
+| `created_at` | timestamptz | |
 
-This would:
-- Drop city/state/ZIP
-- Abbreviate: Ave→Ave, St→St, Blvd→Blvd, Dr→Dr, Ln→Ln
-- Preserve directionals: NW/NE/SE/SW, N/S/E/W
-- Preserve ordinals: 1st, 2nd, etc.
+### Retention Policy
 
-**Current status:** `src/lib/addresses.ts` does not exist. The `address_normalized` column is not populated.
+**Max 4 photo sets per venue.** On the 5th insert, the oldest set is deleted (both DB row and Storage files). Enforced in `submit-venue` and `commit-menu` API routes.
+
+---
+
+## `venue_events` Table
+
+Analytics event log. Non-critical — failures do not rollback the parent operation.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `venue_id` | UUID (FK, nullable) | Associated venue |
+| `event_type` | text | `gps_mismatch` \| `photo_upload` \| `hh_confirm` \| `scan_start` \| `scan_abandon` \| ... |
+| `device_hash` | text | Anonymous fingerprint |
+| `lat` | numeric | GPS coordinate where event fired |
+| `lng` | numeric | |
+| `created_at` | timestamptz | |
+
+### `gps_mismatch` Events
+
+Logged when `phoneGps` is **>500m** from `exifGps` (venue location). Indicates possible address spoofing. Used for fraud analysis — does not affect venue status.
+
+---
+
+## `device_stats` Table
+
+Tracks per-device submission count for trust scoring.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `device_hash` | text | Primary key |
+| `submission_count` | integer | Lifetime successful submissions |
+| `updated_at` | timestamptz | |
+
+Incremented via `increment_device_submissions` RPC on every successful menu save.
+
+---
+
+## `flags` Table
+
+GPS-verified moderation flags. Haversine 10m check enforced in the API route.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `venue_id` | UUID (FK) | Venue being flagged |
+| `device_hash` | text | Anonymous fingerprint |
+| `active` | boolean | `true` = active flag, `false` = cleared by confirm/decay |
+| `lat` | numeric | Flagger's GPS at time of flag |
+| `lng` | numeric | |
+| `created_at` | timestamptz | |
+
+**Constraints:**
+- Same device cannot flag the same venue more than once per day
+- Device must have ≥1 lifetime submission before flagging
+- Flagger cannot confirm their own flag (enforced in `confirm` API route)
+
+---
+
+## `venue_flag_events` Table
+
+Immutable log. Enforces idempotency via `UNIQUE(venue_id, device_hash, action)`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `venue_id` | UUID (FK) | |
+| `device_hash` | text | |
+| `action` | text | `flag` \| `confirm` \| `reopen` |
+| `created_at` | timestamptz | |
+
+---
+
+## Dedup Logic
+
+### GPS-based dedup (exact match check)
+
+When a new venue is submitted via `submit-venue`:
+1. Query venues within **50m** (Haversine) of `exifGps`
+2. If name normalized (`normName()` — strips "The", lowercases, trims) matches any nearby venue → return `duplicate` conflict
+3. User sees: `"Venue already exists nearby as [name]. Want to update that instead?"`
+
+### Name fuzzy match (NameEntry)
+
+`NameEntry` queries Supabase `ILIKE %name%` with a 5km radius after 2+ characters typed. Shows "Did you mean [Venue]?" suggestions.
+
+---
+
+## Address Handling
+
+**No address entry for new venues.** EXIF GPS from the photo is the authoritative location signal. `address_backup` is stored as an empty string initially and backfilled via reverse geocoding in a future pass.
+
+The `address` column was renamed to `address_backup` in 2026-04-17 to reflect its deprecated status. It is preserved for backward compatibility with existing data but is not written by new submissions.
+
+---
+
+## XSS Sanitization
+
+All `menu_text` is HTML-escaped before storing:
+```ts
+text.replace(/&/g, '&amp;')
+   .replace(/</g, '&lt;')
+   .replace(/>/g, '&gt;')
+   .replace(/"/g, '&quot;')
+   .replace(/'/g, '&#39;')
+```
+
+`hh_summary` is stored as raw text (user input) and displayed as-is without HTML rendering.

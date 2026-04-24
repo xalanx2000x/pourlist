@@ -18,193 +18,51 @@
 
 ```
 src/
-├── app/                          # Next.js App Router pages
-│   ├── page.tsx                  # Main home page (map + scan flow)
-│   ├── admin/page.tsx            # Admin/moderation page
-│   └── api/                      # API route handlers
+├── app/
+│   ├── page.tsx                  # Main home page (map + scan flow + state machine)
+│   ├── layout.tsx                # Root layout with fonts, global styles
+│   └── api/
 │       ├── parse-menu/           # POST — GPT-4o mini menu OCR
-│       ├── submit-menu/          # POST — create or update venue + menu
-│       ├── upload-photo/         # POST — upload photo to Supabase Storage
-│       ├── check-duplicate/      # POST — duplicate detection
-│       ├── delete-old-photos/    # POST — photo retention cleanup
-│       ├── rate-limit-check/     # POST — spam prevention
+│       ├── submit-venue/         # POST — new venue: dedup + create + photos (single-step)
+│       ├── commit-menu/          # POST — existing venue: update HH + photos
+│       ├── upload-photo/         # POST — upload to Supabase Storage
+│       ├── flag/                 # POST — GPS-verified flag (moderation)
+│       ├── confirm/              # POST — GPS-verified confirm (moderation)
+│       ├── cron/decay-flags/     # POST — monthly flag decay
+│       ├── rate-limit-check/    # POST — spam prevention
 │       ├── track-event/          # POST — analytics events
-│       └── create-venue/          # (planned) create a new venue directly
-│       └── commit-menu/          # (planned) full commit: venue create + photo upload + photo_sets
+│       └── create-venue/         # Legacy — old two-step path (deprecated)
 │
-├── components/                   # React components
-│   ├── Map.tsx                   # Mapbox map with venue pins
-│   ├── SearchBar.tsx             # Venue name / location search
-│   ├── VenueList.tsx             # Scrollable venue list
-│   ├── VenueDetail.tsx           # Bottom sheet: venue info + menu
-│   ├── VenueCard.tsx              # List item for a single venue
-│   ├── MenuCapture.tsx           # Camera/gallery photo picker (supports multi-photo)
-│   ├── MenuConfirm.tsx            # Review parsed menu text + confirm save (being replaced)
-│   ├── MenuReview.tsx             # (planned) replacement for MenuConfirm with HH time detection
-│   ├── AddVenueForm.tsx          # Manual venue creation form (being simplified)
-│   ├── VenuePicker.tsx            # (planned) "Are you at X?" screen after photo capture
-│   ├── NameEntry.tsx              # (planned) name entry + fuzzy match for new venues
-│   ├── OnboardingModal.tsx        # First-time user tour
-│   └── SupportScreen.tsx          # Developer tip screen
+├── components/
+│   ├── Map.tsx                   # Mapbox map with venue pins + bounds filtering
+│   ├── SearchBar.tsx             # Venue name / location geocoding search
+│   ├── VenueList.tsx             # Scrollable list (filtered by last active map bounds)
+│   ├── VenueDetail.tsx          # Bottom sheet: HH schedule + menu photo + actions
+│   ├── VenueCard.tsx             # List item for a single venue
+│   ├── MenuCapture.tsx           # Camera/gallery picker (exifGps + phoneGps extraction)
+│   ├── VenuePicker.tsx           # "Are you at X?" — confirm against nearby venues
+│   ├── NameEntry.tsx             # New venue name entry + fuzzy Supabase match
+│   ├── MenuReview.tsx            # Edit HH schedule + commit
+│   ├── HHScheduleInput.tsx       # Two-box HH parser with live preview
+│   ├── HHScheduleEditor.tsx      # (planned) manual HH window editor
+│   ├── OnboardingModal.tsx       # First-time user tour
+│   └── SupportScreen.tsx         # Developer tips screen
 │
-└── lib/                          # Shared utilities
-    ├── supabase.ts               # Supabase client + TypeScript types (Venue, Photo, Flag)
-    ├── venues.ts                 # Venue CRUD helpers (getVenuesByProximity, addVenue, etc.)
-    ├── gps.ts                    # EXIF GPS extraction + browser geolocation
-    ├── device.ts                 # Device hash generation (anonymous identity)
-    ├── geocode.ts                # Nominatim geocoding + venue search
-    ├── happyHourCheck.ts         # HH signal detection from menu text
-    ├── activeHH.ts               # Real-time HH active check (used for purple pin logic)
+└── lib/
+    ├── supabase.ts               # Supabase client + Venue type (with hh_* fields)
+    ├── venues.ts                 # getVenuesByProximity, getVenueById, addVenue
+    ├── parse-hh.ts               # Parse HH schedule text → structured HHWindow[]
+    ├── parse-menu.ts             # AI menu text extraction (parseMenuPhotos)
+    ├── gps.ts                    # extractGpsFromPhoto (EXIF) + getBrowserLocation
+    ├── gpsCheck.ts               # Haversine helpers: isWithinRadius, haversineDistance
+    ├── device.ts                 # getDeviceHash() — anonymous device fingerprint
+    ├── geocode.ts                # Nominatim geocoding + reverse geocoding
+    ├── activeHH.ts               # isHHActive(venue) — checks hh_* fields against clock
+    ├── happyHourCheck.ts         # checkHappyHour(text) → boolean (pre-filter)
     ├── rateLimit.ts              # Client-side rate limiter (localStorage-based)
-    ├── analytics.ts              # Event tracking helper
-    ├── imageHash.ts              # File fingerprinting for dedup
-    └── imageResize.ts            # Client-side image resizing before upload
+    ├── analytics.ts              # trackEvent(), trackVenueEvent()
+    └── imageHash.ts              # File fingerprinting for dedup
 ```
-
----
-
-## Key State Machine: `scanStep`
-
-The main page (`page.tsx`) manages the scan/upload flow via a `scanStep` state machine:
-
-```
-idle
-  │
-  └── 'capture' → MenuCapture (take 1–4 photos + GPS)
-                    │
-                    ▼
-              'confirm' → MenuConfirm (review parsed text + save)
-                              │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-         (success)                      'newvenue' → AddVenueForm
-         → idle                            │
-                                           ▼
-                                      (back to 'confirm'
-                                       once venue created)
-```
-
-**Current `scanStep` values (as of this doc):**
-
-| Value | Component shown | Trigger |
-|-------|----------------|---------|
-| `idle` | Map/list view | Default state |
-| `capture` | `MenuCapture` | User taps "Scan Happy Hour Menu" button |
-| `confirm` | `MenuConfirm` | After `MenuCapture` calls `onCapture` with photos + GPS |
-| `newvenue` | `AddVenueForm` | No nearby venue found, user needs to create one |
-
-**Planned `scanStep` values (after implementation):**
-
-| Value | Component shown | Trigger |
-|-------|----------------|---------|
-| `idle` | Map/list view | Default state |
-| `capture` | `MenuCapture` | User taps scan button |
-| `venue_picker` | `VenuePicker` | GPS available, show "Are you at X?" |
-| `name_entry` | `NameEntry` | No match in venue_picker, or no GPS |
-| `review` | `MenuReview` | After parsing all photos |
-| `newvenue` (or `confirm`) | `AddVenueForm` | Legacy path |
-
----
-
-## Key API Routes
-
-### `POST /api/parse-menu`
-
-- **Input:** `{ imageData: string }` — base64 data URL of a photo
-- **Model:** GPT-4o mini with vision
-- **Prompt:** Extract all menu text verbatim from the photo. Preserve prices, drink names, times. Mark illegible text as `[illegible]`.
-- **Output:** `{ text: string }` — raw extracted text
-- **Timeout:** 30 seconds
-- **Rate limit:** Uses device hash to limit parse requests
-
-### `POST /api/submit-menu`
-
-- **Input:** `{ menuText, venueId?, venueName, address, lat?, lng?, deviceHash, imageUrl? }`
-- **Creates** a new venue if `venueId` is not provided
-- **Updates** `menu_text` on an existing venue if `venueId` is provided
-- **Geo-check:** If photo GPS is provided and venue has coords, verifies photo location is within **10m** of venue
-- **Sanitization:** HTML-escapes `menu_text` before storing to prevent XSS
-- **Output:** `{ venueId: string, success: true }`
-
-### `POST /api/upload-photo`
-
-- **Input:** `FormData` with `photo` (File), `venueId?`, `deviceHash`, `lat?`, `lng?`
-- **Uploads** to Supabase Storage under `venue-photos/{filename}`
-- **Retention:** After upload, calls `cycle_old_photos` RPC to keep only the 3 most recent photos per venue
-- **Output:** `{ url: string, fingerprint: string, lat: number|null, lng: number|null }`
-
----
-
-## Authentication
-
-**No user accounts.** Anonymous device fingerprinting:
-
-```ts
-// src/lib/device.ts — getDeviceHash()
-const fingerprint = [
-  navigator.userAgent,
-  navigator.language,
-  screen.width, screen.height, screen.colorDepth,
-  new Date().getTimezoneOffset()
-].join('|')
-// Simple hash → 'device_xxxxx'
-```
-
-- Stored in Supabase as `uploader_device_hash` on photos and `deviceHash` on submissions
-- Used for rate limiting (client-side in `rateLimit.ts` + server-side in each API route)
-- Not linked to any personally identifiable information
-
----
-
-## Data Model (TypeScript types from `supabase.ts`)
-
-```ts
-// src/lib/supabase.ts
-
-type Venue = {
-  id: string
-  name: string
-  address: string
-  lat: number | null
-  lng: number | null
-  zip: string | null
-  phone: string | null
-  website: string | null
-  type: string | null
-  status: 'unverified' | 'verified' | 'stale' | 'closed'
-  contributor_trust: string      // 'new' | 'trusted' | 'anonymous'
-  last_verified: string | null
-  photo_count: number
-  created_at: string
-  menu_text: string | null
-  menu_text_updated_at: string | null
-  latest_menu_image_url: string | null
-}
-
-type Photo = {
-  id: string
-  venue_id: string
-  url: string
-  uploader_device_hash: string
-  lat: number | null
-  lng: number | null
-  status: 'pending' | 'approved' | 'rejected'
-  flagged_count: number
-  moderation_confidence: number | null
-  created_at: string
-}
-
-type Flag = {
-  id: string
-  venue_id: string | null
-  photo_id: string | null
-  reason: string
-  device_hash: string
-  created_at: string
-}
-```
-
-**Note on `photo_sets`:** The spec calls for a `photo_sets` table to store grouped submissions. This table **does not yet exist in the codebase** — the current implementation stores photos individually and manages retention via the `cycle_old_photos` Supabase RPC. The `photo_sets` table is planned for a future migration.
 
 ---
 
@@ -218,3 +76,170 @@ type Flag = {
 | `NEXT_PUBLIC_BASE_URL` | App base URL (e.g. `http://localhost:3000`) |
 | `OPENAI_API_KEY` | OpenAI API key (server-only, for `/api/parse-menu`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only, for admin ops) |
+
+---
+
+## State Machine: `scanStep`
+
+The main `page.tsx` manages the scan/upload flow via a `scanStep` state machine. GPS signal separation: `exifGps` (from photo EXIF — authoritative) vs `phoneGps` (browser location — fraud signal only).
+
+```
+idle
+  │
+  └── 'capture'     → MenuCapture (take 1–4 photos)
+                           │
+                           ▼ (if no venue pre-selected)
+                    'venue_picker' → VenuePicker
+                           │                        │
+              ┌────────────┘                        │
+              ▼                                     ▼
+         'name_entry' ←─────────────── (no match or "not here")
+              │
+              ▼
+           'review' → MenuReview (edit HH schedule, commit)
+                              │
+                              ▼
+                          idle (resetScan)
+```
+
+| Step | Component shown | Trigger |
+|------|-----------------|---------|
+| `idle` | Map/list view | Default state |
+| `capture` | `MenuCapture` | User taps "Scan Happy Hour Menu" |
+| `venue_picker` | `VenuePicker` | GPS available, no pre-selected venue |
+| `name_entry` | `NameEntry` | "I'm not here" or no GPS |
+| `review` | `MenuReview` | Photos captured, menu text parsed |
+
+---
+
+## GPS Signal Separation
+
+Two distinct GPS signals are tracked throughout the scan flow:
+
+| Signal | Source | Used for | Stored on venue? |
+|--------|--------|----------|-----------------|
+| `exifGps` | First photo's EXIF metadata | Authoritative venue location | **Yes** (`lat`/`lng`) |
+| `phoneGps` | Browser's `getCurrentPosition()` | Fraud signal only | **No** — logged to `venue_events` if >500m from venue |
+
+This prevents indoor/low-accuracy phone GPS from overriding the photo's EXIF GPS, which was captured at the venue by the user.
+
+---
+
+## Data Model (TypeScript types from `supabase.ts`)
+
+```ts
+type Venue = {
+  id: string
+  name: string
+  address_backup: string   // preserved from old address column, phased out
+  lat: number | null
+  lng: number | null
+  zip: string | null
+  phone: string | null
+  website: string | null
+  type: string | null
+  status: 'unverified' | 'verified' | 'stale' | 'closed'
+  contributor_trust: 'new' | 'trusted'
+  last_verified: string | null
+  last_flag_decay_at: string | null
+  photo_count: number
+  created_at: string
+  menu_text: string | null           // HTML-escaped, legacy — now superseded by hh_* fields
+  menu_text_updated_at: string | null
+  latest_menu_image_url: string | null
+  // Structured HH windows (up to 3)
+  hh_summary: string | null           // Raw text: "5pm-midnight daily"
+  hh_type: string | null             // 'typical' | 'all_day' | 'open_through' | 'late_night'
+  hh_days: string | null             // Comma-separated: "1,2,3,4,5"
+  hh_start: number | null             // Minutes from midnight (e.g. 1020 = 5pm)
+  hh_end: number | null
+  hh_type_2, hh_days_2, hh_start_2, hh_end_2: ...
+  hh_type_3, hh_days_3, hh_start_3, hh_end_3: ...
+}
+
+type PhotoSet = {
+  id: string
+  venue_id: string
+  photo_urls: string[]                // Array of Supabase Storage public URLs
+  uploader_device_hash: string
+  created_at: string
+}
+
+type VenueEvent = {
+  id: string
+  venue_id: string | null
+  event_type: 'gps_mismatch' | 'photo_upload' | 'hh_confirm' | ...
+  device_hash: string
+  lat: number | null
+  lng: number | null
+  created_at: string
+}
+
+type DeviceStats = {
+  device_hash: string                 // Primary key
+  submission_count: number
+  updated_at: string
+}
+
+type Flag = {
+  id: string
+  venue_id: string | null
+  photo_id: UUID | null               // Legacy — photos table deprecated in favor of photo_sets
+  reason: string
+  device_hash: string
+  active: boolean                      // false = cleared by confirm or decay
+  lat: number | null
+  lng: number | null
+  created_at: string
+}
+
+type VenueFlagEvent = {
+  id: string
+  venue_id: string
+  device_hash: string
+  action: 'flag' | 'confirm' | 'reopen'
+  created_at: string
+  // UNIQUE(venue_id, device_hash, action) — enforces idempotency
+}
+```
+
+---
+
+## Key Implementation Notes
+
+### hh_* fields (2026-04-22+)
+
+Happy hour data is stored as structured fields (`hh_type`, `hh_start`, `hh_end`, `hh_days`, etc.) rather than parsed from `menu_text`. Up to 3 windows supported:
+
+- `hh_type`: `typical` | `all_day` | `open_through` | `late_night`
+- `hh_days`: comma-separated day numbers (1=Mon, 7=Sun)
+- `hh_start` / `hh_end`: minutes from midnight (e.g. 1020 = 5pm, 0 = midnight)
+- `hh_summary`: raw user input text as fallback display
+
+### Photo sets (replaces individual photos)
+
+Photos are stored as **photo sets** — all photos from one scan session grouped together. Each venue keeps the **last 4 photo sets** (oldest deleted on new insert). Storage files are also deleted on purge.
+
+### Moderation: GPS-verified flagging
+
+Flagging and confirming require the user's GPS to be within **10m** (Haversine) of the venue. Flag decay removes one oldest active flag per venue per month. Devices with a `reopen` event cannot reflag.
+
+### Symmetric map/list filtering
+
+When the user pans the map, both the map pins and the list view are filtered to the same map bounds. "Search this area" resets bounds to `null` (shows all loaded venues).
+
+### Active HH detection
+
+`isHHActive(venue)` checks the structured `hh_type`/`hh_start`/`hh_end`/`hh_days` fields against the current clock and day-of-week. Replaced the old `menu_text` parsing approach.
+
+### Rate limiting
+
+Client-side (localStorage) + server-side (Supabase). Server-side is **fail-open** — if it fails, the request proceeds. Client-side fails fast with a user-visible message.
+
+---
+
+## Vercel Deployment
+
+- **Production:** `pourlist.vercel.app` (CNAME to Vercel)
+- **Preview deploys:** Each git push creates a preview URL
+- **Cron job:** `/api/cron/decay-flags` runs monthly via Vercel's cron (frequency: `"30 3 1 * *"` — 3:30 AM on the 1st of each month)

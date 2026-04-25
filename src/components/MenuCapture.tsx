@@ -81,7 +81,8 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
     setError('')
 
     try {
-      // EXIF GPS from first photo = authoritative venue location
+      // EXIF GPS from first photo — present if photo was taken with a camera app
+      // that embeds GPS in EXIF (native iOS Camera app, not web app camera).
       let exifGps: { lat: number; lng: number } | null = null
       try {
         exifGps = await extractGpsFromPhoto(files[0])
@@ -89,26 +90,30 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
         // No EXIF GPS
       }
 
-      // BLOCK: If photo has no EXIF GPS, venue location cannot be determined reliably.
-      // Phone GPS is a fraud signal only — it is NOT a fallback for venue location.
-      // Require the user to take a photo that has location data embedded.
-      if (!exifGps) {
-        setError('No location data found in this photo. Please take a new photo at the venue, and make sure Location Services are enabled for your camera app.')
-        setLoading(false)
-        return
-      }
-
-      // Phone's current GPS = used only as fraud signal (not venue location)
-      let phoneGps: { lat: number; lng: number } | null = null
+      // Browser GPS — user granted location permission to this web app.
+      // Used as the venue location signal when photo has no EXIF GPS.
+      // This handles the case where the photo was taken inside Safari's camera
+      // (which doesn't embed GPS) rather than the native camera app.
+      let browserGps: { lat: number; lng: number } | null = null
       try {
-        phoneGps = await getBrowserLocation()
+        browserGps = await getBrowserLocation()
       } catch {
         // Location unavailable
       }
 
-      // exifGps is the authoritative venue location source
-      // phoneGps is the fraud check signal
-      onCapture(files, phoneGps, exifGps)
+      // Determine authoritative venue location:
+      // - EXIF GPS from photo = preferred (camera app GPS, most precise)
+      // - Browser GPS = fallback (user granted permission to web app)
+      // - Neither = blocked (cannot determine venue location)
+      const venueGps = exifGps ?? browserGps
+      if (!venueGps) {
+        setError('No location data. Please enable Location Services for this website in your browser, then try again.')
+        setLoading(false)
+        return
+      }
+
+      // browserGps as fraud check signal — compared against venue's known coordinates
+      onCapture(files, browserGps, venueGps)
     } catch {
       setError('Could not read photos. Please try again.')
     } finally {

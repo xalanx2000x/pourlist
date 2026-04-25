@@ -35,10 +35,18 @@ export interface HHSchedule {
 function parseTimeToMin(timeStr: string): number | null {
   const s = timeStr.trim().toLowerCase()
 
-  // "midnight" → 0 minutes (12:00 AM)
+  // "midnight" → 0 (DB stores as endMin=0; formatWindow displays as "midnight")
   if (s === 'midnight') return 0
 
-  // "4pm", "4 pm", "4p"
+  // "noon" → 720 (12:00 PM)
+  if (s === 'noon') return 720
+
+  // "open" → null (venue open time; treated as startMin=null)
+  if (s === 'open') return null
+
+  // "close" → null (venue close time; treated as endMin=null)
+  if (s === 'close') return null
+
   // "4pm", "4 pm", "4p"
   const pmMatch = s.match(/^(\d{1,2})\s*(p|pm|p\.m\.?)?$/i)
   if (pmMatch) {
@@ -184,10 +192,11 @@ function normalizeText(text: string): string {
     .replace(/(?<![a-z])to\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close" (but not "midnight to close")
     .replace(/(?<![a-z])until\s+(?:the\s+)?close\b/g, 'close')
     .replace(/\btil\s+close\b/g, 'till close')
-    // Normalize "to midnight" → time range marker "-midnight" (e.g. "10 to midnight" → start=10pm, end=midnight)
+    // Normalize "to midnight" → "start-midnight" (preserve start time for parser)
+    // "10 to midnight" → "10-midnight", "10 til midnight" → "10-midnight", etc.
     .replace(/(?<!\d)to\s+midnight\b/g, '-midnight')
     .replace(/(?<!\d)until\s+midnight\b/g, '-midnight')
-    .replace(/\btil\s+midnight\b/g, 'till midnight')   // "10 til midnight" → "10 till midnight"
+    .replace(/\btil\s+midnight\b/g, '-midnight')   // "10 til midnight" → "10-midnight"
     // Normalize "from X" prefix (remove, keep the time)
     .replace(/\bfrom\s+/g, '')
     // Normalize "after X" (treat as late_night: X → close)
@@ -359,9 +368,17 @@ export function parseOneClause(text: string): HHWindow | null {
         startMin = parseTimeToMin(afterMatch[1] + (afterMatch[2] ? ':' + afterMatch[2] : '') + suffix)
         endMin = null
       } else if (adjustedText === 'midnight') {
-        // "midnight" from classifyHHType("midnight to close") → start at midnight, end = close
-        startMin = 0
-        endMin = null
+        // "midnight" as adjustedText: two cases
+        // 1. startMin already set → "midnight" is the END time (e.g. "10pm-midnight")
+        //    → set endMin=1440 (midnight), leave startMin as-is
+        // 2. startMin is null → "midnight to close" (no start specified)
+        //    → startMin=0 (midnight as start), endMin=null (close)
+        if (startMin !== null) {
+          endMin = 1440
+        } else {
+          startMin = 0
+          endMin = null
+        }
       }
     }
   }

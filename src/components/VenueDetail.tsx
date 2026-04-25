@@ -64,7 +64,8 @@ function formatWindow(
   if (type === 'all_day') return dayLabel ? `${dayLabel} all day` : 'All day'
   if (type === 'open_through') {
     // null end means "to close" — "midnight" is clearer than "close" for the HH context
-    const end = endMin != null ? formatMin(endMin) : 'midnight'
+    // endMin=0 is the DB's midnight sentinel; display it as "midnight" too
+    const end = (endMin != null && endMin !== 0) ? formatMin(endMin) : 'midnight'
     return dayLabel ? `${dayLabel} until ${end}` : `Until ${end}`
   }
   if (type === 'late_night') {
@@ -73,13 +74,15 @@ function formatWindow(
       return dayLabel ? `${dayLabel} late night` : 'Late night'
     }
     const start = formatMin(startMin)
-    const end = endMin != null ? formatMin(endMin) : 'midnight'
+    // endMin=0 in DB = midnight; display it as "midnight" not "12:00 AM"
+    const end = (endMin != null && endMin !== 0) ? formatMin(endMin) : 'midnight'
     return dayLabel ? `${dayLabel} ${start}–${end}` : `${start}–${end}`
   }
   if (type === 'typical') {
     if (startMin == null || endMin == null) return null
     const start = formatMin(startMin)
-    const end = formatMin(endMin)
+    // endMin=0 = midnight; display as "midnight" not "12:00 AM"
+    const end = endMin !== 0 ? formatMin(endMin) : 'midnight'
     if (!dayLabel) return `${start}–${end}`
     // Handle midnight crossing
     if (endMin < startMin) return `${dayLabel} ${start}–${end}+`

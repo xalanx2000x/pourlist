@@ -568,13 +568,13 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
       {/* Full-screen photo viewer — all photos, navigable */}
       {photoViewerOpen && allPhotos.length > 0 && (
         <div
-          className="fixed inset-0 z-[200] bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[200] bg-black/95"
           onClick={(e) => {
             if (e.target === e.currentTarget) closePhotoViewer()
           }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-black/60 shrink-0">
+          {/* Header — absolute overlaid on top of image */}
+          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60 z-10">
             <button
               onClick={closePhotoViewer}
               className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium"
@@ -586,12 +586,12 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
             </span>
           </div>
 
-          {/* Photo area */}
-          <div className="flex-1 flex items-center justify-center relative">
+          {/* Full-screen image area */}
+          <div className="absolute inset-0 flex items-center justify-center">
             {/* Prev button */}
             <button
               onClick={prevPhoto}
-              className="absolute left-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors"
+              className="absolute left-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors z-10"
               aria-label="Previous photo"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -599,18 +599,16 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
               </svg>
             </button>
 
-            <div className="max-w-full max-h-full p-4 flex items-center justify-center">
-              <img
-                src={allPhotos[viewerPhotoIndex].url}
-                alt={`Photo ${viewerPhotoIndex + 1}`}
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
+            <img
+              src={allPhotos[viewerPhotoIndex].url}
+              alt={`Photo ${viewerPhotoIndex + 1}`}
+              className="max-w-full max-h-full object-contain"
+            />
 
             {/* Next button */}
             <button
               onClick={nextPhoto}
-              className="absolute right-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors"
+              className="absolute right-2 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors z-10"
               aria-label="Next photo"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -619,8 +617,8 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
             </button>
           </div>
 
-          {/* Dots indicator */}
-          <div className="flex justify-center gap-1.5 pb-6 shrink-0">
+          {/* Dots indicator — absolute at bottom */}
+          <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-1.5 z-10">
             {allPhotos.map((_, idx) => (
               <button
                 key={idx}

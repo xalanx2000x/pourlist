@@ -47,6 +47,17 @@ function parseTimeToMin(timeStr: string): number | null {
   // "close" → null (venue close time; treated as endMin=null)
   if (s === 'close') return null
 
+  // "3:30pm", "4:30am" — colon with optional am/pm suffix
+  const colonPmMatch = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm|p\.m\.?)?$/i)
+  if (colonPmMatch) {
+    let h = parseInt(colonPmMatch[1])
+    const m = parseInt(colonPmMatch[2])
+    const suffix = (colonPmMatch[3] || '').toLowerCase()
+    if (suffix === 'am') { if (h === 12) h = 0 }
+    else if (h < 12) h += 12  // pm suffix: add 12h (but 12pm stays 12)
+    return h * 60 + m
+  }
+
   // "4pm", "4 pm", "4p"
   const pmMatch = s.match(/^(\d{1,2})\s*(p|pm|p\.m\.?)?$/i)
   if (pmMatch) {
@@ -158,12 +169,15 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
 
   // LATE NIGHT: "to close", "until close", "till close", "close"
   // Also catches bare X-close and X - close patterns (no "to/until" needed)
-  // Also: "after [time]" → late_night (e.g. "after 9" = 9pm-close)
-  // Also: "till midnight" → late_night (e.g. "10 till midnight" = 10pm-midnight)
-  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|after\s+\d|till\s*midnight)\b/.test(lower)) {
+  // Also: "after [number]" → late_night (e.g. "after 9" = 9pm-close)
+  // Also: "to midnight" / "till midnight" / "after midnight" → midnight to close
+  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|to\s*midnight|till\s*midnight|after\s+\d+|after\s+midnight)\b/.test(lower)) {
     const adjusted = lower
       .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
-      .replace(/\bafter\s+/i, '')  // strip "after " but keep the time number
+      .replace(/\bto\s*midnight\b/gi, '')    // strip "to midnight" but keep nothing (it's end-of-day)
+      .replace(/\btill\s*midnight\b/gi, '')  // strip "till midnight" but keep nothing
+      .replace(/\bafter\s+\d+\b/gi, '')      // strip "after 12" etc, keep nothing (time already handled)
+      .replace(/\bafter\s+midnight\b/gi, '')  // strip "after midnight" but keep nothing
       .trim()
     return { type: 'late_night', adjustedText: adjusted }
   }
@@ -250,6 +264,11 @@ export function parseOneClause(text: string): HHWindow | null {
 
   // ── NO EXPLICIT TIME for open_through / late_night ──────────────────
   if (!adjustedText && (type === 'open_through' || type === 'late_night')) {
+    // "after 12" or "after midnight" — adjustedText is empty but type is late_night
+    // → midnight to close (startMin=0, endMin=null)
+    if (type === 'late_night') {
+      return { type: 'late_night', days: [], excludeDays: [], startMin: 0, endMin: null }
+    }
     return { type, days: [], excludeDays: [], startMin: null, endMin: null }
   }
 
@@ -315,17 +334,52 @@ export function parseOneClause(text: string): HHWindow | null {
     }
   }
 
-  // ── FALLBACK: opening_hours.js for complex expressions ──────────────
+  // ── TIME RANGE PARSER (no opening_hours.js dependency) ─────────────
+  // Handles all formats including no-whitespace: "3pm-5", "3:30pm-9pm", "4:30pm-7"
   if (startMin === null && endMin === null && timePortion && /^\d/.test(timePortion)) {
-    try {
-      const oh = new openingHoursLib(timePortion)
-      const intervals = oh.getOpenIntervals(new Date(), new Date(Date.now() + 24 * 3600 * 1000))
-      if (intervals.length > 0) {
-        startMin = intervals[0][0].getHours() * 60 + intervals[0][0].getMinutes()
-        endMin = intervals[0][1].getHours() * 60 + intervals[0][1].getMinutes()
+    // Pattern: "H:mm[am|pm]-H:mm[am|pm]" — am/pm suffix on EACH side independently
+    // Handles: "3pm-5", "3pm-5pm", "3:30pm-9pm", "4:30pm-7", "4:30pm-7pm"
+    // No spaces required around the separator dash.
+    const robustRange = timePortion.match(
+      /^(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm|p\.?m\.?))?\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?(?:\s*(am|pm|p\.?m\.?))?$/i
+    )
+
+    if (robustRange) {
+      const [, rawStartH, rawStartM, startSuffix, rawEndH, rawEndM, endSuffix] = robustRange
+
+      // Parse start time: use explicit suffix on start, or fall back to 'pm' for bare ≥ 4
+      let startStr = rawStartM ? `${rawStartH}:${rawStartM}` : rawStartH
+      let startSuffixStr = startSuffix
+        ?? (!endSuffix && parseInt(rawStartH) >= 4 ? 'pm' : '')
+      startMin = parseTimeToMin(startStr + (startSuffixStr || ''))
+
+      // Parse end time: use explicit suffix on end, or fall back to 'pm' for bare ≥ 4
+      let endStr = rawEndM ? `${rawEndH}:${rawEndM}` : rawEndH
+      let endSuffixStr = endSuffix
+        ?? (!startSuffix && parseInt(rawEndH) >= 4 ? 'pm' : '')
+      endMin = parseTimeToMin(endStr + (endSuffixStr || ''))
+
+      // If end still null (e.g. bare "5" with no suffix and rawNum < 4), treat as pm
+      if (endMin === null && !endSuffix && !startSuffix) {
+        endMin = parseTimeToMin(endStr + 'pm')
       }
-    } catch {
-      // leave null
+
+      if (type === 'open_through') {
+        endMin = endMin ?? parseTimeToMin(endStr + (endSuffix || ''))
+        startMin = startMin ?? (14 * 60)
+      } else if (type === 'late_night') {
+        startMin = startMin ?? parseTimeToMin(startStr + (startSuffix || ''))
+        endMin = null
+      }
+    } else if (type === 'late_night' && /^\d/.test(timePortion)) {
+      // Single time expression without a range (e.g. "10pm" in "10pm to midnight")
+      // → parse it as the start time, end is implicit close
+      const single = parseTimeToMin(timePortion.trim())
+      console.log('[DEBUG] single time branch for late_night, timePortion:', timePortion, '→ single:', single)
+      if (single !== null) {
+        startMin = single
+        endMin = null
+      }
     }
   }
 
@@ -367,6 +421,12 @@ export function parseOneClause(text: string): HHWindow | null {
         const suffix = hasExplicitPm ? 'pm' : (assumePm ? 'pm' : '')
         startMin = parseTimeToMin(afterMatch[1] + (afterMatch[2] ? ':' + afterMatch[2] : '') + suffix)
         endMin = null
+      } else if (adjustedText === '12') {
+        // "after 12" — "after" was stripped by classifyHHType, leaving just "12"
+        // In late_night context, "12" means midnight (start of day), not noon
+        // → startMin=0 (midnight), endMin=null (close)
+        startMin = 0
+        endMin = null
       } else if (adjustedText === 'midnight') {
         // "midnight" as adjustedText: two cases
         // 1. startMin already set → "midnight" is the END time (e.g. "10pm-midnight")
@@ -382,6 +442,8 @@ export function parseOneClause(text: string): HHWindow | null {
       }
     }
   }
+
+  console.log('[DEBUG parseOneClause] lower=', JSON.stringify(lower), 'adjustedText=', JSON.stringify(adjustedText))
 
   // Nothing usable found
   if (startMin === null && endMin === null && type === 'typical') return null

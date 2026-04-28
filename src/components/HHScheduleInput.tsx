@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { HHWindow, parseHHSchedule, parseOneClause } from '@/lib/parse-hh'
 
 interface HHScheduleInputProps {
@@ -130,6 +130,12 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
   // Compute preview once (after buildWindows is defined)
   const previewFinal = buildWindows()
   const previewWindows = previewFinal.filter(w => w !== null) as HHWindow[]
+
+  // Keep parent in sync with current parsed windows — this is what MenuReview's
+  // handleSave reads via hhWindowsRef.current. Every keystroke updates this.
+  useEffect(() => {
+    onChange?.(previewFinal)
+  }, [previewFinal])
 
   // Live error: fires on every keystroke when box1 has text but parser returns nothing
   useEffect(() => {

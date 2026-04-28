@@ -58,11 +58,12 @@ export default function MenuReview({
   }
 
   // Called by the Save button in MenuReview
+  // "Save Happy Hour" is the ONE button that both confirms AND saves.
   async function handleSave() {
     setCommitError('')
     setIsCommitting(true)
     try {
-      // Use ref to avoid stale closure — always reads the latest value
+      // Use the current ref values — onChange keeps hhWindowsRef in sync on every keystroke
       await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')

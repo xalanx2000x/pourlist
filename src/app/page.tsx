@@ -656,49 +656,47 @@ export default function Home() {
 
       </div>
 
-      {/* Back to map — persistent escape hatch */}
-      <button
-        onClick={() => setSelectedVenue(null)}
-        className="shrink-0 w-full text-center text-xs text-gray-400 hover:text-amber-600 py-2 border-t border-gray-100 transition-colors"
-      >
-        ← Back to Map
-      </button>
+      {/* Only show bottom nav when NO venue is selected */}
+      {!selectedVenue && (
+        <>
+          <button
+            onClick={() => setSelectedVenue(null)}
+            className="shrink-0 w-full text-center text-xs text-gray-400 hover:text-amber-600 py-2 border-t border-gray-100 transition-colors"
+          >
+            ← Back to Map
+          </button>
 
-      {/* Bottom bar */}
-      <div className="shrink-0 p-4 bg-white border-t border-gray-100">
-        {saveSuccess && (
-          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
-            <span className="text-green-600 text-sm font-semibold">✓ Saved</span>
-            <span className="text-sm text-green-700">
-              {lastSavedVenue}
-            </span>
+          {/* Bottom bar */}
+          <div className="shrink-0 p-4 bg-white border-t border-gray-100">
+            {saveSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
+                <span className="text-green-600 text-sm font-semibold">✓ Saved</span>
+                <span className="text-sm text-green-700">
+                  {lastSavedVenue}
+                </span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setSupportOpen(true)}
+              className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
+            >
+              Enjoying your happy hour? Tip the developers $1 →
+            </button>
+
+            <button
+              onClick={() => setScanStep('scan_start')}
+              className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
+            >
+              <span className="text-xl">📷</span>
+              Scan Menu
+            </button>
+            <p className="text-xs text-gray-400 text-center mt-2">
+              Find a venue or add a new one
+            </p>
           </div>
-        )}
-
-        <button
-          onClick={() => setSupportOpen(true)}
-          className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
-        >
-          Enjoying your happy hour? Tip the developers $1 →
-        </button>
-
-        <button
-          onClick={() => {
-            if (selectedVenue) {
-              handleScanStartVenueSelected(selectedVenue)
-            } else {
-              setScanStep('scan_start')
-            }
-          }}
-          className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-2xl font-bold text-base shadow-lg flex items-center justify-center gap-3 transition-colors"
-        >
-          <span className="text-xl">📷</span>
-          Scan Menu
-        </button>
-        <p className="text-xs text-gray-400 text-center mt-2">
-          Find a venue or add a new one
-        </p>
-      </div>
+        </>
+      )}
 
       {/* ── Scan workflow screens ─────────────────────────────────────────── */}
 

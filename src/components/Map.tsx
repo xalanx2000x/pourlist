@@ -221,12 +221,8 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       paint: {
         'circle-color': [
           'case',
-          ['get', 'hasHH'], '#7c3aed',   // purple for active HH
-          ['match', ['get', 'status'],
-            'unverified', '#fbbf24',
-            'stale', '#f97316',
-            '#f59e0b'
-          ]
+          ['get', 'hasHH'], '#7c3aed',   // purple = active HH right now
+          '#f59e0b'                       // amber = all other venues (status tracked but not shown on map)
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,

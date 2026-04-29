@@ -47,9 +47,7 @@ interface Stats {
     onlineNow: number
     lastUpdated: string
   }
-  topVenues: {
-    topVenues: { id: string; name: string; status: string; views: number }[]
-  }
+  topVenues: { id: string; name: string; status: string; views: number }[]
 }
 
 function pct(n: number) {
@@ -350,7 +348,7 @@ export default function DevdashClient() {
 
       {/* Row 4: Top Venues */}
       <SectionCard title="Top Venues (Last 30 Days)">
-        {stats.topVenues.topVenues.length > 0 ? (
+        {stats.topVenues.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -362,7 +360,7 @@ export default function DevdashClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.topVenues.topVenues.map((v, i) => (
+                {stats.topVenues.map((v, i) => (
                   <tr key={v.id} className="text-gray-700 dark:text-gray-300">
                     <td className="py-2 pr-3 text-gray-400">{i + 1}</td>
                     <td className="py-2 font-medium">{v.name}</td>

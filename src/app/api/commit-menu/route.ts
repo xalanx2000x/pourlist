@@ -232,20 +232,28 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Upload photos ─────────────────────────────────────────────────────
-    const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+    // photos may be File objects (backward compat) or base64 data URLs (compressed, preferred)
+    const rawPhotos = formData.getAll('photos')
     const uploadedUrls: string[] = []
 
-    if (photoFiles.length > 0 && targetVenueId) {
+    if (rawPhotos.length > 0 && targetVenueId) {
       const timestamp = Date.now()
 
-      for (let i = 0; i < photoFiles.length; i++) {
-        const photo = photoFiles[i]
-        // Always save as JPEG — file extension reflects original but binary is converted on client
-        const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
-        // Path is relative to bucket name (bucket = "venue-photos")
-        const filePath = `${targetVenueId}/${timestamp}/${fileName}`
+      for (let i = 0; i < rawPhotos.length; i++) {
+        const raw = rawPhotos[i]
+        // Decode: support both File objects and base64 data URLs
+        let buffer: Buffer
+        if (typeof raw === 'string') {
+          // base64 data URL → strip mime prefix and decode
+          const base64Data = raw.replace(/^data:[^;]+;base64,/, '')
+          buffer = Buffer.from(base64Data, 'base64')
+        } else {
+          // Raw File object (legacy or debug)
+          buffer = Buffer.from(await (raw as File).arrayBuffer())
+        }
 
-        const buffer = Buffer.from(await photo.arrayBuffer())
+        const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
+        const filePath = `${targetVenueId}/${timestamp}/${fileName}`
 
         const { error: uploadError } = await supabase.storage
           .from('venue-photos')

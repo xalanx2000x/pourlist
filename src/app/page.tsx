@@ -367,10 +367,16 @@ export default function Home() {
 
     const { confirmedVenue, newVenueName, files, phoneGps, exifGps } = scan
 
-    // ── Existing venue path → commit-menu (unchanged) ────────────────────
+    // ── Existing venue path → commit-menu ─────────────────────────────────
     if (confirmedVenue) {
+      const { fileToBase64 } = await import('@/lib/fileToBase64')
       const formData = new FormData()
-      for (const file of files) formData.append('photos', file)
+      // Compress photos before upload (max 1.5MB JPEG each)
+      // Prevents large-request timeouts on slow connections
+      for (const file of files) {
+        const base64 = await fileToBase64(file, 1.5)
+        formData.append('photos', base64)
+      }
       if (phoneGps) {
         formData.append('lat', String(phoneGps.lat))
         formData.append('lng', String(phoneGps.lng))

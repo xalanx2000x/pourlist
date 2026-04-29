@@ -7,6 +7,11 @@
  * so failures never impact the user experience.
  */
 export type EventName =
+  | 'scan_start'          // user confirmed venue, entered review flow
+  | 'scan_complete'       // user successfully saved menu/HH
+  | 'scan_abandon'        // user gave up / closed without saving
+  | 'hh_accepted'         // user saved HH without editing the parsed result
+  | 'hh_edited'           // user modified parsed HH before saving
   | 'menu_capture'        // user took photos
   | 'menu_parse_success'  // GPT extracted text
   | 'menu_parse_failure'  // GPT failed to extract
@@ -20,7 +25,7 @@ export type EventName =
 interface TrackEventOptions {
   deviceHash: string
   venueId?: string
-  metadata?: Record<string, string | number | boolean>
+  metadata?: Record<string, string | number | boolean | undefined>
 }
 
 export async function trackEvent(

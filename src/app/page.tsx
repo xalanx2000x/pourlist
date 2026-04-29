@@ -43,6 +43,7 @@ type ScanState = {
   confirmedVenue: Venue | null
   newVenueName: string | null
   menuText: string | null
+  startedAt: number | null  // Date.now() when scan entered review step — used for funnel duration
 }
 
 const RADIUS_OPTIONS = [
@@ -63,6 +64,7 @@ function emptyScanState(): ScanState {
     confirmedVenue: null,
     newVenueName: null,
     menuText: null,
+    startedAt: null,
   }
 }
 
@@ -344,9 +346,22 @@ export default function Home() {
     setScan(prev => ({
       ...prev,
       confirmedVenue: venue,
-      newVenueName: newVenueName ?? prev.newVenueName
+      newVenueName: newVenueName ?? prev.newVenueName,
+      startedAt: Date.now(),
     }))
     setScanStep('review')
+
+    // Track scan funnel start
+    await trackEvent('scan_start', {
+      deviceHash: getDeviceHash(),
+      venueId: venue?.id,
+      metadata: {
+        isNewVenue: !!newVenueName,
+        photoCount: scan.files.length,
+        hasPhoneGps: !!scan.phoneGps,
+        hasExifGps: !!scan.exifGps,
+      },
+    })
   }
 
   /**
@@ -365,7 +380,7 @@ export default function Home() {
       throw new Error(`Slow down! Please wait ${s}s before submitting again.`)
     }
 
-    const { confirmedVenue, newVenueName, files, phoneGps, exifGps } = scan
+    const { confirmedVenue, newVenueName, files, phoneGps, exifGps, menuText, startedAt } = scan
 
     // ── Existing venue path → commit-menu ─────────────────────────────────
     if (confirmedVenue) {
@@ -418,6 +433,21 @@ export default function Home() {
       if (hhWindows.some(w => w !== null)) {
         await trackVenueEvent(savedVenueId, 'hh_confirm', phoneGps)
       }
+
+      // Scan funnel completion + HH signal
+      const durationSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : undefined
+      await trackEvent('scan_complete', {
+        deviceHash,
+        venueId: savedVenueId,
+        metadata: {
+          isNewVenue: false,
+          photoCount: files.length,
+          hasPhoneGps: !!phoneGps,
+          hasHhData: hhWindows.some(w => w !== null),
+          hhWasEdited: !!(hhSummary && scan.menuText && hhSummary.trim() !== scan.menuText.trim()),
+          durationSec,
+        },
+      })
 
       setSaveSuccess(true)
       setLastSavedVenue(`${confirmedVenue.name} menu updated`)
@@ -493,6 +523,21 @@ export default function Home() {
         await trackVenueEvent(savedVenueId, 'hh_confirm', exifGps)
       }
 
+      // Scan funnel completion (new venue path)
+      const durationSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : undefined
+      await trackEvent('scan_complete', {
+        deviceHash,
+        venueId: savedVenueId,
+        metadata: {
+          isNewVenue: true,
+          photoCount: files.length,
+          hasPhoneGps: !!phoneGps,
+          hasHhData: hhWindows.some(w => w !== null),
+          hhWasEdited: !!(hhSummary && menuText && hhSummary.trim() !== menuText.trim()),
+          durationSec,
+        },
+      })
+
       setSaveSuccess(true)
       setLastSavedVenue(`"${newVenueName}" added`)
       setTimeout(() => setSaveSuccess(false), 3000)
@@ -503,7 +548,21 @@ export default function Home() {
     throw new Error('No venue selected and no new venue name. Please start over.')
   }
 
-  function handleMenuDiscard() {
+  async function handleMenuDiscard() {
+    // Scan funnel abandonment — user manually discarded
+    if (scan.startedAt) {
+      await trackEvent('scan_abandon', {
+        deviceHash: getDeviceHash(),
+        venueId: scan.confirmedVenue?.id,
+        metadata: {
+          atStep: scanStep,
+          photoCount: scan.files.length,
+          hasParsedText: !!scan.menuText,
+          hasConfirmedHh: false, // discarded = didn't confirm HH
+          reason: 'manual_discard',
+        },
+      })
+    }
     resetScan()
   }
 
@@ -518,7 +577,20 @@ export default function Home() {
     setGpsWarning(null)
   }
 
-  function handleScanClose() {
+  async function handleScanClose() {
+    // Scan funnel abandonment — user closed scan flow without completing
+    if (scan.startedAt) {
+      await trackEvent('scan_abandon', {
+        deviceHash: getDeviceHash(),
+        venueId: scan.confirmedVenue?.id,
+        metadata: {
+          atStep: scanStep,
+          photoCount: scan.files.length,
+          hasParsedText: !!scan.menuText,
+          reason: 'scan_close',
+        },
+      })
+    }
     resetScan()
   }
 

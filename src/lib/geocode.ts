@@ -23,6 +23,21 @@ export async function searchVenues(
     .ilike('name', `%${trimmed}%`)
     .limit(5)
 
+  // Fall back: strip punctuation and try again (handles "QD's"↔"QDS", "O'Brien"↔"OBrien", etc.)
+  if ((!venues || venues.length === 0) && trimmed.length >= 2) {
+    const normalized = trimmed.replace(/[^a-zA-Z0-9]/g, '')
+    if (normalized !== trimmed) {
+      const { data: venues2 } = await supabase
+        .from('venues')
+        .select('id, name, address_backup, lat, lng, latest_menu_image_url, hh_time, status')
+        .ilike('name', `%${normalized}%`)
+        .limit(5)
+      if (venues2 && venues2.length > 0) {
+        return { type: 'venues', venues: venues2 as Venue[] }
+      }
+    }
+  }
+
   if (venues && venues.length > 0) {
     return { type: 'venues', venues: venues as Venue[] }
   }

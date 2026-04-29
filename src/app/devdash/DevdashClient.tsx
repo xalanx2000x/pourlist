@@ -47,6 +47,9 @@ interface Stats {
     onlineNow: number
     lastUpdated: string
   }
+  topVenues: {
+    topVenues: { id: string; name: string; status: string; views: number }[]
+  }
 }
 
 function pct(n: number) {
@@ -344,6 +347,43 @@ export default function DevdashClient() {
           </div>
         </SectionCard>
       </div>
+
+      {/* Row 4: Top Venues */}
+      <SectionCard title="Top Venues (Last 30 Days)">
+        {stats.topVenues.topVenues.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">#</th>
+                  <th className="text-left pb-2">Venue</th>
+                  <th className="text-right pb-2">Status</th>
+                  <th className="text-right pb-2">Views</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.topVenues.topVenues.map((v, i) => (
+                  <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 pr-3 text-gray-400">{i + 1}</td>
+                    <td className="py-2 font-medium">{v.name}</td>
+                    <td className="py-2 text-right">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        v.status === 'verified' ? 'bg-green-100 text-green-700' :
+                        v.status === 'stale' ? 'bg-orange-100 text-orange-700' :
+                        v.status === 'closed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>{v.status}</span>
+                    </td>
+                    <td className="py-2 text-right font-bold text-amber-600">{v.views}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No venue views yet.</p>
+        )}
+      </SectionCard>
 
       {/* Footer */}
       <div className="text-center text-xs text-gray-400 pt-4">

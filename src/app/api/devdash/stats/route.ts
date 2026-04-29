@@ -240,6 +240,52 @@ async function getModerationStats() {
   return { flagEventsToday, flagEventsThisWeek, staleVenues, abusiveDevices }
 }
 
+async function getTopVenues() {
+  // Top 10 venues by views in the last 30 days — from venue_view events
+  const thirtyDaysAgo = daysAgo(30)
+
+  const res = await supabase
+    .from('events')
+    .select('venue_id')
+    .eq('event_name', 'venue_view')
+    .gte('created_at', thirtyDaysAgo)
+    .limit(5000)
+
+  const viewCount: Record<string, number> = {}
+  ;(res.data ?? []).forEach((row: { venue_id?: string }) => {
+    if (row.venue_id) {
+      viewCount[row.venue_id] = (viewCount[row.venue_id] ?? 0) + 1
+    }
+  })
+
+  const topIds = Object.entries(viewCount)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([id]) => id)
+
+  if (topIds.length === 0) return { topVenues: [] }
+
+  // Fetch name + status for each top venue
+  const venuesRes = await supabase
+    .from('venues')
+    .select('id, name, status')
+    .in('id', topIds)
+
+  const venueMeta: Record<string, { name: string; status: string }> = {}
+  ;(venuesRes.data ?? []).forEach((row: { id: string; name: string; status: string }) => {
+    venueMeta[row.id] = { name: row.name, status: row.status }
+  })
+
+  const topVenues = topIds.map(id => ({
+    id,
+    name: venueMeta[id]?.name ?? 'Unknown',
+    status: venueMeta[id]?.status ?? 'unknown',
+    views: viewCount[id] ?? 0,
+  }))
+
+  return { topVenues }
+}
+
 async function getPresenceStats() {
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
 
@@ -256,7 +302,7 @@ async function getPresenceStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -264,9 +310,10 @@ export async function GET() {
       getContributors(),
       getModerationStats(),
       getPresenceStats(),
+      getTopVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })

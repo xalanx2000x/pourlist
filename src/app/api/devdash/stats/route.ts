@@ -121,8 +121,9 @@ async function getVolumeStats() {
 }
 
 async function getCoverageStats() {
-  const totalRes = await supabase.from('venues').select('id', { count: 'exact', head: true })
-  const withHhRes = await supabase.from('venues').select('id', { count: 'exact', head: true }).not('hh_type', 'is', null)
+  // Only count user-created venues (status != 'unverified'), not the OSM seed
+  const totalRes = await supabase.from('venues').select('id', { count: 'exact', head: true }).neq('status', 'unverified')
+  const withHhRes = await supabase.from('venues').select('id', { count: 'exact', head: true }).neq('status', 'unverified').not('hh_type', 'is', null)
   const confirmedRes = await supabase
     .from('venues')
     .select('id', { count: 'exact', head: true })

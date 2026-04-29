@@ -651,6 +651,10 @@ export default function Home() {
           <VenueDetail
             venue={selectedVenue}
             onClose={() => setSelectedVenue(null)}
+            onScanMenu={(v) => {
+              setScan(prev => ({ ...emptyScanState(), confirmedVenue: v }))
+              setScanStep('capture')
+            }}
           />
         )}
 

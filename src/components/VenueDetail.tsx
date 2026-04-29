@@ -115,6 +115,8 @@ function getHhLabel(venue: Venue): string | null {
 interface VenueDetailProps {
   venue: Venue
   onClose: () => void
+  /** Called when user taps "Scan Menu" — page.tsx starts the scan flow with this venue pre-selected */
+  onScanMenu: (venue: Venue) => void
 }
 
 interface PhotoSet {
@@ -123,7 +125,7 @@ interface PhotoSet {
   photo_urls: string[]
 }
 
-export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
+export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailProps) {
   const isActiveHH = hasActiveHappyHour(venue)
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
@@ -538,6 +540,15 @@ export default function VenueDetail({ venue, onClose }: VenueDetailProps) {
             </p>
           </div>
         )}
+
+        {/* Scan Menu button — always visible when viewing a venue */}
+        <button
+          onClick={() => onScanMenu(venue)}
+          className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-4"
+        >
+          <span className="text-xl">📷</span>
+          Scan Menu
+        </button>
 
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">

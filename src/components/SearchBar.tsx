@@ -18,6 +18,14 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   const [showDropdown, setShowDropdown] = useState(false)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track the input value that was present before the user started typing.
+  // Used to detect browser autofill — we skip the debounce search when the
+  // browser autofills a value the user didn't just type.
+  const preUserValueRef = useRef<string>('')
+  // Tracks whether the first change after focus may be a browser autofill.
+  // When true, skip the debounce and update preUserValueRef. Cleared after
+  // the first change so subsequent changes always proceed normally.
+  const isFirstChangeRef = useRef(false)
 
   async function doSearch(q: string) {
     if (!q.trim()) {
@@ -49,6 +57,21 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     setQuery(val)
     if (errorTimer.current) clearTimeout(errorTimer.current)
 
+    // Detect browser autofill: when the input gains focus and the browser
+    // autofills a value, onChange fires before any user keystroke. We detect
+    // this by checking whether this change set a value that differs from what
+    // the user typed on the PREVIOUS change. If it's the first change since
+    // focus and the new value is non-empty (autofill), skip the debounce search.
+    if (isFirstChangeRef.current) {
+      if (val !== preUserValueRef.current) {
+        // This change came from autofill — save it but don't search yet.
+        preUserValueRef.current = val
+      }
+      // Either way, clear the flag so the next change always fires normally.
+      isFirstChangeRef.current = false
+      return
+    }
+
     if (!val.trim()) {
       setVenueResults([])
       setShowDropdown(false)
@@ -56,6 +79,10 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
       return
     }
+
+    // Normal user keystroke: mark the flag for the next focus event
+    preUserValueRef.current = val
+    isFirstChangeRef.current = false
 
     setLoading(true)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
@@ -122,6 +149,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
           type="text"
           value={query}
           onChange={handleInputChange}
+          onFocus={() => { isFirstChangeRef.current = true }}
           placeholder="Search venue or location..."
           autoComplete="off"
           className="w-full pl-9 pr-16 py-2 bg-amber-50 border border-amber-200 rounded-xl text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-all"

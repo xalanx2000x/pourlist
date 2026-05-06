@@ -8,6 +8,23 @@ import { hasActiveHappyHour } from '@/lib/activeHH'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
+/**
+ * Great-circle distance in meters between two lat/lng points (Haversine formula).
+ */
+function haversineMeters(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6_371_000
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const sinLat = Math.sin(dLat / 2)
+  const sinLng = Math.sin(dLng / 2)
+  const c = 2 * Math.asin(Math.sqrt(sinLat * sinLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng))
+  return R * c
+}
+
 interface MapProps {
   venues: Venue[]
   selectedVenue: Venue | null
@@ -16,6 +33,12 @@ interface MapProps {
   flyToUserLocation?: { lat: number; lng: number } | null
   showUserLocation?: boolean
   onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void
+  /** Fires when the map center moves beyond the threshold distance from the last center. */
+  onMapCenterChange?: (center: { lat: number; lng: number }) => void
+  /** Minimum meters between last confirmed center and current center before onMapCenterChange fires. */
+  centerShiftThreshold?: number
+  /** Called once when the map is ready with the map instance — used by page.tsx for "Search here". */
+  onMapReady?: (getCenter: () => { lat: number; lng: number } | undefined) => void
   /** Incrementing this number triggers a fly-to-user animation */
   zoomToUser?: number
 }
@@ -43,7 +66,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, zoomToUser }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -51,6 +74,10 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
   const watchIdRef = useRef<number | null>(null)
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null)
   const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Last center used for the last venue load — used to detect when user has
+  // panned far enough to warrant a "search this area" suggestion.
+  const lastConfirmedCenterRef = useRef<{ lat: number; lng: number } | null>(null)
+  const centerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Track and watch user location
   useEffect(() => {
@@ -148,6 +175,37 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
             west: b.getWest()
           })
         }, 150)
+      })
+    }
+
+    // Emit center shift when map has been panned far enough from the last
+    // confirmed venue-load center. Fires once per significant pan.
+    if (onMapCenterChange) {
+      map.current.on('moveend', () => {
+        if (centerTimerRef.current) clearTimeout(centerTimerRef.current)
+        centerTimerRef.current = setTimeout(() => {
+          const c = map.current!.getCenter()
+          const current = { lat: c.lat, lng: c.lng }
+          if (!lastConfirmedCenterRef.current) {
+            lastConfirmedCenterRef.current = current
+            return
+          }
+          const dist = haversineMeters(lastConfirmedCenterRef.current, current)
+          if (dist >= centerShiftThreshold) {
+            lastConfirmedCenterRef.current = current
+            onMapCenterChange(current)
+          }
+        }, 400)
+      })
+    }
+
+    // Let the parent (page.tsx) grab a getCenter function so "Search this area"
+    // can read the current map center without needing a ref to the map instance.
+    if (onMapReady) {
+      onMapReady(() => {
+        if (!map.current) return undefined
+        const c = map.current.getCenter()
+        return { lat: c.lat, lng: c.lng }
       })
     }
 

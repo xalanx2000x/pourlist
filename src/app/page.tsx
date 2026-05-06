@@ -84,6 +84,10 @@ export default function Home() {
   const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const [searchedLocation, setSearchedLocation] = useState<{ lat: number; lng: number } | null>(null)
+  // "Search this area" button shown when user has panned far from last venue load
+  const [showSearchThisArea, setShowSearchThisArea] = useState(false)
+  // Function provided by <Map> to read current map center on demand
+  const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
 
   // Show onboarding once on first visit
@@ -171,8 +175,26 @@ export default function Home() {
     setUserLocation(coords)
     setMapBounds(null)
     setListBounds(null)
+    setShowSearchThisArea(false)
     // Immediately reload venues at the search location
     loadVenues({ lat: coords.lat, lng: coords.lng })
+  }
+
+  function handleMapCenterShift(_center: { lat: number; lng: number }) {
+    // User has panned far from the last venue load — show "Search this area" button.
+    // Don't auto-reload; let the user decide when to fetch venues for a new area.
+    setShowSearchThisArea(true)
+  }
+
+  function handleSearchHereClick() {
+    // Use the getCenter function provided by <Map> to read current map center.
+    const center = getMapCenter?.()
+    if (!center) return
+    setShowSearchThisArea(false)
+    setUserLocation(center)
+    setMapBounds(null)
+    setListBounds(null)
+    loadVenues({ lat: center.lat, lng: center.lng })
   }
 
   async function handleVenueSelect(venue: Venue) {
@@ -668,8 +690,23 @@ export default function Home() {
                 flyToUserLocation={userLocation}
                 showUserLocation={true}
                 onBoundsChange={(bounds) => { setMapBounds(bounds); setListBounds(bounds) }}
+                onMapCenterChange={handleMapCenterShift}
+                centerShiftThreshold={3000}
+                onMapReady={(fn) => setGetMapCenter(() => fn)}
                 zoomToUser={zoomToUserTick}
               />
+              {/* "Search this area" — appears when user has panned far from the last venue load */}
+              {showSearchThisArea && (
+                <button
+                  onClick={handleSearchHereClick}
+                  className="absolute left-1/2 -top-3 z-10 -translate-x-1/2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-5 py-2 rounded-full shadow-xl text-sm font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                  </svg>
+                  Search this area
+                </button>
+              )}
               {/* Zoom to user button */}
               <button
                 onClick={() => {

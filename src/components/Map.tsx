@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
+import { getHHState, getHHColor } from '@/lib/hh-state'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
@@ -56,7 +57,8 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
           name: venue.name,
           address: venue.address_backup || '',
           status: venue.status || 'unverified',
-          hasHH: hasActiveHappyHour(venue)
+          hasHH: hasActiveHappyHour(venue),
+          hhState: getHHState(venue)
         },
         geometry: {
           type: 'Point',
@@ -279,8 +281,10 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       paint: {
         'circle-color': [
           'case',
-          ['get', 'hasHH'], '#7c3aed',   // purple = active HH right now
-          '#f59e0b'                       // amber = all other venues (status tracked but not shown on map)
+          ['==', ['get', 'hhState'], 'active'],  getHHColor('active'),
+          ['==', ['get', 'hhState'], 'hh_soon'], getHHColor('hh_soon'),
+          ['==', ['get', 'hhState'], 'hh_today'], getHHColor('hh_today'),
+          getHHColor('default')  // #ef4444 red
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,

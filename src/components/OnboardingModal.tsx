@@ -25,6 +25,11 @@ const STEPS = [
     body: 'Menu text is stored permanently. No account needed — your device is your identity.',
   },
   {
+    emoji: '🎨',
+    title: 'Map pin colors',
+    body: '🔴 Red = all venues  ·  🟠 Orange = HH today  ·  🟡 Yellow = HH within 1 hr  ·  🟣 Purple = HH active now',
+  },
+  {
     emoji: '📱',
     title: 'Add to your home screen',
     body: 'For the best experience, add The Pour List to your home screen. iPhone: Safari → tap Share → "Add to Home Screen". Android: Chrome → tap Menu → "Add to Home Screen".',

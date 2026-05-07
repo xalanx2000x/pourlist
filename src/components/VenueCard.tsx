@@ -2,6 +2,7 @@
 
 import type { Venue } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
+import { getHHState, getHHColor } from '@/lib/hh-state'
 
 interface VenueCardProps {
   venue: Venue
@@ -11,13 +12,16 @@ interface VenueCardProps {
 
 export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps) {
   const isActiveHH = hasActiveHappyHour(venue)
+  const hhState = getHHState(venue)
+  const hhColor = getHHColor(hhState)
 
   return (
     <button
       onClick={onClick}
       className={`w-full text-left p-4 border-b border-gray-100 transition-colors ${
-        isSelected ? 'bg-amber-50 border-l-4 border-l-amber-500' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+        isSelected ? 'bg-amber-50 border-l-4 border-l-amber-500' : 'hover:bg-gray-50 border-l-4'
       }`}
+      style={{ borderLeftColor: isSelected ? undefined : hhColor }}
     >
       <div className="flex justify-between items-start gap-2 relative">
         {venue.latest_menu_image_url && (

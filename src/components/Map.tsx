@@ -40,6 +40,8 @@ interface MapProps {
   centerShiftThreshold?: number
   /** Called once when the map is ready with the map instance — used by page.tsx for "Search here". */
   onMapReady?: (getCenter: () => { lat: number; lng: number } | undefined) => void
+  /** Fires after any zoom interaction ends (debounced 600ms — fires once per zoom gesture, not during). */
+  onZoomChange?: () => void
   /** Incrementing this number triggers a fly-to-user animation */
   zoomToUser?: number
 }
@@ -68,7 +70,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -208,6 +210,18 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         if (!map.current) return undefined
         const c = map.current.getCenter()
         return { lat: c.lat, lng: c.lng }
+      })
+    }
+
+    // Emit zoom change (debounced — fires once per zoom gesture, not during scroll)
+    // Used by page.tsx to show the "search from user location" button after zoom.
+    if (onZoomChange) {
+      let zoomTimer: ReturnType<typeof setTimeout> | null = null
+      map.current.on('zoomend', () => {
+        if (zoomTimer) clearTimeout(zoomTimer)
+        zoomTimer = setTimeout(() => {
+          onZoomChange()
+        }, 600)
       })
     }
 

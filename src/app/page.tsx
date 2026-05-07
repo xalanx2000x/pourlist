@@ -196,21 +196,43 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     loadVenues({ lat: coords.lat, lng: coords.lng })
   }
 
-  function handleMapCenterShift(_center: { lat: number; lng: number }) {
-    // User has panned far from the last venue load — show "Search this area" button.
-    // Don't auto-reload; let the user decide when to fetch venues for a new area.
+  // User moved the map (pan or zoom) — show the combined button so they can
+  // reload venues from their current location. The "Search this area" pill
+  // is replaced by the single combined button at bottom-left.
+  function handleMapMove() {
+    setMapBounds(null)
+    setListBounds(null)
     setShowSearchThisArea(true)
   }
 
+  // Combined "Zoom to user" + "Search this area" button.
+  // Taps → fly to user location + reload venues from there (current radius).
   function handleSearchHereClick() {
-    // Use the getCenter function provided by <Map> to read current map center.
-    const center = getMapCenter?.()
-    if (!center) return
     setShowSearchThisArea(false)
-    setUserLocation(center)
+
+    // If we don't have user location yet, get it from browser GPS first.
+    if (!userLocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          setUserLocation(loc)
+          setSearchedLocation(loc)
+          setMapBounds(null)
+          setListBounds(null)
+          setZoomToUserTick(t => t + 1)
+          loadVenues()
+        },
+        () => {}
+      )
+      return
+    }
+
+    // We have user location — fly there and reload from there.
+    setSearchedLocation(userLocation)
     setMapBounds(null)
     setListBounds(null)
-    loadVenues({ lat: center.lat, lng: center.lng })
+    setZoomToUserTick(t => t + 1)
+    loadVenues()
   }
 
   async function handleVenueSelect(venue: Venue) {
@@ -823,43 +845,30 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
                 showUserLocation={true}
-                onBoundsChange={(bounds) => { setMapBounds(bounds); setListBounds(bounds) }}
-                onMapCenterChange={handleMapCenterShift}
-                centerShiftThreshold={3000}
+                onBoundsChange={(bounds) => {
+                  setMapBounds(bounds); setListBounds(bounds)
+                  handleMapMove()
+                }}
                 onMapReady={(fn) => setGetMapCenter(() => fn)}
                 zoomToUser={zoomToUserTick}
+                onZoomChange={handleMapMove}
               />
-              {/* "Search this area" — appears when user has panned far from the last venue load */}
+              {/* Combined "Search this area" + "Zoom to user" button.
+                  Appears after pan OR zoom (handleMapMove fires on zoomend + movestart).
+                  Taps → fly to user location + reload venues from there (at current radius). */}
               {showSearchThisArea && (
                 <button
                   onClick={handleSearchHereClick}
-                  className="absolute left-1/2 -top-3 z-10 -translate-x-1/2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-5 py-2 rounded-full shadow-xl text-sm font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                  className="absolute left-3 bottom-20 z-10 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white pl-3 pr-4 py-2.5 rounded-full shadow-xl text-sm font-semibold flex items-center gap-2 transition-colors"
+                  title="Zoom to my location and reload venues"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
                   </svg>
                   Search this area
                 </button>
               )}
-              {/* Zoom to user button */}
-              <button
-                onClick={() => {
-                  if (!userLocation) {
-                    navigator.geolocation.getCurrentPosition(
-                      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                      () => {}
-                    )
-                  }
-                  setZoomToUserTick(t => t + 1)
-                }}
-                className="absolute left-3 bottom-20 z-10 w-10 h-10 bg-white hover:bg-gray-50 active:bg-gray-100 rounded-full shadow-lg flex items-center justify-center text-gray-600 transition-colors"
-                title="Zoom to my location"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-              </button>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg px-2 py-3">
                 <span className="text-xs text-amber-600 font-semibold leading-none">
                   {RADIUS_OPTIONS.find(o => o.value === radius)?.label ?? `${radius} mi`}

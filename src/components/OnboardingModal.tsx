@@ -10,29 +10,19 @@ interface OnboardingModalProps {
 
 const STEPS = [
   {
-    emoji: '📍',
-    title: 'Find happy hour venues',
-    body: 'Browse the map or list to discover bars and restaurants with active happy hour deals near you.',
-  },
-  {
-    emoji: '📷',
-    title: 'Scan a menu',
-    body: 'Tap "Scan Menu" to photograph a menu. The app reads the text and finds the venue automatically.',
+    emoji: '🔍',
+    title: 'Find venues nearby',
+    body: 'Browse the map to discover bars and restaurants. See a HH you love? Tap "Scan Menu" to photograph the menu — the app finds the venue automatically.',
   },
   {
     emoji: '💾',
-    title: 'It saves instantly',
+    title: 'Saved permanently, no account',
     body: 'Menu text is stored permanently. No account needed — your device is your identity.',
   },
   {
     emoji: '🎨',
-    title: 'Map pin colors',
-    body: '🔴 Red = all venues  ·  🟠 Orange = HH today  ·  🟡 Yellow = HH within 1 hr  ·  🟣 Purple = HH active now',
-  },
-  {
-    emoji: '📱',
-    title: 'Add to your home screen',
-    body: 'For the best experience, add The Pour List to your home screen. iPhone: Safari → tap Share → "Add to Home Screen". Android: Chrome → tap Menu → "Add to Home Screen".',
+    title: 'Pin colors = HH timing',
+    body: '🔴 all venues  ·  🟠 HH today  ·  🟡 HH < 1 hr  ·  🟣 HH active now. Add to home screen (Safari → Share → "Add to Home Screen") for the best experience.',
   },
 ]
 

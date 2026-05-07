@@ -10,9 +10,9 @@ export type HHState = 'default' | 'hh_today' | 'hh_soon' | 'active'
 
 // Colors matching the spec
 const HH_COLORS: Record<HHState, string> = {
-  default:   '#ef4444',  // red
-  hh_today:  '#f97316',  // orange
-  hh_soon:   '#eab308',  // yellow
+  default:   '#f97316',  // orange
+  hh_today:  '#f97316',  // orange (outer ring)
+  hh_soon:   '#a855f7',  // purple (outer ring)
   active:    '#a855f7',  // purple
 }
 

@@ -272,7 +272,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       }
     })
 
-    // Individual venue dots — purple if HH is active, amber otherwise
+    // Outer ring — orange base for default/hh_today, purple for active/hh_soon
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
@@ -282,13 +282,46 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         'circle-color': [
           'case',
           ['==', ['get', 'hhState'], 'active'],  getHHColor('active'),
-          ['==', ['get', 'hhState'], 'hh_soon'], getHHColor('hh_soon'),
-          ['==', ['get', 'hhState'], 'hh_today'], getHHColor('hh_today'),
-          getHHColor('default')  // #ef4444 red
+          ['==', ['get', 'hhState'], 'hh_soon'], getHHColor('active'),
+          getHHColor('default')
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,
         'circle-stroke-color': '#ffffff'
+      }
+    })
+
+    // Small inner dot — purple, ~20% of outer (1.6px radius), only for hh_today
+    map.current.addLayer({
+      id: 'unclustered-point-inner-sm',
+      type: 'circle',
+      source: 'venues',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': getHHColor('active'),
+        'circle-radius': 1.6,
+        'circle-opacity': [
+          'case',
+          ['==', ['get', 'hhState'], 'hh_today'], 1,
+          0
+        ]
+      }
+    })
+
+    // Large inner dot — purple, ~80% of outer (6.4px radius), only for hh_soon
+    map.current.addLayer({
+      id: 'unclustered-point-inner-lg',
+      type: 'circle',
+      source: 'venues',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': getHHColor('active'),
+        'circle-radius': 6.4,
+        'circle-opacity': [
+          'case',
+          ['==', ['get', 'hhState'], 'hh_soon'], 1,
+          0
+        ]
       }
     })
 

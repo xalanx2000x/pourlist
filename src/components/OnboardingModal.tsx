@@ -22,7 +22,7 @@ const STEPS = [
   {
     emoji: '🎨',
     title: 'Pin colors = HH timing',
-    body: '🔴 all venues  ·  🟠 HH today  ·  🟡 HH < 1 hr  ·  🟣 HH active now. Add to home screen (Safari → Share → "Add to Home Screen") for the best experience.',
+    body: '🟠 orange = HH on today · 🟣 purple = HH active now. Tap any pin to see details. Add to home screen (Safari → Share → "Add to Home Screen") for the best experience.',
   },
 ]
 

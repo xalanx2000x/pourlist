@@ -16,9 +16,9 @@ import NameEntry from '@/components/NameEntry'
 import SupportScreen from '@/components/SupportScreen'
 import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
 import { trackEvent } from '@/lib/analytics'
+import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { getDeviceHash } from '@/lib/device'
 import { getBrowserLocation } from '@/lib/gps'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
@@ -274,6 +274,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
    */
   async function parseMenuPhotos(files: File[]): Promise<string> {
     if (files.length === 0) return ''
+    let hadFailure = false
     try {
       const results = await Promise.all(
         files.map(async (file) => {
@@ -286,13 +287,23 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
               deviceHash: getDeviceHash()
             })
           })
-          if (!res.ok) return ''
+          if (!res.ok) {
+            hadFailure = true
+            return ''
+          }
           const { text } = await res.json()
           return text ?? ''
         })
       )
-      return results.filter(Boolean).join('\n---\n')
+      const combined = results.filter(Boolean).join('\n---\n')
+      if (combined) {
+        trackEvent('menu_parse_success', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
+      } else if (hadFailure) {
+        trackEvent('menu_parse_failure', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
+      }
+      return combined
     } catch {
+      trackEvent('menu_parse_failure', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
       return ''
     }
   }
@@ -687,6 +698,31 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   }
 
   function handleMenuRetry() {
+    // Track abandonment then immediately restart the scan funnel
+    if (scan.startedAt) {
+      trackEvent('scan_abandon', {
+        deviceHash: getDeviceHash(),
+        venueId: scan.confirmedVenue?.id,
+        metadata: {
+          atStep: 'review',
+          photoCount: scan.files.length,
+          hasParsedText: !!scan.menuText,
+          reason: 'retry',
+        },
+      })
+      // Re-fire scan_start immediately so the new attempt is linked to the old one
+      trackEvent('scan_start', {
+        deviceHash: getDeviceHash(),
+        venueId: scan.confirmedVenue?.id,
+        metadata: {
+          isNewVenue: !!scan.newVenueName,
+          photoCount: scan.files.length,
+          hasPhoneGps: !!scan.phoneGps,
+          hasExifGps: !!scan.exifGps,
+          attemptNumber: 2,  // retry = second attempt
+        },
+      })
+    }
     resetScan()
     setScanStep('capture')
   }

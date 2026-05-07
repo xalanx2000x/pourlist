@@ -22,6 +22,7 @@ import { getDeviceHash } from '@/lib/device'
 import { getBrowserLocation } from '@/lib/gps'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
+import SeedMatchConfirm from '@/components/SeedMatchConfirm'
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false })
 
@@ -35,6 +36,7 @@ type ScanStep =
   | 'venue_picker'  // VenuePicker — GPS available, confirm nearby venue
   | 'name_entry'   // NameEntry — type venue name, fuzzy match
   | 'review'       // MenuReview — HH time + photos, commit
+  | 'seed_match'   // SeedMatchConfirm — seed venue detected nearby
 
 type ScanState = {
   files: File[]
@@ -44,6 +46,7 @@ type ScanState = {
   newVenueName: string | null
   menuText: string | null
   startedAt: number | null  // Date.now() when scan entered review step — used for funnel duration
+  seedMatch: Venue | null   // seed venue detected within 100m — Job 5
 }
 
 const RADIUS_OPTIONS = [
@@ -65,6 +68,7 @@ function emptyScanState(): ScanState {
     newVenueName: null,
     menuText: null,
     startedAt: null,
+    seedMatch: null,
   }
 }
 
@@ -89,6 +93,18 @@ export default function Home() {
   // Function provided by <Map> to read current map center on demand
   const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
+
+/** Haversine distance in meters between two coordinates. */
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
   // Show onboarding once on first visit
   useEffect(() => {
@@ -320,6 +336,33 @@ export default function Home() {
     const venueProposedCoords = exifGps ?? phoneGps
     setScan(prev => ({ ...prev, files, phoneGps, exifGps: venueProposedCoords, menuText }))
 
+    // ── Job 5: Seed venue proximity check ────────────────────────────────
+    // Before showing the venue_picker, check if there's a seed venue within 100m.
+    // If found, show "Did you mean this venue?" instead of the normal venue_picker.
+    if (venueProposedCoords != null) {
+      try {
+        const seedVenues = await getVenuesByProximity(venueProposedCoords.lat, venueProposedCoords.lng, 100)
+          .then(venues => venues.filter(v => v.is_seed_data === true))
+        if (seedVenues.length > 0) {
+          // Pick the closest seed venue by GPS distance
+          const best = seedVenues.sort((a, b) => {
+            if (a.lat == null || a.lng == null) return 1
+            if (b.lat == null || b.lng == null) return -1
+            const da = haversineM(venueProposedCoords.lat, venueProposedCoords.lng, a.lat, a.lng)
+            const db = haversineM(venueProposedCoords.lat, venueProposedCoords.lng, b.lat, b.lng)
+            return da - db
+          })[0]
+          if (best) {
+            setScan(prev => ({ ...prev, seedMatch: best }))
+            setScanStep('seed_match')
+            return
+          }
+        }
+      } catch {
+        // Proceed to venue_picker on error
+      }
+    }
+
     if (venueProposedCoords != null) {
       setScanStep('venue_picker')
     } else {
@@ -356,6 +399,61 @@ export default function Home() {
   async function handleVenueCreated(name: string) {
     setScan(prev => ({ ...prev, newVenueName: name }))
     await transitionToReview(null, name)
+  }
+
+  /**
+   * Job 6: User confirmed the seed venue match.
+   * Promotes seed → live, inserts photos, clears flags.
+   */
+  async function handleSeedMatchConfirm(seedVenue: Venue) {
+    const { files, exifGps, phoneGps, menuText } = scan
+    if (!exifGps) {
+      // Fall back to name_entry if no GPS
+      setScan(prev => ({ ...prev, seedMatch: null }))
+      setScanStep('name_entry')
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('seedVenueId', seedVenue.id)
+    formData.append('exifLat', String(exifGps.lat))
+    formData.append('exifLng', String(exifGps.lng))
+    if (phoneGps) {
+      formData.append('phoneLat', String(phoneGps.lat))
+      formData.append('phoneLng', String(phoneGps.lng))
+    }
+    formData.append('deviceHash', getDeviceHash())
+    for (const file of files) formData.append('photos', file)
+
+    const res = await fetch('/api/submit-venue', { method: 'POST', body: formData })
+    const data = await res.json()
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to promote venue')
+    }
+
+    const savedVenueId = data.venueId
+    const updatedVenue = await getVenueById(savedVenueId)
+    if (updatedVenue) setSelectedVenue(updatedVenue)
+    const freshVenues = await loadVenues(exifGps ? { lat: exifGps.lat, lng: exifGps.lng } : undefined)
+    const refreshed = freshVenues.find(v => v.id === savedVenueId)
+    if (refreshed) setSelectedVenue(refreshed)
+
+    await trackEvent('menu_save_success', { deviceHash: getDeviceHash(), venueId: savedVenueId })
+    await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
+
+    setSaveSuccess(true)
+    setLastSavedVenue(`"${seedVenue.name}" verified`)
+    setTimeout(() => setSaveSuccess(false), 3000)
+    resetScan()
+  }
+
+  /**
+   * Job 6: User denied the seed venue match — proceed to name_entry.
+   */
+  function handleSeedMatchDeny() {
+    setScan(prev => ({ ...prev, seedMatch: null }))
+    setScanStep('name_entry')
   }
 
   /**
@@ -830,6 +928,16 @@ export default function Home() {
       {scanStep === 'capture' && (
         <MenuCapture
           onCapture={handleCapture}
+          onClose={handleScanClose}
+        />
+      )}
+
+      {scanStep === 'seed_match' && scan.seedMatch && (
+        <SeedMatchConfirm
+          seedVenue={scan.seedMatch}
+          files={scan.files}
+          onConfirm={handleSeedMatchConfirm}
+          onDeny={handleSeedMatchDeny}
           onClose={handleScanClose}
         />
       )}

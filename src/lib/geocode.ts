@@ -20,6 +20,7 @@ export async function searchVenues(
   const { data: venues } = await supabase
     .from('venues')
     .select('id, name, address_backup, lat, lng, latest_menu_image_url, hh_time, status')
+    .eq('is_seed_data', false)
     .ilike('name', `%${trimmed}%`)
     .limit(5)
 
@@ -30,6 +31,7 @@ export async function searchVenues(
       const { data: venues2 } = await supabase
         .from('venues')
         .select('id, name, address_backup, lat, lng, latest_menu_image_url, hh_time, status')
+        .eq('is_seed_data', false)
         .ilike('name', `%${normalized}%`)
         .limit(5)
       if (venues2 && venues2.length > 0) {

@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
 
     const {
       venueName,
+      seedVenueId,
       exifLat,
       exifLng,
       phoneLat,
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
       hh_end_3
     } = body as {
       venueName?: string
+      seedVenueId?: string
       exifLat?: string | number
       exifLng?: string | number
       phoneLat?: string | number
@@ -113,6 +115,128 @@ export async function POST(req: NextRequest) {
       hh_exclude_days_3?: string
       hh_start_3?: string
       hh_end_3?: string
+    }
+
+    // ── Job 6: Seed venue promotion ──────────────────────────────────────────
+    // When seedVenueId is present, we are promoting an existing seed venue
+    // to live status (user confirmed "yes, that's the right venue").
+    // This is NOT a new venue creation — reuse the venue, insert photos only.
+    if (seedVenueId) {
+      const venueLat = typeof exifLat === 'string' ? parseFloat(exifLat) : (exifLat as number)
+      const venueLng = typeof exifLng === 'string' ? parseFloat(exifLng) : (exifLng as number)
+
+      // Verify this is actually a seed venue before promoting
+      const { data: seedVenue } = await supabase
+        .from('venues')
+        .select('id, name, is_seed_data')
+        .eq('id', seedVenueId)
+        .single()
+
+      if (!seedVenue) {
+        return NextResponse.json({ success: false, reason: 'venue_not_found' }, { status: 404 })
+      }
+      if (seedVenue.is_seed_data !== true) {
+        // This is an already-promoted venue — treat as a normal duplicate/reject
+        return NextResponse.json({ success: false, reason: 'not_a_seed_venue' }, { status: 400 })
+      }
+
+      // Upload photos
+      const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+      const uploadedUrls: string[] = []
+      let uploadFailed = false
+
+      if (photoFiles.length > 0) {
+        const timestamp = Date.now()
+        for (let i = 0; i < photoFiles.length; i++) {
+          const photo = photoFiles[i]
+          const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
+          const filePath = `${seedVenueId}/${timestamp}/${fileName}`
+          const buffer = Buffer.from(await photo.arrayBuffer())
+
+          const { error: uploadError } = await supabase.storage
+            .from('venue-photos')
+            .upload(filePath, buffer, { contentType: 'image/jpeg', upsert: false })
+
+          if (uploadError) {
+            console.error('[submit-venue] seed promotion photo upload error:', uploadError)
+            uploadFailed = true
+            break
+          }
+
+          const { data: urlData } = supabase.storage
+            .from('venue-photos')
+            .getPublicUrl(filePath)
+          uploadedUrls.push(urlData.publicUrl)
+        }
+      }
+
+      if (uploadFailed) {
+        return NextResponse.json({ success: false, reason: 'photo_upload_failed' }, { status: 500 })
+      }
+
+      // Insert photo set
+      if (uploadedUrls.length > 0) {
+        await supabase
+          .from('photo_sets')
+          .insert({ venue_id: seedVenueId, photo_urls: uploadedUrls })
+
+        // Purge oldest if > 4 sets
+        const { data: sets } = await supabase
+          .from('photo_sets')
+          .select('id, created_at, photo_urls')
+          .eq('venue_id', seedVenueId)
+          .order('created_at', { ascending: false })
+
+        if (sets && sets.length > 4) {
+          const toDelete = sets.slice(4)
+          const storagePaths = toDelete
+            .flatMap(s => s.photo_urls as string[])
+            .map(url => storagePathFromUrl(url))
+            .filter(p => p.length > 0)
+          await supabase.from('photo_sets').delete().in('id', toDelete.map(s => s.id))
+          if (storagePaths.length > 0) {
+            await supabase.storage.from('venue-photos').remove([...new Set(storagePaths)])
+          }
+        }
+
+        // Update venue: promote is_seed_data → false, update latest_menu_image_url
+        await supabase
+          .from('venues')
+          .update({ is_seed_data: false, latest_menu_image_url: uploadedUrls[0] })
+          .eq('id', seedVenueId)
+      } else {
+        // No photos — just promote
+        await supabase
+          .from('venues')
+          .update({ is_seed_data: false })
+          .eq('id', seedVenueId)
+      }
+
+      // Clear flags — venue has been verified by a user
+      await supabase.from('flags').delete().eq('venue_id', seedVenueId)
+
+      // Trust + fraud signals (reused from new venue path)
+      if (deviceHash) {
+        await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
+      }
+      if (phoneLat != null && phoneLng != null && !isNaN(venueLat) && !isNaN(venueLng)) {
+        const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number)
+        const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number)
+        if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
+          const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
+          if (distance > 500) {
+            await supabase.from('venue_events').insert({
+              venue_id: seedVenueId,
+              event_type: 'gps_mismatch',
+              device_hash: deviceHash,
+              lat: phoneLatNum,
+              lng: phoneLngNum
+            })
+          }
+        }
+      }
+
+      return NextResponse.json({ success: true, venueId: seedVenueId })
     }
 
     // ── Validation ─────────────────────────────────────────────────────────

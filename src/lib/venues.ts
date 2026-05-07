@@ -39,6 +39,7 @@ export async function getVenuesByProximity(
     const { data, error } = await supabase
       .from('venues')
       .select('*')
+      .eq('is_seed_data', false)
       .neq('status', 'closed')
       .not('lat', 'is', null)
       .not('lng', 'is', null)

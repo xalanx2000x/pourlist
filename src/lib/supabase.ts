@@ -17,6 +17,7 @@ export type Venue = {
   website: string | null
   type: string | null
   status: 'unverified' | 'verified' | 'stale' | 'closed'
+  is_seed_data: boolean
   contributor_trust: string
   last_verified: string | null
   photo_count: number

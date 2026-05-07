@@ -231,6 +231,8 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     if (map.current.getLayer('clusters')) map.current.removeLayer('clusters')
     if (map.current.getLayer('cluster-count')) map.current.removeLayer('cluster-count')
     if (map.current.getLayer('unclustered-point')) map.current.removeLayer('unclustered-point')
+    if (map.current.getLayer('unclustered-point-inner-sm')) map.current.removeLayer('unclustered-point-inner-sm')
+    if (map.current.getLayer('unclustered-point-inner-lg')) map.current.removeLayer('unclustered-point-inner-lg')
     if (map.current.getSource('venues')) map.current.removeSource('venues')
 
     // Add source with clustering enabled

@@ -49,16 +49,6 @@ type ScanState = {
   seedMatch: Venue | null   // seed venue detected within 100m — Job 5
 }
 
-const RADIUS_OPTIONS = [
-  { label: '¼ mi', value: 0.25 },
-  { label: '½ mi', value: 0.5 },
-  { label: '1 mi', value: 1 },
-  { label: '2 mi', value: 2 },
-  { label: '5 mi', value: 5 },
-  { label: '10 mi', value: 10 },
-  { label: '25 mi', value: 25 },
-]
-
 function emptyScanState(): ScanState {
   return {
     files: [],
@@ -77,7 +67,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('map')
-  const [radius, setRadius] = useState(10) // default: happy hour is a local activity, 10mi covers most use cases
+  // Fixed radius: enough to cover any plausible search area (≈50 miles).
+  // The map bounds filter what is visible, but we load a wide area so
+  // panning doesn't result in empty states after a manual reload.
+  const DEFAULT_RADIUS_METERS = 50 * 1609.34
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
   // listBounds mirrors mapBounds — keeps list in sync when switching views
@@ -131,8 +124,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
         return []
       }
 
-      const radiusMeters = radius * 1609.34
-      const data = await getVenuesByProximity(searchLat, searchLng, radiusMeters)
+      const data = await getVenuesByProximity(searchLat, searchLng, DEFAULT_RADIUS_METERS)
       setVenues(data)
       // Reset map bounds so newly loaded venues show in full (unfiltered)
       // until map moves again via moveend
@@ -145,7 +137,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     } finally {
       setLoading(false)
     }
-  }, [userLocation, radius])
+  }, [userLocation])
 
   // Load venues whenever user location becomes available
   // This is the key effect that fetches nearby venues when GPS resolves.
@@ -196,43 +188,33 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     loadVenues({ lat: coords.lat, lng: coords.lng })
   }
 
-  // User moved the map (pan or zoom) — show the combined button so they can
-  // reload venues from their current location. The "Search this area" pill
-  // is replaced by the single combined button at bottom-left.
+  // User moved the map — show the "Search this area" button so they can
+  // reload venues from the new map center.
   function handleMapMove() {
     setMapBounds(null)
     setListBounds(null)
     setShowSearchThisArea(true)
   }
 
-  // Combined "Zoom to user" + "Search this area" button.
-  // Taps → fly to user location + reload venues from there (current radius).
+  // "Search this area" button — reloads venues from the current map center.
+  // Does NOT fly to user location; that is the My Location button's job.
   function handleSearchHereClick() {
     setShowSearchThisArea(false)
-
-    // If we don't have user location yet, get it from browser GPS first.
-    if (!userLocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude }
-          setUserLocation(loc)
-          setSearchedLocation(loc)
-          setMapBounds(null)
-          setListBounds(null)
-          setZoomToUserTick(t => t + 1)
-          loadVenues()
-        },
-        () => {}
-      )
-      return
+    const center = getMapCenter?.()
+    if (center) {
+      setMapBounds(null)
+      setListBounds(null)
+      setSearchedLocation(center)
+      loadVenues({ lat: center.lat, lng: center.lng })
     }
+  }
 
-    // We have user location — fly there and reload from there.
-    setSearchedLocation(userLocation)
-    setMapBounds(null)
-    setListBounds(null)
+  // My Location button — flies to user location. User then taps "Search this area"
+  // to reload venues from their actual position.
+  function handleZoomToUser() {
+    if (!userLocation) return
     setZoomToUserTick(t => t + 1)
-    loadVenues()
+    setShowSearchThisArea(true)
   }
 
   async function handleVenueSelect(venue: Venue) {
@@ -853,37 +835,31 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
                 zoomToUser={zoomToUserTick}
                 onZoomChange={handleMapMove}
               />
-              {/* Combined "Search this area" + "Zoom to user" button.
-                  Appears after pan OR zoom (handleMapMove fires on zoomend + movestart).
-                  Taps → fly to user location + reload venues from there (at current radius). */}
+              {/* "Search this area" button — reloads venues from the current map center. */}
               {showSearchThisArea && (
                 <button
                   onClick={handleSearchHereClick}
                   className="absolute left-3 bottom-20 z-10 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white pl-3 pr-4 py-2.5 rounded-full shadow-xl text-sm font-semibold flex items-center gap-2 transition-colors"
-                  title="Zoom to my location and reload venues"
+                  title="Search this area"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
                   Search this area
                 </button>
               )}
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-10 bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg px-2 py-3">
-                <span className="text-xs text-amber-600 font-semibold leading-none">
-                  {RADIUS_OPTIONS.find(o => o.value === radius)?.label ?? `${radius} mi`}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={6}
-                  step={1}
-                  value={RADIUS_OPTIONS.findIndex(o => o.value === radius)}
-                  onChange={(e) => setRadius(RADIUS_OPTIONS[Number(e.target.value)].value)}
-                  className="vertical-slider"
-                />
-                <span className="text-xs text-gray-400 leading-none">mi</span>
-              </div>
+              {/* My Location button — flies to user location. Does not auto-reload. */}
+              <button
+                onClick={handleZoomToUser}
+                className="absolute right-3 bottom-20 z-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-amber-600 p-2.5 rounded-full shadow-lg transition-colors"
+                title="My location"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                </svg>
+              </button>
             </div>
             <div className="hidden md:block w-80 bg-white border-l border-gray-200 overflow-y-auto">
               <VenueList

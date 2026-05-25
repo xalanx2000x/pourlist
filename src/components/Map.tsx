@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
@@ -235,13 +235,14 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     }
   }, [])
 
-  // Re-render venue markers when venues or selected state changes
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return
+  const markerRebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Rebuild all marker layers from current venues state.
+  // Called debounced — see the useEffect below.
+  const rebuildMarkers = useCallback(() => {
+    if (!map.current || !mapLoaded) return
     const geojson = buildGeoJSON(venues)
 
-    // Remove existing source/layers if they exist
     if (map.current.getLayer('clusters')) map.current.removeLayer('clusters')
     if (map.current.getLayer('cluster-count')) map.current.removeLayer('cluster-count')
     if (map.current.getLayer('unclustered-point')) map.current.removeLayer('unclustered-point')
@@ -249,7 +250,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     if (map.current.getLayer('unclustered-point-inner-lg')) map.current.removeLayer('unclustered-point-inner-lg')
     if (map.current.getSource('venues')) map.current.removeSource('venues')
 
-    // Add source with clustering enabled
     map.current.addSource('venues', {
       type: 'geojson',
       data: geojson,
@@ -258,7 +258,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       clusterRadius: 50
     })
 
-    // Cluster circles
     map.current.addLayer({
       id: 'clusters',
       type: 'circle',
@@ -272,7 +271,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       }
     })
 
-    // Cluster count labels
     map.current.addLayer({
       id: 'cluster-count',
       type: 'symbol',
@@ -283,12 +281,9 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
         'text-size': 12
       },
-      paint: {
-        'text-color': '#ffffff'
-      }
+      paint: { 'text-color': '#ffffff' }
     })
 
-    // Outer ring — orange base for default/hh_today, purple for active/hh_soon
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
@@ -307,7 +302,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       }
     })
 
-    // Small inner dot — purple, ~20% of outer (1.6px radius), only for hh_today
     map.current.addLayer({
       id: 'unclustered-point-inner-sm',
       type: 'circle',
@@ -324,7 +318,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       }
     })
 
-    // Large inner dot — purple, ~80% of outer (6.4px radius), only for hh_soon
     map.current.addLayer({
       id: 'unclustered-point-inner-lg',
       type: 'circle',
@@ -341,7 +334,6 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       }
     })
 
-    // Click on cluster → zoom in
     map.current.on('click', 'clusters', (e) => {
       const features = map.current!.queryRenderedFeatures(e.point, { layers: ['clusters'] })
       if (!features.length) return
@@ -354,22 +346,30 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       })
     })
 
-    // Click on individual dot → select venue
     map.current.on('click', 'unclustered-point', (e) => {
       if (!e.features?.length) return
       const props = e.features[0].properties!
-      const geometry = e.features[0].geometry as GeoJSON.Point
       const venue = venues.find(v => v.id === props.id)
       if (venue) onVenueSelect(venue)
     })
 
-    // Cursor changes
     map.current.on('mouseenter', 'clusters', () => { map.current!.getCanvas().style.cursor = 'pointer' })
     map.current.on('mouseleave', 'clusters', () => { map.current!.getCanvas().style.cursor = '' })
     map.current.on('mouseenter', 'unclustered-point', () => { map.current!.getCanvas().style.cursor = 'pointer' })
     map.current.on('mouseleave', 'unclustered-point', () => { map.current!.getCanvas().style.cursor = '' })
-
   }, [venues, mapLoaded, onVenueSelect])
+
+  // Debounced marker rebuild — 300ms delay collapses rapid successive venue
+  // changes (e.g. the double-setVenues in handleVenueSelect) into a single
+  // layer rebuild, eliminating visible marker flicker on venue selection.
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    if (markerRebuildTimerRef.current) clearTimeout(markerRebuildTimerRef.current)
+    markerRebuildTimerRef.current = setTimeout(rebuildMarkers, 300)
+    return () => {
+      if (markerRebuildTimerRef.current) clearTimeout(markerRebuildTimerRef.current)
+    }
+  }, [venues, mapLoaded, rebuildMarkers])
 
   // Fly to selected venue
   useEffect(() => {

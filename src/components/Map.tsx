@@ -248,6 +248,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     if (map.current.getLayer('unclustered-point')) map.current.removeLayer('unclustered-point')
     if (map.current.getLayer('unclustered-point-inner-sm')) map.current.removeLayer('unclustered-point-inner-sm')
     if (map.current.getLayer('unclustered-point-inner-lg')) map.current.removeLayer('unclustered-point-inner-lg')
+    if (map.current.getLayer('unclustered-point-glow')) map.current.removeLayer('unclustered-point-glow')
     if (map.current.getSource('venues')) map.current.removeSource('venues')
 
     map.current.addSource('venues', {
@@ -331,6 +332,24 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
           ['==', ['get', 'hhState'], 'hh_soon'], 1,
           0
         ]
+      }
+    })
+
+    // Glow halo: larger blurred purple ring — only visible when HH is active right now
+    map.current.addLayer({
+      id: 'unclustered-point-glow',
+      type: 'circle',
+      source: 'venues',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': getHHColor('active'),
+        'circle-radius': 20,
+        'circle-opacity': [
+          'case',
+          ['==', ['get', 'hhState'], 'active'], 0.25,
+          0
+        ],
+        'circle-blur': 0.85
       }
     })
 

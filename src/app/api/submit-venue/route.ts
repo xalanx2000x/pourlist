@@ -302,6 +302,7 @@ export async function POST(req: NextRequest) {
         lng: venueLng,
         status: 'unverified',
         contributor_trust: 'new',
+        is_seed_data: false,  // user-created venues are immediately visible
         menu_text: null,
         latest_menu_image_url: null,
         address_backup: '',  // NOT NULL in DB — backfill later via reverse geocoding

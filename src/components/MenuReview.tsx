@@ -42,6 +42,7 @@ export default function MenuReview({
   const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
+  const [showHhWarning, setShowHhWarning] = useState(false)
 
   // Called by HHScheduleInput when user clicks "Confirm Happy Hour"
   function handleHhScheduleCommit(windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) {
@@ -60,10 +61,15 @@ export default function MenuReview({
   // Called by the Save button in MenuReview
   // "Save Happy Hour" is the ONE button that both confirms AND saves.
   async function handleSave() {
+    const hasHh = hhWindowsRef.current.some(w => w !== null) || hhSummaryRef.current.trim()
+    if (!hasHh && !showHhWarning) {
+      setShowHhWarning(true)
+      return
+    }
+    setShowHhWarning(false)
     setCommitError('')
     setIsCommitting(true)
     try {
-      // Use the current ref values — onChange keeps hhWindowsRef in sync on every keystroke
       await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
@@ -135,6 +141,31 @@ export default function MenuReview({
           <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
             <p className="text-sm font-medium text-red-700">Save failed</p>
             <p className="text-xs text-red-600 mt-0.5">{commitError}</p>
+          </div>
+        )}
+
+        {/* No HH warning */}
+        {showHhWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-3">
+            <p className="text-sm font-medium text-amber-800">No happy hour data entered.</p>
+            <p className="text-xs text-amber-700 mt-1">
+              This venue won't show a schedule on the map. Photos will still be saved.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setShowHhWarning(false)}
+                className="flex-1 text-sm border border-amber-300 text-amber-700 rounded-lg py-2 hover:bg-amber-100 transition-colors"
+              >
+                Go back
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isCommitting}
+                className="flex-1 text-sm bg-amber-500 text-white rounded-lg py-2 hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                Save anyway
+              </button>
+            </div>
           </div>
         )}
       </div>

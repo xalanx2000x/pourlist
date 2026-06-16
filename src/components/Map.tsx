@@ -44,6 +44,8 @@ interface MapProps {
   onZoomChange?: () => void
   /** Incrementing this number triggers a fly-to-user animation */
   zoomToUser?: number
+  /** Flying to a search location center */
+  flyToCenter?: { lat: number; lng: number } | null
 }
 
 // Pre-compute which venues have active HH once
@@ -70,7 +72,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange, flyToCenter }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -299,7 +301,12 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff'
+        'circle-stroke-color': [
+          'case',
+          ['==', ['get', 'hhState'], 'active'],  getHHColor('active'),  // purple ring (all-purple active dot)
+          ['==', ['get', 'hhState'], 'hh_soon'], getHHColor('default'), // orange ring (soon = purple with hint of orange)
+          '#ffffff'                                                          // default: white ring
+        ]
       }
     })
 
@@ -325,7 +332,9 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       source: 'venues',
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-color': getHHColor('active'),
+        // Slightly darker purple core for soon — gives the "purple with hint of orange ring" look
+        // a touch of depth without changing the dominant purple.
+        'circle-color': '#7e22ce',
         'circle-radius': 6.4,
         'circle-opacity': [
           'case',
@@ -421,6 +430,19 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       duration: 1200
     })
   }, [zoomToUser, mapLoaded])
+
+  // Fly to a search location center (Search this area)
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !flyToCenter) return
+    const center = flyToCenter
+    map.current.flyTo({
+      center: [center.lng, center.lat],
+      zoom: 13,
+      duration: 1500
+    })
+    // Reset after flying so the same location can be re-triggered later
+    onZoomChange?.() // signal parent to load venues at new center
+  }, [flyToCenter, mapLoaded])
 
   return (
     <div ref={mapContainer} className="w-full h-full min-h-[300px]" />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
 import { getVenuesByProximity, getVenueById } from '@/lib/venues'
@@ -14,7 +14,7 @@ import VenuePicker from '@/components/VenuePicker'
 import ScanStart from '@/components/ScanStart'
 import NameEntry from '@/components/NameEntry'
 import SupportScreen from '@/components/SupportScreen'
-import OnboardingModal, { useOnboarding } from '@/components/OnboardingModal'
+import OnboardingModal, { useOnboarding, useAppOpenCount } from '@/components/OnboardingModal'
 import { trackEvent } from '@/lib/analytics'
 import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
@@ -77,7 +77,10 @@ export default function Home() {
   const [listBounds, setListBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
   const [areaName, setAreaName] = useState<string | null>(null)
   const [zoomToUserTick, setZoomToUserTick] = useState(0)
+  const [flyToCenter, setFlyToCenter] = useState<{ lat: number; lng: number } | null>(null)
+  const flyToCenterRef = useRef<{ lat: number; lng: number } | null>(null)
   const showOnboarding = useOnboarding()
+  const appOpenCount = useAppOpenCount()
   const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [supportOpen, setSupportOpen] = useState(false)
   const [searchedLocation, setSearchedLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -99,7 +102,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-  // Show onboarding once on first visit
+  // Show onboarding automatically on first eligible visit only
   useEffect(() => {
     if (showOnboarding) setOnboardingOpen(true)
   }, [showOnboarding])
@@ -154,7 +157,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
       .catch(() => {})
   }, [])
 
-  // Reverse-geocode user location to get a human-readable area name (e.g. "Pearl District")
+  // Reverse-geocode user location to get a human-readable area name
   useEffect(() => {
     if (!userLocation) return
     const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
@@ -196,15 +199,14 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     setShowSearchThisArea(true)
   }
 
-  // "Search this area" button — reloads venues from the current map center.
-  // Does NOT fly to user location; that is the My Location button's job.
+  // "Search this area" button — fly to center and immediately load venues from it.
   function handleSearchHereClick() {
     setShowSearchThisArea(false)
     const center = getMapCenter?.()
     if (center) {
-      setMapBounds(null)
-      setListBounds(null)
       setSearchedLocation(center)
+      setFlyToCenter(center)
+      // Load venues immediately from the search center — map will fly in parallel
       loadVenues({ lat: center.lat, lng: center.lng })
     }
   }
@@ -850,6 +852,14 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
                 </button>
               )}
               {/* My Location button — flies to user location. Does not auto-reload. */}
+              {/* ? — re-open the onboarding modal any time */}
+              <button
+                onClick={() => setOnboardingOpen(true)}
+                className="absolute right-3 bottom-32 z-10 w-10 h-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-400 hover:text-amber-600 rounded-full shadow-lg flex items-center justify-center text-lg font-semibold transition-colors"
+                title="How it works"
+              >
+                ?
+              </button>
               <button
                 onClick={handleZoomToUser}
                 className="absolute right-3 bottom-20 z-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-amber-600 p-2.5 rounded-full shadow-lg transition-colors"
@@ -915,12 +925,15 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
               </div>
             )}
 
-            <button
-              onClick={() => setSupportOpen(true)}
-              className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
-            >
-              Enjoying your happy hour? Tip the developers $1 →
-            </button>
+            {/* Donation ask: shown after 3rd open, always dismissible */}
+            {appOpenCount >= 3 && (
+              <button
+                onClick={() => setSupportOpen(true)}
+                className="w-full text-center text-xs text-gray-400 hover:text-amber-600 py-1 mb-2 transition-colors"
+              >
+                Enjoying PourList? Tip the developers $1 →
+              </button>
+            )}
 
             <button
               onClick={() => setScanStep('scan_start')}

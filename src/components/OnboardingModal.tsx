@@ -106,19 +106,49 @@ export default function OnboardingModal({ onClose }: OnboardingModalProps) {
   )
 }
 
-// Hook: returns true the first time, then false (reads from localStorage)
+const ONBOARDING_KEY = 'pourlist_onboarding_seen'
+
+/**
+ * Returns true when the onboarding modal should auto-open.
+ * Reads localStorage in a useEffect (client-only, post-mount) to avoid
+ * hydration mismatches — server always renders with seen=false (closed).
+ * After mount, if no flag is set, opens once on the next render.
+ */
 export function useOnboarding(): boolean {
-  const [seen, setSeen] = useState(false)
+  const [autoOpen, setAutoOpen] = useState(false)
 
   useEffect(() => {
     try {
-      if (!localStorage.getItem('pourlist_onboarding_seen')) {
-        setSeen(true)
+      if (!localStorage.getItem(ONBOARDING_KEY)) {
+        setAutoOpen(true)
       }
     } catch {
-      setSeen(true) // default to showing if localStorage fails
+      // localStorage unavailable — stay closed, user can use the ? button
     }
   }, [])
 
-  return seen
+  return autoOpen
+}
+
+/**
+ * Tracks how many times the app has been opened. Shows the donation
+ * prompt on the 3rd open (after the user has had a chance to use it).
+ * Safe for SSR/hydration: starts at 0 on server, increments in useEffect.
+ */
+export function useAppOpenCount(): number {
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    try {
+      const KEY = 'pourlist_open_count'
+      const prev = parseInt(localStorage.getItem(KEY) ?? '0', 10)
+      const next = prev + 1
+      localStorage.setItem(KEY, String(next))
+      setCount(next)
+    } catch {
+      // storage unavailable — just show nothing
+    }
+  }, [])
+
+  return count
 }

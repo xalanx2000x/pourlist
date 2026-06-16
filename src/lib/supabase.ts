@@ -8,6 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export type Venue = {
   id: string
   name: string
+  slug: string | null
   // address removed - see address_backup (Preserved for display, phased out of submission flow)
   address_backup: string | null
   lat: number | null

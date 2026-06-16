@@ -3,6 +3,7 @@
 import type { Venue } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getHHState, getHHColor } from '@/lib/hh-state'
+import ShareButton from './ShareButton'
 
 interface VenueCardProps {
   venue: Venue
@@ -15,17 +16,31 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
   const hhState = getHHState(venue)
   const hhColor = getHHColor(hhState)
 
+  // Keyboard a11y: outer is a <div role="button">, so handle Enter/Space
+  // explicitly. Without this, keyboard users can't open the card.
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onClick()
+    }
+  }
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`w-full text-left p-4 border-b border-gray-100 transition-colors ${
+      onKeyDown={handleKeyDown}
+      aria-pressed={isSelected}
+      aria-label={`Open ${venue.name}`}
+      className={`w-full text-left p-4 border-b border-gray-100 transition-colors cursor-pointer focus:outline-none focus-visible:bg-amber-50 ${
         isSelected ? 'bg-amber-50 border-l-4 border-l-amber-500' : 'hover:bg-gray-50 border-l-4'
       }`}
       style={{ borderLeftColor: isSelected ? undefined : hhColor }}
     >
       <div className="flex justify-between items-start gap-2 relative">
         {venue.latest_menu_image_url && (
-          <span className="absolute top-0 right-0 text-sm text-gray-400">📷</span>
+          <span className="absolute top-0 right-0 text-sm text-gray-400 pointer-events-none">📷</span>
         )}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{venue.name}</h3>
@@ -42,6 +57,8 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
           )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
+          {/* Share — 44×44px tap target, stopPropagation handled inside */}
+          <ShareButton venue={venue} />
           {isActiveHH && (
             <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
               HH Active
@@ -59,6 +76,6 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
           )}
         </div>
       </div>
-    </button>
+    </div>
   )
 }

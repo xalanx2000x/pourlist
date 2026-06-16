@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
+import ShareButton from './ShareButton'
 
 type ActionState = 'idle' | 'loading' | 'success' | 'error'
 
@@ -214,6 +215,9 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
                 Needs Update
               </span>
             )}
+            <div className="ml-auto">
+              <ShareButton venue={venue} />
+            </div>
           </div>
           <p className="text-gray-600 mt-1">{venue.address_backup}</p>
           {venue.phone && (

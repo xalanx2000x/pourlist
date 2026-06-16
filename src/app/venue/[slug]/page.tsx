@@ -221,11 +221,11 @@ export default async function VenuePage({
                 </div>
               )}
 
-              {/* View on map CTA */}
+              {/* View on map CTA — completes the share loop: shared link → venue page → into the map. */}
               {venue.lat != null && venue.lng != null && (
                 <a
-                  href={`/?lat=${venue.lat}&lng=${venue.lng}&zoom=16`}
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700"
+                  href={`/?lat=${venue.lat}&lng=${venue.lng}&zoom=16&venue=${slug2}`}
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
                 >
                   📍 View on map
                 </a>

@@ -39,7 +39,6 @@ export async function getVenuesByProximity(
     const { data, error } = await supabase
       .from('venues')
       .select('*')
-      .eq('is_seed_data', false)
       .neq('status', 'closed')
       .not('lat', 'is', null)
       .not('lng', 'is', null)
@@ -96,6 +95,25 @@ export async function getVenueById(id: string): Promise<Venue | null> {
 
   if (error) return null
   return data
+}
+
+/**
+ * Client-side slug lookup. Used by the map's deep-link resolver
+ * (?venue={slug} on the map). Returns null on bad/old/deleted slugs
+ * so the caller can degrade silently to the normal GPS-based map load.
+ */
+export async function getVenueBySlugClient(slug: string): Promise<Venue | null> {
+  const { data, error } = await supabase
+    .from('venues')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (error) {
+    console.error('getVenueBySlugClient failed:', error)
+    return null
+  }
+  return (data as Venue) ?? null
 }
 
 export async function addVenue(venue: Partial<Venue>): Promise<Venue> {

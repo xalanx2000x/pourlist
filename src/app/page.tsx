@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
-import { getVenuesByProximity, getVenueById } from '@/lib/venues'
+import { getVenuesByProximity, getVenueById, getVenueBySlugClient } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import { isWithinRadius } from '@/lib/gpsCheck'
 import VenueList from '@/components/VenueList'
@@ -155,6 +155,40 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
       .catch(() => {})
+  }, [])
+
+  // Deep-link resolver: /?venue={slug} from a shared venue page.
+  // - Resolves the slug via the same fields used by the static page.
+  // - Card-first (option B): opens the detail sheet immediately; the
+  //   Map's selectedVenue effect flies underneath in parallel.
+  // - On failure (bad/old/deleted slug, no coords), silently degrades
+  //   to the normal GPS-based map load — no broken card, no error UI.
+  // - URL is always cleaned (history.replaceState) so a refresh or
+  //   back-nav doesn't re-trigger the flyTo over the user's panned view.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const slug = params.get('venue')
+    if (!slug) return
+
+    // Clean the URL first — even before the fetch, so a slow network
+    // doesn't leave a stale ?venue= sitting in the address bar.
+    window.history.replaceState({}, '', window.location.pathname)
+
+    ;(async () => {
+      try {
+        const venue = await getVenueBySlugClient(slug)
+        if (!venue || venue.lat == null || venue.lng == null) return
+        // Re-center the map on the venue's coords and load its pin into
+        // the visible set. Awaited so the card opens after the pin is
+        // loaded — prevents a frame of "card open, no pin".
+        await loadVenues({ lat: venue.lat, lng: venue.lng })
+        setSelectedVenue(venue)
+      } catch (err) {
+        console.error('Deep-link resolve failed:', err)
+        // Silent degrade — the normal mount flow takes over.
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reverse-geocode user location to get a human-readable area name

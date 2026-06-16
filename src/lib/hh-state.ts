@@ -156,5 +156,10 @@ export function getHHState(venue: Partial<Venue>): HHState {
     }
   }
 
+  // All windows in the past — no HH left today, fall back to default
+  if (bestScore >= 500) {
+    return 'default'
+  }
+
   return bestState
 }

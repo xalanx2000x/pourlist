@@ -42,6 +42,10 @@ interface MapProps {
   onMapReady?: (getCenter: () => { lat: number; lng: number } | undefined) => void
   /** Fires after any zoom interaction ends (debounced 600ms — fires once per zoom gesture, not during). */
   onZoomChange?: () => void
+  /** Fires on the first user-initiated map move (drag, pinch, scroll-zoom, etc.).
+   *  Does NOT fire for programmatic moves (flyTo, fitBounds). Uses mapbox's
+   *  `e.originalEvent` to distinguish user input from animation. */
+  onUserPan?: () => void
   /** Incrementing this number triggers a fly-to-user animation */
   zoomToUser?: number
   /** Flying to a search location center */
@@ -72,7 +76,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange, flyToCenter }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange, flyToCenter, onUserPan }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -224,6 +228,17 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         zoomTimer = setTimeout(() => {
           onZoomChange()
         }, 600)
+      })
+    }
+
+    // Detect user-initiated map moves (drag, pinch, scroll-zoom, double-click
+    // zoom, rotation, etc.). `e.originalEvent` is set by mapbox when the
+    // move was triggered by user input — programmatic moves (flyTo, fitBounds,
+    // jumpTo) don't set it. Used by page.tsx to detect when the user has
+    // engaged with the map during a deep-link session.
+    if (onUserPan) {
+      map.current.on('movestart', (e) => {
+        if (e.originalEvent) onUserPan()
       })
     }
 

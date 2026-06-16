@@ -72,6 +72,17 @@ export default function Home() {
   // panning doesn't result in empty states after a manual reload.
   const DEFAULT_RADIUS_METERS = 50 * 1609.34
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  /**
+   * True while a deep-linked venue (`?venue=…`) owns the map position.
+   * Set by the deep-link useEffect, cleared on user-initiated map move
+   * (`onUserPan` from Map), on "near me" tap, or on a failed deep-link
+   * resolve. While true:
+   *   - we do NOT call getBrowserLocation() (no permission prompt)
+   *   - the userLocation-driven loadVenues() is gated (no auto-recenter)
+   * The flag is a ref (not state) so it doesn't trigger re-renders and
+   * stays coherent across the async deep-link fetch.
+   */
+  const deepLinkActiveRef = useRef(false)
   const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
   // listBounds mirrors mapBounds — keeps list in sync when switching views
   const [listBounds, setListBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
@@ -142,33 +153,30 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     }
   }, [userLocation])
 
-  // Load venues whenever user location becomes available
-  // This is the key effect that fetches nearby venues when GPS resolves.
-  // Previously loadVenues was only called on mount (with null location) or map pan/zoom.
-  useEffect(() => {
-    if (!userLocation) return
-    loadVenues()
-  }, [userLocation, loadVenues])
-
-  // Get user location on mount
-  useEffect(() => {
-    getBrowserLocation()
-      .then(loc => setUserLocation(loc))
-      .catch(() => {})
-  }, [])
-
   // Deep-link resolver: /?venue={slug} from a shared venue page.
+  // DECLARED FIRST so it runs before the GPS useEffect on mount. The
+  // deep-link sets deepLinkActiveRef=true synchronously at the start,
+  // which the GPS useEffect (next effect) then sees and skips.
+  //
   // - Resolves the slug via the same fields used by the static page.
   // - Card-first (option B): opens the detail sheet immediately; the
   //   Map's selectedVenue effect flies underneath in parallel.
-  // - On failure (bad/old/deleted slug, no coords), silently degrades
-  //   to the normal GPS-based map load — no broken card, no error UI.
+  // - On failure (bad/old/deleted slug, no coords), clears the ref so
+  //   the normal GPS-based map load takes over.
   // - URL is always cleaned (history.replaceState) so a refresh or
   //   back-nav doesn't re-trigger the flyTo over the user's panned view.
+  // - The ref is also re-checked before opening the card: if the user
+  //   panned during the async fetch, they've signaled they want manual
+  //   control and the deep-link is canceled.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const slug = params.get('venue')
     if (!slug) return
+
+    // Owns the map for the lifetime of this page load (or until the user
+    // pans / taps "near me" / deep-link fails). Set synchronously so the
+    // GPS useEffect (declared after) sees it on first render.
+    deepLinkActiveRef.current = true
 
     // Clean the URL first — even before the fetch, so a slow network
     // doesn't leave a stale ?venue= sitting in the address bar.
@@ -177,18 +185,56 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     ;(async () => {
       try {
         const venue = await getVenueBySlugClient(slug)
-        if (!venue || venue.lat == null || venue.lng == null) return
-        // Re-center the map on the venue's coords and load its pin into
-        // the visible set. Awaited so the card opens after the pin is
-        // loaded — prevents a frame of "card open, no pin".
+        if (!venue || venue.lat == null || venue.lng == null) {
+          deepLinkActiveRef.current = false
+          return
+        }
+        // If the user has interacted with the map during the fetch,
+        // they don't want the deep-link to take over.
+        if (!deepLinkActiveRef.current) return
         await loadVenues({ lat: venue.lat, lng: venue.lng })
+        // Double-check before opening the card (a pan during loadVenues
+        // would also count as a user override).
+        if (!deepLinkActiveRef.current) return
         setSelectedVenue(venue)
       } catch (err) {
         console.error('Deep-link resolve failed:', err)
-        // Silent degrade — the normal mount flow takes over.
+        deepLinkActiveRef.current = false
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Load venues whenever user location becomes available
+  // Gated on deepLinkActiveRef: if a deep link is active, the userLocation
+  // resolve must NOT trigger a loadVenues that would override the venue.
+  useEffect(() => {
+    if (deepLinkActiveRef.current) return
+    if (!userLocation) return
+    loadVenues()
+  }, [userLocation, loadVenues])
+
+  // Get user location on mount.
+  // Gated on deepLinkActiveRef: if a deep link is active, we defer the
+  // permission prompt entirely. GPS is fetched later on user interaction
+  // (pan, "near me" tap).
+  useEffect(() => {
+    if (deepLinkActiveRef.current) return
+    getBrowserLocation()
+      .then(loc => setUserLocation(loc))
+      .catch(() => {})
+  }, [])
+
+  // User-initiated map move (drag, pinch, scroll-zoom, etc.). Clears the
+  // deep-link flag and fetches GPS for future use — but does NOT recenter
+  // the map (the user is panning, the map is where they want it).
+  // They can tap "Search this area" or "near me" to act on GPS coords.
+  const handleUserPan = useCallback(() => {
+    if (!deepLinkActiveRef.current) return
+    deepLinkActiveRef.current = false
+    getBrowserLocation()
+      .then(loc => setUserLocation(loc))
+      .catch(() => {})
   }, [])
 
   // Reverse-geocode user location to get a human-readable area name
@@ -247,7 +293,21 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 
   // My Location button — flies to user location. User then taps "Search this area"
   // to reload venues from their actual position.
+  // In deep-link mode: clear the ref, fetch GPS (no prompt if previously granted),
+  // then zoom to the resolved coords. We chain the zoom onto the GPS resolve so
+  // the first tap in deep-link mode does the right thing in one motion.
   function handleZoomToUser() {
+    if (deepLinkActiveRef.current) {
+      deepLinkActiveRef.current = false
+      getBrowserLocation()
+        .then(loc => {
+          setUserLocation(loc)
+          setZoomToUserTick(t => t + 1)
+          setShowSearchThisArea(true)
+        })
+        .catch(() => {})
+      return
+    }
     if (!userLocation) return
     setZoomToUserTick(t => t + 1)
     setShowSearchThisArea(true)
@@ -870,6 +930,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
                 onMapReady={(fn) => setGetMapCenter(() => fn)}
                 zoomToUser={zoomToUserTick}
                 onZoomChange={handleMapMove}
+                onUserPan={handleUserPan}
               />
               {/* "Search this area" button — reloads venues from the current map center. */}
               {showSearchThisArea && (

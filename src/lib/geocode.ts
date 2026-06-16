@@ -1,20 +1,22 @@
 import { supabase } from './supabase'
 import type { Venue } from './supabase'
 
-export async function searchVenues(
-  query: string
-): Promise<{
-  type: 'venues' | 'location'
-  venues?: Venue[]
-  coords?: { lat: number; lng: number }
-}> {
-  const trimmed = query.trim()
+export type GeoResult = {
+  displayName: string
+  state?: string
+  country?: string
+  lat: number
+  lng: number
+}
 
-  // If it's a 5-digit zip, skip venue search and go straight to Nominatim
-  if (/^\d{5}$/.test(trimmed)) {
-    const coords = await geocodeWithNominatim(trimmed)
-    return coords ? { type: 'location', coords } : { type: 'location' }
-  }
+export type SearchResult =
+  | { type: 'venues'; venues: Venue[] }
+  | { type: 'geo'; geo: GeoResult }
+  | { type: 'none' }
+
+export async function searchVenues(query: string): Promise<SearchResult> {
+  const trimmed = query.trim()
+  if (!trimmed) return { type: 'none' }
 
   // Search Supabase for venues matching the name
   const { data: venues } = await supabase
@@ -44,20 +46,20 @@ export async function searchVenues(
     return { type: 'venues', venues: venues as Venue[] }
   }
 
-  // No venue match — fall back to Nominatim geocoding
-  const coords = await geocodeWithNominatim(trimmed)
-  return coords ? { type: 'location', coords } : { type: 'location' }
+  // No venue match — fall back to Nominatim for geographic search
+  const geo = await geocodeWithNominatim(trimmed)
+  if (geo) return { type: 'geo', geo }
+
+  return { type: 'none' }
 }
 
-async function geocodeWithNominatim(
-  query: string
-): Promise<{ lat: number; lng: number } | null> {
-  const isZipCode = /^\d{5}$/.test(query.trim())
-  const searchQuery = isZipCode ? `${query.trim()}, USA` : query
+async function geocodeWithNominatim(query: string): Promise<GeoResult | null> {
+  const searchQuery = `${query.trim()}, USA`
 
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', searchQuery)
   url.searchParams.set('format', 'json')
+  url.searchParams.set('addressdetails', '1')
   url.searchParams.set('limit', '1')
 
   try {
@@ -73,12 +75,29 @@ async function geocodeWithNominatim(
     }
 
     const results = await res.json()
-    if (!results || results.length === 0) {
-      return null
-    }
+    if (!results || results.length === 0) return null
 
     const first = results[0]
+    const addr = first.address
+
+    // Build a clean display name: "City, ST" or "City, Country"
+    const city = addr?.city || addr?.town || addr?.village || addr?.hamlet || addr?.municipality || ''
+    const state = addr?.state || ''
+    const country = addr?.country_code?.toUpperCase() || addr?.country || ''
+
+    let displayName = city
+    if (state) displayName += `, ${state}`
+    else if (country) displayName += `, ${country}`
+
+    // Fallback to full display name if no city found
+    if (!displayName || displayName === ', ') {
+      displayName = first.display_name?.split(',')[0] || query
+    }
+
     return {
+      displayName: displayName.trim(),
+      state: state || undefined,
+      country: country || undefined,
       lat: parseFloat(first.lat),
       lng: parseFloat(first.lon),
     }
@@ -110,7 +129,6 @@ export async function geocodeAddress(
     if (!results || results.length === 0) return null
 
     const first = results[0]
-    // Extract zip from address components
     const zip =
       first.address?.postcode ||
       first.address?.city?.match(/\d{5}/)?.[0] ||

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { searchVenues } from '@/lib/geocode'
+import { searchVenues, type GeoResult } from '@/lib/geocode'
 import type { Venue } from '@/lib/supabase'
 
 interface SearchBarProps {
@@ -15,21 +15,17 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [venueResults, setVenueResults] = useState<Venue[]>([])
+  const [geoResult, setGeoResult] = useState<GeoResult | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Track the input value that was present before the user started typing.
-  // Used to detect browser autofill — we skip the debounce search when the
-  // browser autofills a value the user didn't just type.
   const preUserValueRef = useRef<string>('')
-  // Tracks whether the first change after focus may be a browser autofill.
-  // When true, skip the debounce and update preUserValueRef. Cleared after
-  // the first change so subsequent changes always proceed normally.
   const isFirstChangeRef = useRef(false)
 
   async function doSearch(q: string) {
     if (!q.trim()) {
       setVenueResults([])
+      setGeoResult(null)
       setShowDropdown(false)
       setLoading(false)
       return
@@ -37,6 +33,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     setLoading(true)
     setShowDropdown(false)
     setVenueResults([])
+    setGeoResult(null)
 
     const result = await searchVenues(q)
     setLoading(false)
@@ -44,11 +41,12 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     if (result.type === 'venues' && result.venues) {
       setVenueResults(result.venues)
       setShowDropdown(true)
-    } else if (result.type === 'location' && result.coords) {
-      setShowDropdown(false)
-      onSearch(result.coords)
+    } else if (result.type === 'geo' && result.geo) {
+      // No venue match — show geographic result in dropdown instead of jumping map
+      setGeoResult(result.geo)
+      setShowDropdown(true)
     } else {
-      showError('Location not found. Try a different city or zip.')
+      showError('No venue or location found.')
     }
   }
 
@@ -57,41 +55,41 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     setQuery(val)
     if (errorTimer.current) clearTimeout(errorTimer.current)
 
-    // Detect browser autofill: when the input gains focus and the browser
-    // autofills a value, onChange fires before any user keystroke. We detect
-    // this by checking whether this change set a value that differs from what
-    // the user typed on the PREVIOUS change. If it's the first change since
-    // focus and the new value is non-empty (autofill), skip the debounce search.
     if (isFirstChangeRef.current) {
       if (val !== preUserValueRef.current) {
-        // This change came from autofill — save it but don't search yet.
         preUserValueRef.current = val
       }
-      // Either way, clear the flag so the next change always fires normally.
       isFirstChangeRef.current = false
       return
     }
 
     if (!val.trim()) {
       setVenueResults([])
+      setGeoResult(null)
       setShowDropdown(false)
       setLoading(false)
       if (debounceTimer.current) clearTimeout(debounceTimer.current)
       return
     }
 
-    // Normal user keystroke: mark the flag for the next focus event
     preUserValueRef.current = val
     isFirstChangeRef.current = false
 
+    if (val.trim().length < 2) {
+      setLoading(false)
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+      return
+    }
+
     setLoading(true)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => doSearch(val), 350)
+    debounceTimer.current = setTimeout(() => doSearch(val), 500)
   }, [])
 
   function showError(msg: string) {
     setError(msg)
     setVenueResults([])
+    setGeoResult(null)
     setShowDropdown(false)
     if (errorTimer.current) clearTimeout(errorTimer.current)
     errorTimer.current = setTimeout(() => setError(''), 3000)
@@ -108,24 +106,36 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   function handleVenueClick(venue: Venue) {
     setShowDropdown(false)
     setVenueResults([])
+    setGeoResult(null)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onVenueSelect(venue)
+  }
+
+  function handleGeoClick() {
+    if (!geoResult) return
+    setShowDropdown(false)
+    setVenueResults([])
+    setGeoResult(null)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    onSearch({ lat: geoResult.lat, lng: geoResult.lng })
   }
 
   function handleClear() {
     setQuery('')
     setError('')
     setVenueResults([])
+    setGeoResult(null)
     setShowDropdown(false)
     if (errorTimer.current) clearTimeout(errorTimer.current)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onClear()
   }
 
+  const showGeoOption = showDropdown && venueResults.length === 0 && geoResult
+
   return (
     <div className="shrink-0 px-4 py-2 bg-white border-b border-gray-100">
       <form onSubmit={handleSubmit} className="relative flex items-center">
-        {/* Search icon / button */}
         <button
           type="submit"
           disabled={loading || !query.trim()}
@@ -170,7 +180,7 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
         )}
       </form>
 
-      {/* Venue results dropdown — appears above input */}
+      {/* Venue results dropdown */}
       {showDropdown && venueResults.length > 0 && (
         <div className="absolute z-50 w-[calc(100%-2rem)] mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
           {venueResults.map(venue => (
@@ -185,6 +195,21 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Geographic result — shown when no venue matched */}
+      {showGeoOption && (
+        <div className="absolute z-50 w-[calc(100%-2rem)] mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
+          <button
+            onClick={handleGeoClick}
+            className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors"
+          >
+            <p className="text-sm text-gray-500">
+              <span className="mr-1.5">📍</span>
+              {geoResult.displayName}
+            </p>
+          </button>
         </div>
       )}
 

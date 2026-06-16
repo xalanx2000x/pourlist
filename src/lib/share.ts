@@ -54,17 +54,25 @@ export function scheduleSummary(venue: Venue): string {
  * Build the share text body. Never prints "undefined" — the deal and
  * schedule parts are filtered out if empty.
  *
- *   both:   "🍸 Happy hour at Matador — $5 wells, Daily 4–6 PM. See it live on PourList:"
- *   deal:   "🍸 Happy hour at Matador — $5 wells. See it live on PourList:"
- *   sched:  "🍸 Happy hour at Matador — Daily 4–6 PM. See it live on PourList:"
- *   neither:"🍸 Happy hour at Matador. See it live on PourList:"
+ * If `url` is provided, it is appended on a new line. The URL lives in
+ * the text body itself (not just in a separate `url` field) so it
+ * survives the Web Share API path to SMS / iMessage, which drops the
+ * `url` field and only delivers `text`. Mail and WhatsApp still get a
+ * clickable link because we also pass the `url` field through — but
+ * the text-body copy is the canonical delivery path.
+ *
+ *   both:   "🍸 Happy hour at Matador — $5 wells, Daily 4–6 PM. See it live on PourList:\nhttps://pourlist.app/venue/matador-060fe1"
+ *   deal:   "🍸 Happy hour at Matador — $5 wells. See it live on PourList:\nhttps://…"
+ *   sched:  "🍸 Happy hour at Matador — Daily 4–6 PM. See it live on PourList:\nhttps://…"
+ *   neither:"🍸 Happy hour at Matador. See it live on PourList:\nhttps://…"
  */
-export function buildShareText(venue: Venue): string {
+export function buildShareText(venue: Venue, url?: string): string {
   const deal = dealSummary(venue)
   const schedule = scheduleSummary(venue)
   const middle = [deal, schedule].filter(s => s.length > 0).join(', ')
   const middlePhrase = middle ? ` — ${middle}` : ''
-  return `🍸 Happy hour at ${venue.name}${middlePhrase}. See it live on PourList:`
+  const body = `🍸 Happy hour at ${venue.name}${middlePhrase}. See it live on PourList:`
+  return url ? `${body}\n${url}` : body
 }
 
 export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'error'
@@ -79,8 +87,12 @@ export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'error'
  *   'error'     — Both APIs failed (caller should toast)
  */
 export async function shareVenue(venue: Venue): Promise<ShareResult> {
-  const text = buildShareText(venue)
   const url = venueShareUrl(venue)
+  // URL is embedded in the text body so SMS / iMessage recipients see
+  // it even when the target app drops the separate `url` field. We
+  // also pass `url` to navigator.share so apps that DO use the field
+  // (Mail, WhatsApp) get a clickable preview.
+  const text = buildShareText(venue, url)
 
   // Web Share API (iOS Safari, Android Chrome, supported desktop)
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -99,7 +111,7 @@ export async function shareVenue(venue: Venue): Promise<ShareResult> {
   // Clipboard fallback (desktop, or Web Share unavailable/failed)
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(`${text}\n${url}`)
+      await navigator.clipboard.writeText(text)
       return 'copied'
     } catch {
       // fall through

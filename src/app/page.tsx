@@ -176,10 +176,14 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   //   if the user panned during the fetch, the deep-link is canceled.
   useEffect(() => {
     if (!deepLinkActive) return
+    console.log('[deep-link] useEffect fire', { deepLinkActive, search: window.location.search })
 
     const params = new URLSearchParams(window.location.search)
     const slug = params.get('venue')
-    if (!slug) return
+    if (!slug) {
+      console.log('[deep-link] no slug in URL — bailing')
+      return
+    }
 
     // Clean the URL first — even before the fetch, so a slow network
     // doesn't leave a stale ?venue= sitting in the address bar.
@@ -187,20 +191,30 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 
     ;(async () => {
       try {
+        console.log('[deep-link] fetching venue by slug', slug)
         const venue = await getVenueBySlugClient(slug)
+        console.log('[deep-link] fetch result', { found: !!venue, name: venue?.name, lat: venue?.lat, lng: venue?.lng })
         if (!venue || venue.lat == null || venue.lng == null) {
+          console.log('[deep-link] bad venue — setting deepLinkActive=false, GPS will fire next')
           setDeepLinkActive(false)
           return
         }
         // If the user has interacted with the map during the fetch,
         // they don't want the deep-link to take over.
-        if (!deepLinkActiveRef.current) return
+        if (!deepLinkActiveRef.current) {
+          console.log('[deep-link] user panned during fetch — bailing')
+          return
+        }
+        console.log('[deep-link] loadVenues', { lat: venue.lat, lng: venue.lng })
         await loadVenues({ lat: venue.lat, lng: venue.lng })
-        // Double-check before opening the card.
-        if (!deepLinkActiveRef.current) return
+        if (!deepLinkActiveRef.current) {
+          console.log('[deep-link] user panned during loadVenues — bailing')
+          return
+        }
+        console.log('[deep-link] setSelectedVenue', venue.name)
         setSelectedVenue(venue)
       } catch (err) {
-        console.error('Deep-link resolve failed:', err)
+        console.log('[deep-link] fetch THREW — setting deepLinkActive=false', err)
         setDeepLinkActive(false)
       }
     })()
@@ -224,10 +238,18 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   // changes (i.e., when the user pans) so the deferred GPS request
   // actually fires.
   useEffect(() => {
-    if (deepLinkActive) return
+    console.log('[gps] useEffect fire', { deepLinkActive })
+    if (deepLinkActive) {
+      console.log('[gps] gated — deepLinkActive is true, returning')
+      return
+    }
+    console.log('[gps] gate passed — calling getBrowserLocation')
     getBrowserLocation()
-      .then(loc => setUserLocation(loc))
-      .catch(() => {})
+      .then(loc => {
+        console.log('[gps] resolved', loc)
+        setUserLocation(loc)
+      })
+      .catch(err => console.log('[gps] rejected', err))
   }, [deepLinkActive])
 
   // User-initiated map move (drag, pinch, scroll-zoom, etc.). Clears
@@ -244,6 +266,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 
   // Reverse-geocode user location to get a human-readable area name
   useEffect(() => {
+    console.log('[reverse-geocode] useEffect fire', { userLocation })
     if (!userLocation) return
     const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
     if (!MAPBOX_TOKEN) return
@@ -253,7 +276,10 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
       .then(r => r.json())
       .then(data => {
         const feat = data.features?.[0]
-        if (feat?.text) setAreaName(feat.text)
+        if (feat?.text) {
+          console.log('[reverse-geocode] setting areaName', feat.text)
+          setAreaName(feat.text)
+        }
       })
       .catch(() => {})
   }, [userLocation])

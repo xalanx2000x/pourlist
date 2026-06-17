@@ -72,6 +72,24 @@ export default function Home() {
   // panning doesn't result in empty states after a manual reload.
   const DEFAULT_RADIUS_METERS = 50 * 1609.34
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+
+  // === UNCONDITIONAL HYDRATION DEBUG ========================================
+  // Runs on every render. NOT inside a useEffect, NOT gated. Prints the
+  // actual values that exist at the moment the function body executes
+  // (i.e. the hydration value, not what a useEffect eventually mutates
+  // it to). console.error so it shows up in the default "Errors" filter.
+  if (typeof window !== 'undefined') {
+    const _search = window.location.search
+    const _hasVenue = new URLSearchParams(_search).has('venue')
+    // also read the deepLinkActive that useState has just initialized above
+    // (we can't read it before the useState call site, so this prints the
+    //  initial value of the *closure's* state on the SECOND line)
+    console.error('[DEBUG render] hasWindow=true hasVenueParam=' + _hasVenue + ' search=' + _search)
+  } else {
+    console.error('[DEBUG render] SSR — no window')
+  }
+  // === /UNCONDITIONAL HYDRATION DEBUG =======================================
+
   /**
    * True while a deep-linked venue (`?venue=…`) owns the map position.
    * Driven as STATE (not just a ref) because it must gate the

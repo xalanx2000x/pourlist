@@ -20,6 +20,7 @@ import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getBrowserLocation } from '@/lib/gps'
+import { isDeepLinkActive, setDeepLinkFlag } from '@/lib/deep-link'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
 import SeedMatchConfirm from '@/components/SeedMatchConfirm'
@@ -203,6 +204,14 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
       return
     }
 
+    // Activate the module-level flag BEFORE any other useEffect or
+    // any other caller of getBrowserLocation can run. The flag is
+    // synchronous; the React state below is async. The chokepoint
+    // in lib/gps.ts (isDeepLinkActive) reads this flag with a URL
+    // fallback, so even if a stale closure reads the wrong value, the
+    // URL check catches it.
+    setDeepLinkFlag(true)
+
     // Clean the URL first — even before the fetch, so a slow network
     // doesn't leave a stale ?venue= sitting in the address bar.
     window.history.replaceState({}, '', window.location.pathname)
@@ -213,14 +222,15 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
         const venue = await getVenueBySlugClient(slug)
         console.log('[deep-link] fetch result', { found: !!venue, name: venue?.name, lat: venue?.lat, lng: venue?.lng })
         if (!venue || venue.lat == null || venue.lng == null) {
-          console.log('[deep-link] bad venue — setting deepLinkActive=false, GPS will fire next')
-          setDeepLinkActive(false)
+          console.log('[deep-link] bad venue — clearing deep-link flag, GPS will fire next')
+          deepLinkActiveRef.current = false
+          setDeepLinkFlag(false)
           return
         }
         // If the user has interacted with the map during the fetch,
         // they don't want the deep-link to take over.
         if (!deepLinkActiveRef.current) {
-          console.log('[deep-link] user panned during fetch — bailing')
+          console.log('[deep-link] user panned during fetch — bailing (module flag may already be cleared by handleUserPan)')
           return
         }
         console.log('[deep-link] loadVenues', { lat: venue.lat, lng: venue.lng })
@@ -232,33 +242,51 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
         console.log('[deep-link] setSelectedVenue', venue.name)
         setSelectedVenue(venue)
       } catch (err) {
-        console.log('[deep-link] fetch THREW — setting deepLinkActive=false', err)
-        setDeepLinkActive(false)
+        console.log('[deep-link] fetch THREW — clearing deep-link flag', err)
+        deepLinkActiveRef.current = false
+        setDeepLinkFlag(false)
       }
     })()
+
+    // Cleanup: clear the module-level flag on unmount, so a future
+    // re-mount of the page (or a leftover getBrowserLocation call)
+    // doesn't see a stale "active" flag.
+    return () => {
+      setDeepLinkFlag(false)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkActive])
 
   // Load venues whenever user location becomes available
-  // Gated on deepLinkActive (state): if a deep link is active, the
-  // userLocation resolve must NOT trigger a loadVenues that would
-  // override the venue.
+  // Gated on isDeepLinkActive (synchronous URL/module check) and on
+  // deepLinkActive (React state). The URL check is the primary fix
+  // for the first render before state has propagated; the state
+  // check catches subsequent re-runs. Belt and suspenders.
   useEffect(() => {
+    if (isDeepLinkActive()) return
     if (deepLinkActive) return
     if (!userLocation) return
     loadVenues()
   }, [userLocation, loadVenues, deepLinkActive])
 
   // Get user location on mount.
-  // Gated on deepLinkActive (state): if a deep link is active, we defer
-  // the permission prompt entirely. GPS is fetched later on user
-  // interaction (pan, "near me" tap). Re-runs when deepLinkActive
-  // changes (i.e., when the user pans) so the deferred GPS request
-  // actually fires.
+  // Three layers of defense:
+  //   1. isDeepLinkActive() — synchronous URL/module check, catches
+  //      the first render before state has propagated, AND is the
+  //      chokepoint that getBrowserLocation() also reads (so even if
+  //      this useEffect slips through, the function call itself
+  //      rejects when a deep link is active).
+  //   2. deepLinkActive (React state) — catches subsequent re-runs.
+  //   3. getBrowserLocation()'s own isDeepLinkActive() check inside
+  //      the function body (lib/gps.ts) — the chokepoint itself.
   useEffect(() => {
     console.log('[gps] useEffect fire', { deepLinkActive })
+    if (isDeepLinkActive()) {
+      console.log('[gps] gated — deep link active (URL or module flag)')
+      return
+    }
     if (deepLinkActive) {
-      console.log('[gps] gated — deepLinkActive is true, returning')
+      console.log('[gps] gated — deepLinkActive state is true')
       return
     }
     console.log('[gps] gate passed — calling getBrowserLocation')
@@ -274,9 +302,12 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   // the deep-link state and fetches GPS for future use — but does NOT
   // recenter the map (the user is panning, the map is where they want
   // it). They can tap "Search this area" or "near me" to act on GPS.
+  // Clears BOTH the local state and the module-level flag so the
+  // chokepoint in getBrowserLocation lets the call through.
   const handleUserPan = useCallback(() => {
     if (!deepLinkActive) return
-    setDeepLinkActive(false)
+    deepLinkActiveRef.current = false
+    setDeepLinkFlag(false)
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
       .catch(() => {})
@@ -342,12 +373,14 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 
   // My Location button — flies to user location. User then taps "Search this area"
   // to reload venues from their actual position.
-  // In deep-link mode: clear the state, fetch GPS (no prompt if previously granted),
-  // then zoom to the resolved coords. We chain the zoom onto the GPS resolve so
+  // In deep-link mode: clear the state AND the module-level flag,
+  // fetch GPS (no prompt if previously granted), then zoom to the
+  // resolved coords. We chain the zoom onto the GPS resolve so
   // the first tap in deep-link mode does the right thing in one motion.
   function handleZoomToUser() {
     if (deepLinkActive) {
-      setDeepLinkActive(false)
+      deepLinkActiveRef.current = false
+      setDeepLinkFlag(false)
       getBrowserLocation()
         .then(loc => {
           setUserLocation(loc)

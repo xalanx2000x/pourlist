@@ -1,4 +1,5 @@
 import ExifReader from 'exifreader'
+import { isDeepLinkActive } from './deep-link'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
@@ -44,6 +45,17 @@ export async function extractGpsFromPhoto(file: File): Promise<GpsCoords | null>
  */
 export function getBrowserLocation(): Promise<GpsCoords> {
   return new Promise((resolve, reject) => {
+    // Chokepoint: abort if a deep link is active. The deep link owns
+    // the map position until the user pans or taps "near me"; a stray
+    // location fix from GPS or IP would recenter the map over the
+    // shared venue card. All three location sources (GPS success, GPS
+    // error → IP fallback, no hardware → IP fallback) flow through
+    // here, so gating at this one place covers all of them in one shot.
+    if (isDeepLinkActive()) {
+      reject(new Error('Deep-link active — location request suppressed'))
+      return
+    }
+
     if (!navigator.geolocation) {
       // No GPS hardware — try IP geolocation
       fetchIpLocation().then(resolve).catch(reject)

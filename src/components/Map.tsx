@@ -46,6 +46,16 @@ interface MapProps {
    *  Does NOT fire for programmatic moves (flyTo, fitBounds). Uses mapbox's
    *  `e.originalEvent` to distinguish user input from animation. */
   onUserPan?: () => void
+  /**
+   * Belt-and-suspenders gate for every user-location flow inside Map.
+   * When true, the showUserLocation effect (getCurrentPosition +
+   * watchPosition + user marker) AND the flyToUserLocation / zoomToUser
+   * effects (both of which recenter to user coords) are all skipped.
+   * Driven by the deep-link flag on page.tsx so a deep-linked venue
+   * owns the map position and no user-location-driven recenter can
+   * happen, even if a stale prop value slips through.
+   */
+  suppressUserLocation?: boolean
   /** Incrementing this number triggers a fly-to-user animation */
   zoomToUser?: number
   /** Flying to a search location center */
@@ -76,7 +86,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
   }
 }
 
-export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange, flyToCenter, onUserPan }: MapProps) {
+export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLocation, showUserLocation = false, onBoundsChange, onMapCenterChange, centerShiftThreshold = 3000, onMapReady, zoomToUser, onZoomChange, flyToCenter, onUserPan, suppressUserLocation = false }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -91,7 +101,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
 
   // Track and watch user location
   useEffect(() => {
-    if (!showUserLocation || !navigator.geolocation) return
+    if (suppressUserLocation || !showUserLocation || !navigator.geolocation) return
 
     // Get initial position
     navigator.geolocation.getCurrentPosition(
@@ -426,16 +436,18 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
 
   // Fly to user's location on first load
   useEffect(() => {
+    if (suppressUserLocation) return
     if (!map.current || !mapLoaded || !flyToUserLocation) return
     map.current.flyTo({
       center: [flyToUserLocation.lng, flyToUserLocation.lat],
       zoom: 14,
       duration: 1500
     })
-  }, [flyToUserLocation, mapLoaded])
+  }, [flyToUserLocation, mapLoaded, suppressUserLocation])
 
   // Fly to user's current position (zoom-to-user button)
   useEffect(() => {
+    if (suppressUserLocation) return
     if (!map.current || !mapLoaded || !zoomToUser) return
     const loc = userLocationRef.current
     if (!loc) return
@@ -444,7 +456,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       zoom: 15,
       duration: 1200
     })
-  }, [zoomToUser, mapLoaded])
+  }, [zoomToUser, mapLoaded, suppressUserLocation])
 
   // Fly to a search location center (Search this area)
   useEffect(() => {

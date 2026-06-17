@@ -928,6 +928,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
                 onVenueSelect={handleVenueSelect}
                 flyToUserLocation={userLocation}
                 showUserLocation={!deepLinkActive}
+                suppressUserLocation={deepLinkActive}
                 onBoundsChange={(bounds) => {
                   setMapBounds(bounds); setListBounds(bounds)
                   handleMapMove()

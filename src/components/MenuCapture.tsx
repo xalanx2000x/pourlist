@@ -188,7 +188,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
                 <button
                   onClick={() => photoInputRef.current?.click()}
                   disabled={loading}
-                  className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-lime-400 hover:text-lime-400 transition-colors disabled:opacity-50"
+                  className="h-24 w-16 shrink-0 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-amber-500 hover:text-amber-500 transition-colors disabled:opacity-50"
                 >
                   <span className="text-xl leading-none">+</span>
                   <span className="text-xs">Add</span>
@@ -210,7 +210,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
               <button
                 onClick={() => photoInputRef.current?.click()}
                 disabled={loading}
-                className="w-full bg-lime-400 hover:bg-lime-500 active:bg-lime-600 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
+                className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-4 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-3 transition-colors disabled:opacity-50"
               >
                 <span className="text-xl">📷</span>
                 Take or Choose Photo
@@ -222,7 +222,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
               <button
                 onClick={handleDone}
                 disabled={loading || files.length === 0}
-                className="w-full bg-lime-400 hover:bg-lime-500 disabled:bg-lime-300 text-white py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors"
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 px-6 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors"
               >
                 {loading ? (
                   <>

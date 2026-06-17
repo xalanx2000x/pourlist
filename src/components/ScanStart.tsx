@@ -84,7 +84,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* Header */}
-      <div className="shrink-0 bg-lime-400 text-white px-4 py-3 flex items-center justify-between">
+      <div className="shrink-0 bg-amber-500 text-white px-4 py-3 flex items-center justify-between">
         <button
           onClick={onClose}
           className="text-white/80 hover:text-white text-sm font-medium"
@@ -99,7 +99,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
         {/* Loading state */}
         {locationStatus === 'loading' && (
           <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-8 h-8 border-2 border-lime-400 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-gray-500 text-sm">Finding your location...</p>
           </div>
         )}
@@ -117,7 +117,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
             </p>
             <button
               onClick={onClose}
-              className="mt-2 px-6 py-2.5 bg-lime-400 hover:bg-lime-500 text-white rounded-xl font-semibold text-sm transition-colors"
+              className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold text-sm transition-colors"
             >
               Got it
             </button>
@@ -134,7 +134,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
             </div>
             <button
               onClick={onClose}
-              className="mt-2 px-6 py-2.5 bg-lime-400 hover:bg-lime-500 text-white rounded-xl font-semibold text-sm transition-colors"
+              className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold text-sm transition-colors"
             >
               Close
             </button>
@@ -159,7 +159,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
                 return (
                   <div
                     key={venue.id}
-                    className="border border-gray-200 rounded-xl p-4 hover:border-lime-400 transition-colors cursor-pointer"
+                    className="border border-gray-200 rounded-xl p-4 hover:border-amber-400 transition-colors cursor-pointer"
                     onClick={() => onVenueSelected(venue)}
                   >
                     <div className="flex items-start gap-3">
@@ -179,7 +179,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
                     <div className="mt-3">
                       <button
                         onClick={() => onVenueSelected(venue)}
-                        className="w-full bg-lime-400 hover:bg-lime-500 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
                       >
                         ✓ Yes, scan menu here
                       </button>
@@ -213,7 +213,7 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
             </div>
             <button
               onClick={onAddVenue}
-              className="mt-2 px-6 py-3 bg-lime-400 hover:bg-lime-500 text-white rounded-xl font-semibold text-sm transition-colors"
+              className="mt-2 px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold text-sm transition-colors"
             >
               + Add Happy Hour Location
             </button>

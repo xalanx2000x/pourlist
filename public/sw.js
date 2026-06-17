@@ -1,7 +1,28 @@
 /**
  * Pour List Service Worker — PWA offline support
- * Caches the app shell + last venue list so the app loads without network.
+ *
+ * Caching strategy:
+ *   - Navigation requests (HTML pages): network-first, cache as offline
+ *     fallback. This is the critical fix: cache-first for HTML means
+ *     returning users are stuck on the old version forever, because the
+ *     cached HTML references old chunk URLs that are ALSO in the cache.
+ *     Network-first ensures the latest HTML (and its chunk references)
+ *     reaches the browser on every navigation.
+ *   - Static assets (_next/static/*, images, fonts): cache-first.
+ *     Safe because Next.js fingerprints chunk filenames — new builds
+ *     have new URLs and are fetched fresh. Old chunks linger in cache
+ *     but are never referenced.
+ *   - API requests: stale-while-revalidate. Best of both worlds.
+ *
+ * Update flow:
+ *   - skipWaiting() + clients.claim() so a new SW takes over immediately,
+ *     no tab-close required.
+ *   - CACHE_NAME stays stable. Bump it manually only if the cache shape
+ *     changes (e.g., a new response format that would break old readers).
+ *     For routine code deploys, the network-first HTML strategy above
+ *     is what gets updates to users.
  */
+
 const CACHE_NAME = 'pourlist-v1'
 const SHELL_URLS = [
   '/',
@@ -33,7 +54,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Fetch: stale-while-revalidate for venue API, cache-first for everything else
+// Fetch: route by request type
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
@@ -61,7 +82,29 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Static assets & pages → cache-first with network fallback
+  // Navigation requests (HTML pages) → network-first, cache as offline fallback.
+  // THIS IS THE CRITICAL FIX: cache-first for HTML would serve stale code to
+  // returning users because the cached HTML references old chunk URLs that
+  // are also cached. Network-first ensures the latest HTML reaches the
+  // browser, and its chunk references trigger fresh fetches for any
+  // fingerprinted assets that have changed.
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    event.respondWith(
+      fetch(request)
+        .then(res => {
+          if (res.ok) {
+            const clone = res.clone()
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone))
+          }
+          return res
+        })
+        .catch(() => caches.match(request))
+    )
+    return
+  }
+
+  // Static assets & everything else → cache-first with network fallback.
+  // Safe for _next/static/* because Next.js fingerprints those filenames.
   event.respondWith(
     caches.match(request).then(cacheRes => {
       if (cacheRes) return cacheRes

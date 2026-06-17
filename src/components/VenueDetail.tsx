@@ -39,8 +39,12 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
   const [viewerPhotoIndex, setViewerPhotoIndex] = useState(0)
   const [allPhotos, setAllPhotos] = useState<{ url: string; setIndex: number; photoIndex: number }[]>([])
 
-  // Swipe-down to close — only when at top of scroll (not mid-scroll)
+  // Swipe-down to close — touch handler fires anywhere on the card
+  // (touchscreens only). Pointer handler on the drag handle covers
+  // trackpad/mouse drag-to-dismiss without false positives from
+  // text-selection drags on the card content.
   const touchStartY = useRef<number | null>(null)
+  const pointerStartY = useRef<number | null>(null)
   const hasMovedDownRef = useRef(false)
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -66,6 +70,30 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
       onClose()
     }
     touchStartY.current = null
+    hasMovedDownRef.current = false
+  }
+
+  // Trackpad/mouse drag-to-dismiss on the drag handle. Pointer events
+  // are unified across input types; on a trackpad/mouse this fires
+  // when the user clicks the handle and drags down.
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerStartY.current = e.clientY
+    hasMovedDownRef.current = false
+  }
+
+  const handlePointerMove = (_e: React.PointerEvent) => {
+    if (pointerStartY.current === null) return
+    const deltaY = _e.clientY - pointerStartY.current
+    if (deltaY > 10) {
+      hasMovedDownRef.current = true
+    }
+  }
+
+  const handlePointerUp = () => {
+    if (hasMovedDownRef.current) {
+      onClose()
+    }
+    pointerStartY.current = null
     hasMovedDownRef.current = false
   }
 
@@ -185,8 +213,14 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Handle bar — swipe indicator */}
-      <div className="flex justify-center pt-3 pb-1">
+      {/* Handle bar — swipe indicator (touch) + drag-to-dismiss (trackpad/mouse) */}
+      <div
+        className="flex justify-center pt-4 pb-3 cursor-grab active:cursor-grabbing touch-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
         <div className="w-12 h-1 bg-gray-300 rounded-full" />
       </div>
 
@@ -215,8 +249,15 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
                 Needs Update
               </span>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1">
               <ShareButton venue={venue} />
+              <button
+                onClick={onClose}
+                className="hidden md:flex w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 items-center justify-center text-gray-500 hover:text-gray-700 text-xl font-medium transition-colors"
+                aria-label="Close venue details"
+              >
+                ×
+              </button>
             </div>
           </div>
           <p className="text-gray-600 mt-1">{venue.address_backup}</p>

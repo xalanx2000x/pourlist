@@ -19,7 +19,7 @@ import { trackEvent } from '@/lib/analytics'
 import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
-import { getBrowserLocation } from '@/lib/gps'
+import { getBrowserLocation, LocationUnavailableError } from '@/lib/gps'
 import { isDeepLinkActive, setDeepLinkFlag } from '@/lib/deep-link'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
@@ -172,6 +172,22 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   const [scanStep, setScanStep] = useState<ScanStep>('idle')
   const [scan, setScan] = useState<ScanState>(emptyScanState())
   const [saveSuccess, setSaveSuccess] = useState(false)
+  // Friendly hint when location is genuinely unavailable (OS off,
+  // browser denied, IP lookup failed). One per session — ref-guarded
+  // so retries don't re-nag. The deep-link chokepoint rejection is
+  // NOT a LocationUnavailableError, so it won't trigger this.
+  const [locationToast, setLocationToast] = useState(false)
+  const locationToastShownRef = useRef(false)
+  const showLocationToastOnce = useCallback(() => {
+    if (locationToastShownRef.current) return
+    locationToastShownRef.current = true
+    setLocationToast(true)
+  }, [])
+  useEffect(() => {
+    if (!locationToast) return
+    const t = setTimeout(() => setLocationToast(false), 8000)
+    return () => clearTimeout(t)
+  }, [locationToast])
   const [lastSavedVenue, setLastSavedVenue] = useState<string | null>(null)
   const [gpsWarning, setGpsWarning] = useState<string | null>(null)
 
@@ -270,8 +286,10 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     if (deepLinkActive) return
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
-      .catch(() => {})
-  }, [deepLinkActive])
+      .catch((err) => {
+        if (err instanceof LocationUnavailableError) showLocationToastOnce()
+      })
+  }, [deepLinkActive, showLocationToastOnce])
 
   // User-initiated map move (drag, pinch, scroll-zoom, etc.). Clears
   // the deep-link state and fetches GPS for future use — but does NOT
@@ -287,8 +305,10 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
     setDeepLinkActive(false)
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
-      .catch(() => {})
-  }, [deepLinkActive])
+      .catch((err) => {
+        if (err instanceof LocationUnavailableError) showLocationToastOnce()
+      })
+  }, [deepLinkActive, showLocationToastOnce])
 
   // Reverse-geocode user location to get a human-readable area name
   useEffect(() => {
@@ -366,7 +386,9 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
           setZoomToUserTick(t => t + 1)
           setShowSearchThisArea(true)
         })
-        .catch(() => {})
+        .catch((err) => {
+          if (err instanceof LocationUnavailableError) showLocationToastOnce()
+        })
       return
     }
     if (!userLocation) return
@@ -1070,6 +1092,25 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
           >
             ← Back to Map
           </button>
+
+          {/* Location-unavailable toast — fixed, doesn't push layout */}
+          {locationToast && (
+            <div
+              role="status"
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] max-w-sm mx-4 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-start gap-3"
+            >
+              <span className="text-sm leading-snug flex-1">
+                Location's off — enable it for this site to see what's near you.
+              </span>
+              <button
+                onClick={() => setLocationToast(false)}
+                className="text-gray-400 hover:text-white text-lg leading-none shrink-0 -mt-0.5"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {/* Bottom bar */}
           <div className="shrink-0 p-4 bg-white border-t border-gray-100">

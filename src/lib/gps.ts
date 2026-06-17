@@ -1,6 +1,21 @@
 import ExifReader from 'exifreader'
 import { isDeepLinkActive } from './deep-link'
 
+/**
+ * Thrown by getBrowserLocation when both browser GPS and the IP
+ * geolocation fallback have failed — i.e. the user genuinely has no
+ * location available (OS-level location off, browser permission
+ * denied, no network for IP lookup, etc.). Callers can `instanceof`
+ * check this to show a "location's off" hint without confusing it
+ * with the deep-link chokepoint rejection.
+ */
+export class LocationUnavailableError extends Error {
+  constructor(message = 'Location unavailable') {
+    super(message)
+    this.name = 'LocationUnavailableError'
+  }
+}
+
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
 export interface GpsCoords {
@@ -108,7 +123,7 @@ async function fetchIpLocation(): Promise<GpsCoords> {
       return { lat: data.lat, lng: data.lon }
     }
   }
-  throw new Error('IP geolocation failed')
+  throw new LocationUnavailableError('IP geolocation failed')
 }
 
 /**

@@ -101,12 +101,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
 
   // Track and watch user location
   useEffect(() => {
-    console.log('[map showUserLocation] useEffect fire', { showUserLocation, suppressUserLocation })
-    if (suppressUserLocation || !showUserLocation || !navigator.geolocation) {
-      console.log('[map showUserLocation] gated')
-      return
-    }
-    console.log('[map showUserLocation] gate passed — calling getCurrentPosition')
+    if (suppressUserLocation || !showUserLocation || !navigator.geolocation) return
 
     // Get initial position
     navigator.geolocation.getCurrentPosition(

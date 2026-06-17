@@ -108,6 +108,48 @@ export default function Home() {
   })
   const deepLinkActiveRef = useRef(deepLinkActive)
   useEffect(() => { deepLinkActiveRef.current = deepLinkActive }, [deepLinkActive])
+  // Stash the deep-link slug on the very first render so the async
+  // useEffect can pick it up after the URL is cleaned. The synchronous
+  // bootstrap below writes to it on the first render; subsequent
+  // renders leave it alone.
+  const deepLinkSlugRef = useRef<string | null>(null)
+
+  // === SYNCHRONOUS DEEP-LINK BOOTSTRAP =====================================
+  // Runs on the first render, BEFORE any useEffect (including our own
+  // deep-link useEffect, and Next.js's own history-management
+  // useEffects that may call replaceState). Sets the module-level
+  // flag, stashes the slug, and cleans the URL — in that exact order —
+  // so isDeepLinkActive()'s URL fallback path never sees a stripped
+  // ?venue= with a not-yet-set flag.
+  //
+  // This is the EARLIEST possible point at which the flag can be set
+  // in the component tree. The previous attempt (setting it inside
+  // the deep-link useEffect) lost the race on desktop: the
+  // useEffect's body was gated on `if (!deepLinkActive) return` and
+  // deepLinkActive was false on the first render (SSR default), so
+  // the flag was never set, and the URL fallback saw a stripped
+  // URL (Next.js's router ran after my useEffect and called
+  // replaceState), and ipapi.co fired. This synchronous bootstrap
+  // closes that race because it runs before ANY useEffect.
+  if (typeof window !== 'undefined') {
+    const _bootstrapParams = new URLSearchParams(window.location.search)
+    const _bootstrapSlug = _bootstrapParams.get('venue')
+    if (_bootstrapSlug) {
+      // Order is critical: flag first, then URL cleanup. If we
+      // cleaned the URL first, the URL fallback in isDeepLinkActive()
+      // would return false for one synchronous tick before the flag
+      // gets set — and a tick is enough for the GPS useEffect to
+      // slip through.
+      setDeepLinkFlag(true)
+      deepLinkActiveRef.current = true
+      deepLinkSlugRef.current = _bootstrapSlug
+      // Now safe to clean the URL. The flag is already set so any
+      // subsequent isDeepLinkActive() call (even via the URL
+      // fallback) returns true.
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }
+  // === /SYNCHRONOUS DEEP-LINK BOOTSTRAP =====================================
   const [mapBounds, setMapBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
   // listBounds mirrors mapBounds — keeps list in sync when switching views
   const [listBounds, setListBounds] = useState<{ north: number; south: number; east: number; west: number } | null>(null)
@@ -179,42 +221,23 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   }, [userLocation])
 
   // Deep-link resolver: /?venue={slug} from a shared venue page.
-  // The state-driven `deepLinkActive` (initialized from the URL on first
-  // render) gates every user-location flow in page.tsx AND drives the
-  // showUserLocation prop on Map. While true, no permission prompt
-  // fires, no user location is fetched, no recenter happens.
-  //
-  // - Resolves the slug via the same fields used by the static page.
-  // - Card-first (option B): opens the detail sheet immediately; the
-  //   Map's selectedVenue effect flies underneath in parallel.
-  // - On failure (bad/old/deleted slug, no coords), clears the state so
-  //   the normal GPS-based map load takes over.
-  // - URL is always cleaned (history.replaceState) so a refresh or
-  //   back-nav doesn't re-trigger the flyTo over the user's panned view.
-  // - The ref is re-checked inside the async fetch (stale closures):
-  //   if the user panned during the fetch, the deep-link is canceled.
+  // The synchronous bootstrap above (in the function body) has
+  // already:
+  //   - set the module-level flag
+  //   - stashed the slug in deepLinkSlugRef
+  //   - cleaned the URL
+  //   - scheduled a setDeepLinkActive(true) re-render
+  // This useEffect just runs the async fetch and drives the rest of
+  // the deep-link UX (loadVenues, setSelectedVenue, error paths).
+  // The slug is read from the ref because the URL has been cleaned.
   useEffect(() => {
     if (!deepLinkActive) return
-    console.log('[deep-link] useEffect fire', { deepLinkActive, search: window.location.search })
-
-    const params = new URLSearchParams(window.location.search)
-    const slug = params.get('venue')
+    const slug = deepLinkSlugRef.current
     if (!slug) {
-      console.log('[deep-link] no slug in URL — bailing')
+      console.log('[deep-link] no slug stashed — bailing (synchronous bootstrap missed the URL)')
       return
     }
-
-    // Activate the module-level flag BEFORE any other useEffect or
-    // any other caller of getBrowserLocation can run. The flag is
-    // synchronous; the React state below is async. The chokepoint
-    // in lib/gps.ts (isDeepLinkActive) reads this flag with a URL
-    // fallback, so even if a stale closure reads the wrong value, the
-    // URL check catches it.
-    setDeepLinkFlag(true)
-
-    // Clean the URL first — even before the fetch, so a slow network
-    // doesn't leave a stale ?venue= sitting in the address bar.
-    window.history.replaceState({}, '', window.location.pathname)
+    console.log('[deep-link] useEffect fire', { deepLinkActive })
 
     ;(async () => {
       try {
@@ -227,8 +250,6 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
           setDeepLinkFlag(false)
           return
         }
-        // If the user has interacted with the map during the fetch,
-        // they don't want the deep-link to take over.
         if (!deepLinkActiveRef.current) {
           console.log('[deep-link] user panned during fetch — bailing (module flag may already be cleared by handleUserPan)')
           return
@@ -247,10 +268,6 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
         setDeepLinkFlag(false)
       }
     })()
-
-    // Cleanup: clear the module-level flag on unmount, so a future
-    // re-mount of the page (or a leftover getBrowserLocation call)
-    // doesn't see a stale "active" flag.
     return () => {
       setDeepLinkFlag(false)
     }

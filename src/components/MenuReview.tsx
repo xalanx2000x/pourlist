@@ -89,7 +89,7 @@ export default function MenuReview({
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
       {/* Header */}
-      <div className="shrink-0 bg-amber-500 text-white px-4 py-3 flex items-center justify-between">
+      <div className="shrink-0 bg-lime-400 text-white px-4 py-3 flex items-center justify-between">
         <button
           onClick={onClose}
           className="text-white/80 hover:text-white text-sm font-medium"
@@ -146,22 +146,22 @@ export default function MenuReview({
 
         {/* No HH warning */}
         {showHhWarning && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-3">
-            <p className="text-sm font-medium text-amber-800">No happy hour data entered.</p>
-            <p className="text-xs text-amber-700 mt-1">
+          <div className="bg-lime-50 border border-lime-200 rounded-xl px-3 py-3">
+            <p className="text-sm font-medium text-lime-700">No happy hour data entered.</p>
+            <p className="text-xs text-lime-600 mt-1">
               This venue won't show a schedule on the map. Photos will still be saved.
             </p>
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => setShowHhWarning(false)}
-                className="flex-1 text-sm border border-amber-300 text-amber-700 rounded-lg py-2 hover:bg-amber-100 transition-colors"
+                className="flex-1 text-sm border border-lime-300 text-lime-600 rounded-lg py-2 hover:bg-lime-100 transition-colors"
               >
                 Go back
               </button>
               <button
                 onClick={handleSave}
                 disabled={isCommitting}
-                className="flex-1 text-sm bg-amber-500 text-white rounded-lg py-2 hover:bg-amber-600 transition-colors disabled:opacity-50"
+                className="flex-1 text-sm bg-lime-400 text-white rounded-lg py-2 hover:bg-lime-500 transition-colors disabled:opacity-50"
               >
                 Save anyway
               </button>
@@ -175,7 +175,7 @@ export default function MenuReview({
         <button
           onClick={handleSave}
           disabled={isCommitting}
-          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
+          className="w-full bg-lime-400 hover:bg-lime-500 disabled:bg-lime-300 text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
         >
           {isCommitting ? (
             <>

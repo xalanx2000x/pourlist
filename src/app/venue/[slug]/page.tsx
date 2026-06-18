@@ -65,7 +65,7 @@ export async function generateStaticParams() {
 }
 
 export const dynamicParams = true
-export const revalidate = 86_400 // ISR: rebuild once per day
+export const revalidate = 60 // ISR: temporary 60s during address rename verification; revert to 86_400 in commit 2
 
 // ─── Metadata ──────────────────────────────────────────────────────────────
 

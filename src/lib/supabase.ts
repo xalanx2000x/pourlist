@@ -9,8 +9,12 @@ export type Venue = {
   id: string
   name: string
   slug: string | null
-  // address removed - see address_backup (Preserved for display, phased out of submission flow)
-  address_backup: string | null
+  // Display address (single string, set by seed data or reverse-geocoded
+  // for user-contributed venues via the new-contribution hook in
+  // lib/venues.ts → createVenueForScan). The structured fields below
+  // (city, state, neighborhood, country) are the canonical source;
+  // the visible string is derived from them via lib/format-address.
+  address: string | null
   lat: number | null
   lng: number | null
   zip: string | null

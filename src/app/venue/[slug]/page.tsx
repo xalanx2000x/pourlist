@@ -121,10 +121,10 @@ function buildJsonLd(venue: NonNullable<Awaited<ReturnType<typeof getVenueBySlug
     url,
   }
 
-  if (venue.address_backup) {
+  if (venue.address) {
     fields.address = {
       '@type': 'PostalAddress',
-      streetAddress: venue.address_backup,
+      streetAddress: venue.address,
       addressLocality: 'Portland',
       addressRegion: 'OR',
       postalCode: venue.zip ?? '',
@@ -190,9 +190,9 @@ export default async function VenuePage({
           </h1>
 
           {/* Address */}
-          {venue.address_backup && (
+          {venue.address && (
             <p className="text-gray-500 text-sm mb-6">
-              {venue.address_backup}
+              {venue.address}
             </p>
           )}
 

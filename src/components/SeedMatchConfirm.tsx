@@ -66,8 +66,8 @@ export default function SeedMatchConfirm({
           <h2 className="text-lg font-bold text-gray-900 mb-1">
             Did you mean &ldquo;{seedVenue.name}&rdquo;?
           </h2>
-          {seedVenue.address_backup && (
-            <p className="text-sm text-gray-500">{seedVenue.address_backup}</p>
+          {seedVenue.address && (
+            <p className="text-sm text-gray-500">{seedVenue.address}</p>
           )}
           <p className="text-xs text-amber-700 mt-2">
             This venue is in our database and needs a photo to go live.

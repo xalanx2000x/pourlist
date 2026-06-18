@@ -292,7 +292,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Insert new venue ───────────────────────────────────────────────────
-    // Note: address_backup intentionally left empty — we don't collect user-typed addresses
+    // Note: address intentionally left empty — we don't collect user-typed addresses
     // (EXIF GPS from photo is authoritative; address is backfilled later via reverse geocoding)
     const { data: newVenue, error: venueError } = await supabase
       .from('venues')
@@ -305,7 +305,7 @@ export async function POST(req: NextRequest) {
         is_seed_data: false,  // user-created venues are immediately visible
         menu_text: null,
         latest_menu_image_url: null,
-        address_backup: '',  // NOT NULL in DB — backfill later via reverse geocoding
+        address: '',  // NOT NULL in DB — backfill later via reverse geocoding
         zip: null,
         phone: null,
         website: null,

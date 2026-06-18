@@ -105,8 +105,8 @@ export default function MenuReview({
         <div className="flex items-center gap-2">
           <span className="text-sm">🏠</span>
           <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
-          {venue?.address_backup && (
-            <span className="text-xs text-gray-400 truncate">{venue.address_backup}</span>
+          {venue?.address && (
+            <span className="text-xs text-gray-400 truncate">{venue.address}</span>
           )}
         </div>
 

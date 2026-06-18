@@ -21,7 +21,7 @@ export async function searchVenues(query: string): Promise<SearchResult> {
   // Search Supabase for venues matching the name
   const { data: venues } = await supabase
     .from('venues')
-    .select('id, name, address_backup, lat, lng, latest_menu_image_url, hh_time, status')
+    .select('id, name, address, lat, lng, latest_menu_image_url, hh_time, status')
     .eq('is_seed_data', false)
     .ilike('name', `%${trimmed}%`)
     .limit(5)
@@ -32,7 +32,7 @@ export async function searchVenues(query: string): Promise<SearchResult> {
     if (normalized !== trimmed) {
       const { data: venues2 } = await supabase
         .from('venues')
-        .select('id, name, address_backup, lat, lng, latest_menu_image_url, hh_time, status')
+        .select('id, name, address, lat, lng, latest_menu_image_url, hh_time, status')
         .eq('is_seed_data', false)
         .ilike('name', `%${normalized}%`)
         .limit(5)

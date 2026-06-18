@@ -49,7 +49,7 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
               {venue.hh_time}
             </span>
           )}
-          <p className="text-sm text-gray-600 mt-0.5">{venue.address_backup}</p>
+          <p className="text-sm text-gray-600 mt-0.5">{venue.address}</p>
           {venue.type && (
             <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
               {venue.type}

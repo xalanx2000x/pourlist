@@ -260,7 +260,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
               </button>
             </div>
           </div>
-          <p className="text-gray-600 mt-1">{venue.address_backup}</p>
+          <p className="text-gray-600 mt-1">{venue.address}</p>
           {venue.phone && (
             <a href={`tel:${venue.phone}`} className="text-sm text-amber-600 hover:underline mt-1 block">
               {venue.phone}
@@ -495,7 +495,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address_backup || ''))}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address || ''))}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 text-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -503,7 +503,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             📍 Directions
           </a>
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address_backup || ''))}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address || ''))}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 text-center bg-amber-100 hover:bg-amber-200 text-amber-700 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors"

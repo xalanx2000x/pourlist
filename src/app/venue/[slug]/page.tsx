@@ -16,6 +16,7 @@ import { venueSlug } from '@/lib/slug'
 import { getHhLabel } from '@/lib/format-schedule'
 import VenueLiveBadge from '@/components/VenueLiveBadge'
 import { formatAddress } from '@/lib/format-address'
+import { buildVenueTitle } from '@/lib/format-title'
 
 const BASE_URL = 'https://pourlist.app'
 
@@ -90,9 +91,7 @@ export async function generateMetadata({
   const ogImage = venue.latest_menu_image_url ?? `${BASE_URL}/og-default.png`
 
   return {
-    title: schedule
-      ? `${name} Happy Hour — ${schedule} | PourList`
-      : `${name} | PourList`,
+    title: buildVenueTitle(venue),
     description: description.slice(0, 160),
     alternates: { canonical },
     openGraph: {

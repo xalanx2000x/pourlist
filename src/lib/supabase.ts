@@ -15,6 +15,19 @@ export type Venue = {
   // (city, state, neighborhood, country) are the canonical source;
   // the visible string is derived from them via lib/format-address.
   address: string | null
+  // Structured address fields, populated by the reverse-geocode hook
+  // for user-contributed venues. Seed venues (curated by a human) have
+  // these as null — formatAddress() detects that and falls back to the
+  // stored `address` string. See lib/format-address.ts.
+  street: string | null
+  city: string | null
+  state: string | null
+  neighborhood: string | null
+  country: string | null
+  // Provenance: true when the new-contribution hook reverse-geocoded
+  // GPS into structured fields. Drives the display derivation in
+  // formatAddress().
+  address_autofilled: boolean
   lat: number | null
   lng: number | null
   zip: string | null

@@ -7,6 +7,7 @@ import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
 import ShareButton from './ShareButton'
+import { formatAddress } from '@/lib/format-address'
 
 type ActionState = 'idle' | 'loading' | 'success' | 'error'
 
@@ -260,7 +261,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
               </button>
             </div>
           </div>
-          <p className="text-gray-600 mt-1">{venue.address}</p>
+          <p className="text-gray-600 mt-1">{formatAddress(venue)}</p>
           {venue.phone && (
             <a href={`tel:${venue.phone}`} className="text-sm text-amber-600 hover:underline mt-1 block">
               {venue.phone}

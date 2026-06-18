@@ -6,6 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getHHState, getHHColor } from '@/lib/hh-state'
+import { formatAddress } from '@/lib/format-address'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
@@ -73,7 +74,7 @@ function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
         properties: {
           id: venue.id,
           name: venue.name,
-          address: venue.address || '',
+          address: formatAddress(venue),
           status: venue.status || 'unverified',
           hasHH: hasActiveHappyHour(venue),
           hhState: getHHState(venue)

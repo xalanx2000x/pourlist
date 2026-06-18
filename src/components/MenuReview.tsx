@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import type { Venue } from '@/lib/supabase'
 import { HHWindow } from '@/lib/parse-hh'
 import HHScheduleInput from './HHScheduleInput'
+import { formatAddress } from '@/lib/format-address'
 
 interface MenuReviewProps {
   files: File[]
@@ -105,8 +106,8 @@ export default function MenuReview({
         <div className="flex items-center gap-2">
           <span className="text-sm">🏠</span>
           <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
-          {venue?.address && (
-            <span className="text-xs text-gray-400 truncate">{venue.address}</span>
+          {venue && formatAddress(venue) && (
+            <span className="text-xs text-gray-400 truncate">{formatAddress(venue)}</span>
           )}
         </div>
 

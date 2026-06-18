@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { reverseGeocodeStructured } from '@/lib/gps'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -292,41 +293,63 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Insert new venue ───────────────────────────────────────────────────
-    // Note: address intentionally left empty — we don't collect user-typed addresses
-    // (EXIF GPS from photo is authoritative; address is backfilled later via reverse geocoding)
+    // Build the insert payload. We start with empty address fields and
+    // let the reverse-geocode hook fill them in if GPS is present.
+    const venueInsert: Record<string, unknown> = {
+      name: venueName.trim(),
+      lat: venueLat,
+      lng: venueLng,
+      status: 'unverified',
+      contributor_trust: 'new',
+      is_seed_data: false,  // user-created venues are immediately visible
+      menu_text: null,
+      latest_menu_image_url: null,
+      address: '',
+      zip: null,
+      phone: null,
+      website: null,
+      type: null,
+      hh_summary: hhSummary?.trim() || null,
+      hh_type: hh_type || null,
+      hh_days: hh_days || null,
+      hh_exclude_days: hh_exclude_days || null,
+      hh_start: hh_start ? parseInt(hh_start) : null,
+      hh_end: hh_end ? parseInt(hh_end) : null,
+      hh_type_2: hh_type_2 || null,
+      hh_days_2: hh_days_2 || null,
+      hh_exclude_days_2: hh_exclude_days_2 || null,
+      hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
+      hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
+      hh_type_3: hh_type_3 || null,
+      hh_days_3: hh_days_3 || null,
+      hh_exclude_days_3: hh_exclude_days_3 || null,
+      hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
+      hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
+    }
+
+    // New-contribution hook: if we have GPS, reverse-geocode and fill
+    // the structured fields. Per-field empty-check: we only fill fields
+    // that are currently null/empty. The display string (address) gets
+    // the Mapbox place_name, and address_autofilled is set true.
+    if (venueLat != null && venueLng != null) {
+      const geo = await reverseGeocodeStructured(venueLat, venueLng)
+      if (geo) {
+        if (venueInsert.address === '' || venueInsert.address == null) {
+          venueInsert.address = geo.place_name
+        }
+        venueInsert.street = geo.street
+        venueInsert.city = geo.city
+        venueInsert.state = geo.state
+        venueInsert.neighborhood = geo.neighborhood
+        venueInsert.country = geo.country
+        if (geo.zip) venueInsert.zip = geo.zip
+        venueInsert.address_autofilled = true
+      }
+    }
+
     const { data: newVenue, error: venueError } = await supabase
       .from('venues')
-      .insert({
-        name: venueName.trim(),
-        lat: venueLat,
-        lng: venueLng,
-        status: 'unverified',
-        contributor_trust: 'new',
-        is_seed_data: false,  // user-created venues are immediately visible
-        menu_text: null,
-        latest_menu_image_url: null,
-        address: '',  // NOT NULL in DB — backfill later via reverse geocoding
-        zip: null,
-        phone: null,
-        website: null,
-        type: null,
-        hh_summary: hhSummary?.trim() || null,
-        hh_type: hh_type || null,
-        hh_days: hh_days || null,
-        hh_exclude_days: hh_exclude_days || null,
-        hh_start: hh_start ? parseInt(hh_start) : null,
-        hh_end: hh_end ? parseInt(hh_end) : null,
-        hh_type_2: hh_type_2 || null,
-        hh_days_2: hh_days_2 || null,
-        hh_exclude_days_2: hh_exclude_days_2 || null,
-        hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
-        hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
-        hh_type_3: hh_type_3 || null,
-        hh_days_3: hh_days_3 || null,
-        hh_exclude_days_3: hh_exclude_days_3 || null,
-        hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
-        hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
-      })
+      .insert(venueInsert)
       .select('id')
       .single()
 

@@ -4,6 +4,7 @@ import type { Venue } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getHHState, getHHColor } from '@/lib/hh-state'
 import ShareButton from './ShareButton'
+import { formatAddress } from '@/lib/format-address'
 
 interface VenueCardProps {
   venue: Venue
@@ -49,7 +50,7 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
               {venue.hh_time}
             </span>
           )}
-          <p className="text-sm text-gray-600 mt-0.5">{venue.address}</p>
+          <p className="text-sm text-gray-600 mt-0.5">{formatAddress(venue)}</p>
           {venue.type && (
             <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
               {venue.type}

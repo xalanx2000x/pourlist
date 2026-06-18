@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { getVenuesByProximity } from '@/lib/venues'
 import { getBrowserLocation } from '@/lib/gps'
 import type { Venue } from '@/lib/supabase'
+import { formatAddress } from '@/lib/format-address'
 
 interface ScanStartProps {
   onVenueSelected: (venue: Venue) => void
@@ -166,8 +167,8 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
                       <span className="text-xl shrink-0">🏠</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900 truncate">{venue.name}</p>
-                        {venue.address && (
-                          <p className="text-sm text-gray-500 truncate">{venue.address}</p>
+                        {formatAddress(venue) && (
+                          <p className="text-sm text-gray-500 truncate">{formatAddress(venue)}</p>
                         )}
                         {distance != null && (
                           <p className="text-xs text-gray-400 mt-0.5">

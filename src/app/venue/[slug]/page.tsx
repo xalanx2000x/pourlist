@@ -15,6 +15,7 @@ import { isIndexable } from '@/lib/is-indexable'
 import { venueSlug } from '@/lib/slug'
 import { getHhLabel } from '@/lib/format-schedule'
 import VenueLiveBadge from '@/components/VenueLiveBadge'
+import { formatAddress } from '@/lib/format-address'
 
 const BASE_URL = 'https://pourlist.app'
 
@@ -65,7 +66,7 @@ export async function generateStaticParams() {
 }
 
 export const dynamicParams = true
-export const revalidate = 60 // ISR: temporary 60s during address rename verification; revert to 86_400 in commit 2
+export const revalidate = 86_400 // ISR: rebuild once per day
 
 // ─── Metadata ──────────────────────────────────────────────────────────────
 
@@ -190,9 +191,9 @@ export default async function VenuePage({
           </h1>
 
           {/* Address */}
-          {venue.address && (
+          {formatAddress(venue) && (
             <p className="text-gray-500 text-sm mb-6">
-              {venue.address}
+              {formatAddress(venue)}
             </p>
           )}
 

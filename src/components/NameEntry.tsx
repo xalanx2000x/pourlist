@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Venue } from '@/lib/supabase'
+import { formatAddress } from '@/lib/format-address'
 
 interface NameEntryProps {
   gps: { lat: number; lng: number } | null
@@ -201,9 +202,9 @@ export default function NameEntry({
                   <p className="font-semibold text-gray-900 truncate">
                     {suggestion.venue.name}
                   </p>
-                  {suggestion.venue.address && (
+                  {formatAddress(suggestion.venue) && (
                     <p className="text-sm text-gray-500 truncate">
-                      {suggestion.venue.address}
+                      {formatAddress(suggestion.venue)}
                     </p>
                   )}
                   {suggestion.distance != null && (

@@ -1,4 +1,5 @@
 import { supabase, Venue } from './supabase'
+import { reverseGeocodeStructured } from './gps'
 
 export type PhotoSet = {
   id: string
@@ -187,6 +188,13 @@ export async function flagContent(
 /**
  * Create a new venue for the scan flow.
  * GPS is stored directly (unlike addVenue which omits lat/lng).
+ *
+ * New-contribution hook: if lat/lng are present and `address` is empty,
+ * reverse-geocode the coords and fill the structured fields
+ * (street/city/state/neighborhood/country/zip) plus the display string.
+ * Each field is checked for emptiness before writing — we never
+ * overwrite anything that already has a value. The Mapbox token is
+ * NEXT_PUBLIC_* so it's safe to call from the client.
  */
 export async function createVenueForScan(params: {
   name: string
@@ -195,22 +203,41 @@ export async function createVenueForScan(params: {
   address: string | null
   deviceHash: string
 }): Promise<Venue> {
+  // Build the insert payload. Start with the fields we always know.
+  const insert: Record<string, unknown> = {
+    name: params.name.trim(),
+    lat: params.lat,
+    lng: params.lng,
+    address: params.address ?? null,
+    status: 'unverified',
+    contributor_trust: 'new',
+    zip: null,
+    phone: null,
+    website: null,
+    type: null,
+    menu_text: null,
+    latest_menu_image_url: null
+  }
+
+  // Hook: reverse-geocode if we have GPS and no user-typed address.
+  // Per-field empty-check: we only fill fields that are currently null.
+  if (params.lat != null && params.lng != null && (params.address == null || params.address === '')) {
+    const geo = await reverseGeocodeStructured(params.lat, params.lng)
+    if (geo) {
+      if (insert.address == null || insert.address === '') insert.address = geo.place_name
+      insert.street = geo.street
+      insert.city = geo.city
+      insert.state = geo.state
+      insert.neighborhood = geo.neighborhood
+      insert.country = geo.country
+      if (geo.zip) insert.zip = geo.zip
+      insert.address_autofilled = true
+    }
+  }
+
   const { data, error } = await supabase
     .from('venues')
-    .insert({
-      name: params.name.trim(),
-      lat: params.lat,
-      lng: params.lng,
-      address: params.address ?? null,
-      status: 'unverified',
-      contributor_trust: 'new',
-      zip: null,
-      phone: null,
-      website: null,
-      type: null,
-      menu_text: null,
-      latest_menu_image_url: null
-    })
+    .insert(insert)
     .select()
     .single()
 

@@ -355,7 +355,14 @@ export async function POST(req: NextRequest) {
 
     if (venueError) {
       console.error('[submit-venue] venue insert error:', venueError)
-      return NextResponse.json({ error: 'Failed to create venue' }, { status: 500 })
+      // Surface the Supabase error message so the client (and the user)
+      // can see what actually went wrong. Generic "Failed to create
+      // venue" hides the real cause (column mismatch, check constraint,
+      // etc).
+      return NextResponse.json(
+        { error: `Failed to create venue: ${venueError.message}` },
+        { status: 500 }
+      )
     }
 
     const venueId = newVenue.id
@@ -456,7 +463,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, venueId })
   } catch (err) {
+    // Surface the actual error message so the client can show something
+    // useful instead of the generic "Internal server error". Still log
+    // the full error server-side for debugging.
     console.error('[submit-venue] error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      { error: `Server error: ${message}` },
+      { status: 500 }
+    )
   }
 }

@@ -1,5 +1,6 @@
 import { supabase, Venue } from './supabase'
 import { reverseGeocodeStructured } from './gps'
+import { haversineM } from './geo'
 
 export type PhotoSet = {
   id: string
@@ -28,47 +29,33 @@ export async function getVenuesByProximity(
   const bboxLatDelta = radiusMeters / 111320
   const bboxLngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))
 
-  // Fetch up to 10,000 rows to handle large national seed data.
-  // The Supabase JS client caps at 1,000 by default, which skips
-  // alphabetically-late venues (like "Paymaster") even when they
-  // fall within the geographic radius. The Haversine filter below
-  // still ensures only truly nearby venues are returned.
-  let allVenues: Venue[] = []
-  const PAGE_SIZE = 5000
+  // Bbox prefilter keeps the wire small. We then compute exact
+  // Haversine distance in JS, sort nearest-first, and return the
+  // top 100. The list view re-sorts on the client by the current
+  // loaded-area center — see page.tsx visibleVenues — so the
+  // server order is a snapshot of "100 closest to the query center
+  // at fetch time." `.order('name')` is kept so dedup is stable
+  // (deterministic choice between same-status duplicates).
+  const { data, error } = await supabase
+    .from('venues')
+    .select('*')
+    .neq('status', 'closed')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
+    .gte('lat', lat - bboxLatDelta)
+    .lte('lat', lat + bboxLatDelta)
+    .gte('lng', lng - bboxLngDelta)
+    .lte('lng', lng + bboxLngDelta)
+    .order('name')
+    .limit(1000)
 
-  for (let page = 0; page < 2; page++) {
-    const { data, error } = await supabase
-      .from('venues')
-      .select('*')
-      .neq('status', 'closed')
-      .not('lat', 'is', null)
-      .not('lng', 'is', null)
-      .gte('lat', lat - bboxLatDelta)
-      .lte('lat', lat + bboxLatDelta)
-      .gte('lng', lng - bboxLngDelta)
-      .lte('lng', lng + bboxLngDelta)
-      .order('name')
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-
-    if (error) throw error
-    if (!data || data.length === 0) break
-    allVenues = allVenues.concat(data as Venue[])
-    if (data.length < PAGE_SIZE) break
-  }
+  if (error) throw error
+  if (!data) return []
 
   // Filter by exact Haversine distance (rectangular bbox is wider than radius)
-  const filtered = allVenues.filter(v => {
+  const filtered = (data as Venue[]).filter(v => {
     if (v.lat == null || v.lng == null) return false
-    const R = 6371000
-    const dLat = (v.lat - lat) * Math.PI / 180
-    const dLng = (v.lng - lng) * Math.PI / 180
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat * Math.PI / 180) *
-        Math.cos(v.lat * Math.PI / 180) *
-        Math.sin(dLng / 2) ** 2
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c <= radiusMeters
+    return haversineM(lat, lng, v.lat, v.lng) <= radiusMeters
   })
 
   // Deduplicate by name (case-insensitive, strip leading "The"):
@@ -84,7 +71,15 @@ export async function getVenuesByProximity(
   }
   const deduped = Array.from(seen.values())
 
-  return deduped.sort((a, b) => a.name.localeCompare(b.name))
+  // Sort by distance, nearest first, and cap to 100.
+  return deduped
+    .filter((v): v is Venue & { lat: number; lng: number } =>
+      v.lat != null && v.lng != null
+    )
+    .sort((a, b) =>
+      haversineM(lat, lng, a.lat, a.lng) - haversineM(lat, lng, b.lat, b.lng)
+    )
+    .slice(0, 100)
 }
 
 export async function getVenueById(id: string): Promise<Venue | null> {

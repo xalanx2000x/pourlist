@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
 import { getVenuesByProximity, getVenueById, getVenueBySlugClient } from '@/lib/venues'
@@ -20,6 +20,7 @@ import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getBrowserLocation, LocationUnavailableError } from '@/lib/gps'
+import { haversineM } from '@/lib/geo'
 import { isDeepLinkActive, setDeepLinkFlag } from '@/lib/deep-link'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
@@ -150,18 +151,6 @@ export default function Home() {
   // Function provided by <Map> to read current map center on demand
   const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
-
-/** Haversine distance in meters between two coordinates. */
-function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
 
   // Show onboarding automatically on first eligible visit only
   useEffect(() => {
@@ -949,7 +938,32 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 
   // Both map and list use the same bounds — listBounds mirrors mapBounds when switching views
   const currentBounds = listBounds ?? mapBounds
-  const visibleVenues = venues.filter(v => isVenueInBounds(v, currentBounds))
+  // The center of the currently-loaded area. `searchedLocation` is
+  // set by the search bar and the map's "Search this area" button,
+  // and represents the anchor of the last venue fetch. Falls back
+  // to the user's open GPS location. When neither is set, there's
+  // no center to sort against (the venues array is empty in that
+  // case anyway — see loadVenues).
+  const loadedAreaCenter = searchedLocation ?? userLocation
+  // Re-sort the loaded venue set by distance from the current
+  // center. The server already returns the 100 closest to the
+  // fetch center; this client-side pass is a defensive re-sort for
+  // the case where the center has drifted (e.g. userLocation
+  // updated since the last fetch). Bounded to 100 (server cap) so
+  // the list never shows more than 100 at once.
+  const visibleVenues = useMemo(() => {
+    const inBounds = venues.filter(v => isVenueInBounds(v, currentBounds))
+    if (!loadedAreaCenter) return inBounds
+    return inBounds
+      .filter((v): v is Venue & { lat: number; lng: number } =>
+        v.lat != null && v.lng != null
+      )
+      .sort((a, b) =>
+        haversineM(loadedAreaCenter.lat, loadedAreaCenter.lng, a.lat, a.lng) -
+        haversineM(loadedAreaCenter.lat, loadedAreaCenter.lng, b.lat, b.lng)
+      )
+      .slice(0, 100)
+  }, [venues, currentBounds, loadedAreaCenter])
 
   return (
     <div className="h-screen flex flex-col bg-white">

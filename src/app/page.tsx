@@ -1100,79 +1100,95 @@ export default function Home() {
               <p className="text-gray-500 text-sm mt-3">Loading venues...</p>
             </div>
           </div>
-        ) : viewMode === 'map' ? (
-          <>
-            <div className="flex-1 relative">
-              <Map
-                venues={visibleVenues}
-                selectedVenue={selectedVenue}
-                onVenueSelect={handleVenueSelect}
-                flyToUserLocation={userLocation}
-                showUserLocation={!deepLinkActive}
-                suppressUserLocation={deepLinkActive}
-                onBoundsChange={(bounds) => {
-                  setMapBounds(bounds); setListBounds(bounds)
-                  handleMapMove()
-                }}
-                onMapReady={(fn) => setGetMapCenter(() => fn)}
-                zoomToUser={zoomToUserTick}
-                onZoomChange={handleMapMove}
-                onUserPan={handleUserPan}
-              />
-              {/* "Search this area" button — reloads venues from the current map center. */}
-              {showSearchThisArea && (
-                <button
-                  onClick={handleSearchHereClick}
-                  className="absolute left-3 bottom-20 z-10 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white pl-3 pr-4 py-2.5 rounded-full shadow-xl text-sm font-semibold flex items-center gap-2 transition-colors"
-                  title="Search this area"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  Search this area
-                </button>
-              )}
-              {/* My Location button — flies to user location. Does not auto-reload. */}
-              {/* ? — re-open the onboarding modal any time */}
-              <button
-                onClick={() => setOnboardingOpen(true)}
-                className="absolute right-3 bottom-32 z-10 w-10 h-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-400 hover:text-amber-600 rounded-full shadow-lg flex items-center justify-center text-lg font-semibold transition-colors"
-                title="How it works"
-              >
-                ?
-              </button>
-              <button
-                onClick={handleZoomToUser}
-                className="absolute right-3 bottom-20 z-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-amber-600 p-2.5 rounded-full shadow-lg transition-colors"
-                title="My location"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-              </button>
-            </div>
-            <div className="hidden md:block w-80 bg-white border-l border-gray-200 overflow-y-auto">
-              <VenueList
-                venues={visibleVenues}
-                mapBounds={currentBounds}
-                areaName={areaName}
-                selectedVenue={selectedVenue}
-                onVenueSelect={handleVenueSelect}
-                capped={capped}
-              />
-            </div>
-          </>
         ) : (
-          <VenueList
-            venues={visibleVenues}
-            mapBounds={currentBounds}
-            areaName={areaName}
-            selectedVenue={selectedVenue}
-            onVenueSelect={handleVenueSelect}
-            capped={capped}
-          />
+          // Map is always mounted so the user's pan + zoom persists
+          // across view-mode toggles. In list view the list overlays
+          // the map (absolute, white bg, z-10); in map view the list
+          // is a sidebar on md+ and the map owns the full width on
+          // mobile. The map's flyToUserLocation useEffect fires once
+          // on initial mount and stays silent across toggles because
+          // the component never unmounts.
+          <div className="flex-1 relative">
+            <Map
+              venues={visibleVenues}
+              selectedVenue={selectedVenue}
+              onVenueSelect={handleVenueSelect}
+              flyToUserLocation={userLocation}
+              showUserLocation={!deepLinkActive}
+              suppressUserLocation={deepLinkActive}
+              onBoundsChange={(bounds) => {
+                setMapBounds(bounds); setListBounds(bounds)
+                handleMapMove()
+              }}
+              onMapReady={(fn) => setGetMapCenter(() => fn)}
+              zoomToUser={zoomToUserTick}
+              onZoomChange={handleMapMove}
+              onUserPan={handleUserPan}
+            />
+
+            {/* Map-view-only controls: hidden behind the list overlay in list view. */}
+            {viewMode === 'map' && (
+              <>
+                {/* "Search this area" button — reloads venues from the current map center. */}
+                {showSearchThisArea && (
+                  <button
+                    onClick={handleSearchHereClick}
+                    className="absolute left-3 bottom-20 z-10 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white pl-3 pr-4 py-2.5 rounded-full shadow-xl text-sm font-semibold flex items-center gap-2 transition-colors"
+                    title="Search this area"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    Search this area
+                  </button>
+                )}
+                {/* ? — re-open the onboarding modal any time */}
+                <button
+                  onClick={() => setOnboardingOpen(true)}
+                  className="absolute right-3 bottom-32 z-10 w-10 h-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-400 hover:text-amber-600 rounded-full shadow-lg flex items-center justify-center text-lg font-semibold transition-colors"
+                  title="How it works"
+                >
+                  ?
+                </button>
+                <button
+                  onClick={handleZoomToUser}
+                  className="absolute right-3 bottom-20 z-10 bg-white hover:bg-gray-50 active:bg-gray-100 text-amber-600 p-2.5 rounded-full shadow-lg transition-colors"
+                  title="My location"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            {/* List rendering: sidebar in map view (md+), full overlay in list view. */}
+            {viewMode === 'map' ? (
+              <div className="hidden md:block absolute right-0 top-0 bottom-0 w-80 bg-white border-l border-gray-200 overflow-y-auto">
+                <VenueList
+                  venues={visibleVenues}
+                  mapBounds={currentBounds}
+                  areaName={areaName}
+                  selectedVenue={selectedVenue}
+                  onVenueSelect={handleVenueSelect}
+                  capped={capped}
+                />
+              </div>
+            ) : (
+              <div className="absolute inset-0 bg-white overflow-y-auto z-10">
+                <VenueList
+                  venues={visibleVenues}
+                  mapBounds={currentBounds}
+                  areaName={areaName}
+                  selectedVenue={selectedVenue}
+                  onVenueSelect={handleVenueSelect}
+                  capped={capped}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {selectedVenue && (

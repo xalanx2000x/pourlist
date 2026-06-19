@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import type { Venue } from '@/lib/supabase'
+import type { LeanVenue } from '@/lib/venues'
 import { shareVenue, type ShareResult } from '@/lib/share'
 
 interface ShareButtonProps {
-  venue: Venue
+  venue: Venue | LeanVenue
   className?: string
 }
 

@@ -1,18 +1,23 @@
 'use client'
 
+import type { LeanVenue } from '@/lib/venues'
 import type { Venue } from '@/lib/supabase'
 import VenueCard from './VenueCard'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 
 interface VenueListProps {
-  venues: Venue[]
+  venues: LeanVenue[]
   mapBounds: { north: number; south: number; east: number; west: number } | null
   areaName: string | null
   selectedVenue: Venue | null
-  onVenueSelect: (venue: Venue) => void
+  onVenueSelect: (venue: LeanVenue) => void
+  /** True when the venue fetch hit the 150-row cap — there are more
+   *  venues in the viewport that didn't make the cut. The header
+   *  surfaces a "showing top N — zoom in for more" hint. */
+  capped?: boolean
 }
 
-export default function VenueList({ venues, mapBounds, areaName, selectedVenue, onVenueSelect }: VenueListProps) {
+export default function VenueList({ venues, mapBounds, areaName, selectedVenue, onVenueSelect, capped }: VenueListProps) {
   const activeHHCount = venues.filter(v => hasActiveHappyHour(v)).length
 
   if (venues.length === 0) {
@@ -33,6 +38,9 @@ export default function VenueList({ venues, mapBounds, areaName, selectedVenue, 
         {areaName ? ` in ${areaName}` : ' nearby'}
         {mapBounds && (
           <span className="ml-1 text-gray-400">· swipe map for full list</span>
+        )}
+        {capped && (
+          <span className="ml-2 text-amber-600 font-semibold">· showing top {venues.length}, zoom in for more</span>
         )}
         {activeHHCount > 0 && (
           <span className="ml-2 text-purple-600 font-semibold">· {activeHHCount} with active HH</span>

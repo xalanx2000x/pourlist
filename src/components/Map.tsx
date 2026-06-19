@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
+import type { LeanVenue } from '@/lib/venues'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getHHState, getHHColor } from '@/lib/hh-state'
 import { formatAddress } from '@/lib/format-address'
@@ -28,9 +29,9 @@ function haversineMeters(
 }
 
 interface MapProps {
-  venues: Venue[]
+  venues: LeanVenue[]
   selectedVenue: Venue | null
-  onVenueSelect: (venue: Venue) => void
+  onVenueSelect: (venue: LeanVenue) => void
   center?: [number, number] // [lng, lat]
   flyToUserLocation?: { lat: number; lng: number } | null
   showUserLocation?: boolean
@@ -64,7 +65,7 @@ interface MapProps {
 }
 
 // Pre-compute which venues have active HH once
-function buildGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection {
+function buildGeoJSON(venues: LeanVenue[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: venues
@@ -177,25 +178,36 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [-122.6819, 45.5231],
-      zoom: 15
+      // Default zoom is 13 (city district, ~5-8 miles) so the no-GPS
+      // fallback view shows the user something useful — not a single
+      // neighborhood. The GPS flyTo useEffect below uses 14 to land
+      // on the user's immediate area; the zoom-to-user button uses 15
+      // for a tighter "right here" view.
+      zoom: 13
     })
 
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right')
 
-    // Emit bounds on map move (debounced via moveend)
+    // Emit bounds on map move (debounced via moveend). Also fires
+    // once on the initial `load` event so the parent has the starting
+    // viewport for the first venue fetch — without this, the no-GPS
+    // case (map stays at the initial Portland view) never triggers a
+    // fetch.
     if (onBoundsChange) {
+      const emitBounds = () => {
+        const b = map.current!.getBounds()
+        if (!b) return
+        onBoundsChange({
+          north: b.getNorth(),
+          south: b.getSouth(),
+          east: b.getEast(),
+          west: b.getWest()
+        })
+      }
+      map.current.on('load', emitBounds)
       map.current.on('moveend', () => {
         if (boundsTimerRef.current) clearTimeout(boundsTimerRef.current)
-        boundsTimerRef.current = setTimeout(() => {
-          const b = map.current!.getBounds()
-          if (!b) return
-          onBoundsChange({
-            north: b.getNorth(),
-            south: b.getSouth(),
-            east: b.getEast(),
-            west: b.getWest()
-          })
-        }, 150)
+        boundsTimerRef.current = setTimeout(emitBounds, 150)
       })
     }
 

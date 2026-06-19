@@ -8,6 +8,7 @@
  * style display text across the app.
  */
 import type { Venue } from '@/lib/supabase'
+import type { LeanVenue } from '@/lib/venues'
 import { formatMin } from '@/lib/activeHH'
 
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -98,7 +99,7 @@ export function formatWindow(
  * Get a human-readable label for the venue's structured HH schedule.
  * Returns null if no structured HH data exists.
  */
-export function getHhLabel(venue: Venue): string | null {
+export function getHhLabel(venue: Venue | LeanVenue): string | null {
   const parts: string[] = []
   const w1 = formatWindow(venue.hh_type, venue.hh_days, venue.hh_start, venue.hh_end, venue.hh_exclude_days)
   const w2 = formatWindow(venue.hh_type_2, venue.hh_days_2, venue.hh_start_2, venue.hh_end_2, venue.hh_exclude_days_2)

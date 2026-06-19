@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
-import { getVenuesByProximity, getVenueById, getVenueBySlugClient } from '@/lib/venues'
+import { getVenuesInBounds, getVenuesByProximity, getVenueById, getVenueBySlugClient, type LeanVenue, type VenueBounds } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import { isWithinRadius } from '@/lib/gpsCheck'
 import VenueList from '@/components/VenueList'
@@ -65,7 +65,7 @@ function emptyScanState(): ScanState {
 }
 
 export default function Home() {
-  const [venues, setVenues] = useState<Venue[]>([])
+  const [venues, setVenues] = useState<LeanVenue[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('map')
@@ -151,6 +151,17 @@ export default function Home() {
   // Function provided by <Map> to read current map center on demand
   const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
+  // True while the GPS→IP chain is still resolving. We skip the
+  // initial mapBounds-driven fetch until the chain settles, so a
+  // user with GPS doesn't see the default-Portland fetch flash
+  // before the flyTo lands. The chain always resolves (success →
+  // userLocation set, or fail → setUserLocation(originalGpsLocation)),
+  // so this never gets stuck.
+  const [gpsPending, setGpsPending] = useState(true)
+  // True when getVenuesInBounds hit the 150-row cap — i.e. there are
+  // more venues in the viewport that didn't make the cut. Surfaced
+  // as a "showing top N — zoom in" hint in the list header.
+  const [capped, setCapped] = useState(false)
 
   // Show onboarding automatically on first eligible visit only
   useEffect(() => {
@@ -180,25 +191,20 @@ export default function Home() {
   const [lastSavedVenue, setLastSavedVenue] = useState<string | null>(null)
   const [gpsWarning, setGpsWarning] = useState<string | null>(null)
 
-  const loadVenues = useCallback(async (overrides?: { lat: number; lng: number }): Promise<Venue[]> => {
+  const loadVenues = useCallback(async (bounds: VenueBounds): Promise<LeanVenue[]> => {
     try {
-      // Location priority: explicit override (scan GPS) > userLocation > nothing
-      // We do NOT fall back to Portland center — that was a dev convenience.
-      // If no location is available, show an empty map and wait for the user to pan.
-      const searchLat = overrides?.lat ?? userLocation?.lat
-      const searchLng = overrides?.lng ?? userLocation?.lng
-
-      if (searchLat == null || searchLng == null) {
-        setVenues([])
-        return []
-      }
-
-      const data = await getVenuesByProximity(searchLat, searchLng, DEFAULT_RADIUS_METERS)
+      const { venues: data, capped: wasCapped } = await getVenuesInBounds(
+        bounds.north,
+        bounds.south,
+        bounds.east,
+        bounds.west
+      )
       setVenues(data)
-      // Reset map bounds so newly loaded venues show in full (unfiltered)
-      // until map moves again via moveend
-      setMapBounds(null)
-      setListBounds(null)
+      setCapped(wasCapped)
+      // The bounds filter (visibleVenues below) uses mapBounds as the
+      // source of truth. We don't need to reset it here — the caller
+      // (the mapBounds useEffect) just set the bounds that drove this
+      // fetch, so the filter is already in sync.
       return data
     } catch (err) {
       console.error('Failed to load venues:', err)
@@ -206,7 +212,7 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [userLocation])
+  }, [])
 
   // Deep-link resolver: /?venue={slug} from a shared venue page.
   // The synchronous bootstrap above (in the function body) has
@@ -233,7 +239,18 @@ export default function Home() {
           return
         }
         if (!deepLinkActiveRef.current) return
-        await loadVenues({ lat: venue.lat, lng: venue.lng })
+        // Approximate bounds at zoom 16 for the immediate fetch so
+        // the list fills in without waiting for the map's flyTo.
+        // The mapBounds useEffect (gated on `!deepLinkActive`) won't
+        // fire here, so this is the only fetch in the deep-link path.
+        const latDelta = 0.003
+        const lngDelta = 0.003 / Math.cos(venue.lat * Math.PI / 180)
+        await loadVenues({
+          north: venue.lat + latDelta,
+          south: venue.lat - latDelta,
+          east: venue.lng + lngDelta,
+          west: venue.lng - lngDelta
+        })
         if (!deepLinkActiveRef.current) return
         setSelectedVenue(venue)
       } catch {
@@ -253,12 +270,20 @@ export default function Home() {
   // deepLinkActive (React state). The URL check is the primary fix
   // for the first render before state has propagated; the state
   // check catches subsequent re-runs. Belt and suspenders.
+  // Map-bounds-driven fetch: the single trigger for venue loads.
+  // Fires on the map's `load` event (initial Portland viewport) and
+  // on every `moveend` (pan, zoom, flyTo). Gated on `gpsPending` so
+  // a user with GPS doesn't see the default-Portland fetch flash
+  // before the GPS flyTo lands. The deep-link useEffect below
+  // calls loadVenues directly with approximate bounds, so the
+  // deep-link case is not gated on gpsPending.
   useEffect(() => {
     if (isDeepLinkActive()) return
     if (deepLinkActive) return
-    if (!userLocation) return
-    loadVenues()
-  }, [userLocation, loadVenues, deepLinkActive])
+    if (gpsPending) return
+    if (!mapBounds) return
+    loadVenues(mapBounds)
+  }, [mapBounds, gpsPending, deepLinkActive, loadVenues])
 
   // Get user location on mount.
   // Three layers of defense:
@@ -270,13 +295,25 @@ export default function Home() {
   //   2. deepLinkActive (React state) — catches subsequent re-runs.
   //   3. getBrowserLocation()'s own isDeepLinkActive() check inside
   //      the function body (lib/gps.ts) — the chokepoint itself.
+  //
+  // On failure: fall back to the Portland default so the no-GPS,
+  // no-IP user still sees the app's home area. The mapBounds
+  // useEffect will then load Portland venues via the initial map
+  // bounds.
   useEffect(() => {
     if (isDeepLinkActive()) return
     if (deepLinkActive) return
+    setGpsPending(true)
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
       .catch((err) => {
-        if (err instanceof LocationUnavailableError) showLocationToastOnce()
+        if (err instanceof LocationUnavailableError) {
+          showLocationToastOnce()
+          setUserLocation(originalGpsLocation)
+        }
+      })
+      .finally(() => {
+        setGpsPending(false)
       })
   }, [deepLinkActive, showLocationToastOnce])
 
@@ -331,8 +368,19 @@ export default function Home() {
     setMapBounds(null)
     setListBounds(null)
     setShowSearchThisArea(false)
-    // Immediately reload venues at the search location
-    loadVenues({ lat: coords.lat, lng: coords.lng })
+    // Trigger immediate fetch with approximate bounds at zoom 13
+    // (the default for the search-bar flyTo). The map will fly in
+    // parallel; a second fetch fires via the mapBounds useEffect
+    // when the flyTo completes with the exact bounds. The second
+    // fetch is a no-op or minor refinement.
+    const latDelta = 0.03
+    const lngDelta = 0.03 / Math.cos(coords.lat * Math.PI / 180)
+    loadVenues({
+      north: coords.lat + latDelta,
+      south: coords.lat - latDelta,
+      east: coords.lng + lngDelta,
+      west: coords.lng - lngDelta
+    })
   }
 
   // User moved the map — show the "Search this area" button so they can
@@ -350,8 +398,16 @@ export default function Home() {
     if (center) {
       setSearchedLocation(center)
       setFlyToCenter(center)
-      // Load venues immediately from the search center — map will fly in parallel
-      loadVenues({ lat: center.lat, lng: center.lng })
+      // Approximate bounds at zoom 13 for the immediate fetch; the
+      // mapBounds useEffect will refine when the flyTo completes.
+      const latDelta = 0.03
+      const lngDelta = 0.03 / Math.cos(center.lat * Math.PI / 180)
+      loadVenues({
+        north: center.lat + latDelta,
+        south: center.lat - latDelta,
+        east: center.lng + lngDelta,
+        west: center.lng - lngDelta
+      })
     }
   }
 
@@ -385,26 +441,31 @@ export default function Home() {
     setShowSearchThisArea(true)
   }
 
-  async function handleVenueSelect(venue: Venue) {
+  async function handleVenueSelect(venue: LeanVenue) {
     trackEvent('venue_view', { deviceHash: getDeviceHash(), venueId: venue.id })
     trackVenueEvent(venue.id, 'view', userLocation)
 
-    // Always re-fetch from DB by ID — ensures the detail page has fresh HH and all other fields,
-    // regardless of whether the venue was reached via map or search (two different discovery paths).
+    // Always re-fetch from DB by ID — ensures the detail page has fresh
+    // HH and all other fields. If the fetch fails, leave the previous
+    // selectedVenue alone rather than setting a partial (lean) venue
+    // on the detail view.
     const freshVenue = await getVenueById(venue.id)
+    if (freshVenue) setSelectedVenue(freshVenue)
+
+    // Reload the list with bounds around the clicked venue so it
+    // appears in the viewport. Approximate bounds at zoom 16 (the
+    // "selected venue" flyTo zoom) — the map's moveend will refine
+    // with the exact bounds via the mapBounds useEffect.
     const finalVenue = freshVenue ?? venue
-
-    setSelectedVenue(finalVenue)
-    setVenues(prev => {
-      if (prev.some(v => v.id === finalVenue.id)) {
-        return prev.map(v => v.id === finalVenue.id ? finalVenue : v)
-      }
-      return [finalVenue, ...prev]
-    })
-
-    // Reload nearby venues at the selected venue's location so it appears on map
     if (finalVenue.lat != null && finalVenue.lng != null) {
-      loadVenues({ lat: finalVenue.lat, lng: finalVenue.lng })
+      const latDelta = 0.003
+      const lngDelta = 0.003 / Math.cos(finalVenue.lat * Math.PI / 180)
+      loadVenues({
+        north: finalVenue.lat + latDelta,
+        south: finalVenue.lat - latDelta,
+        east: finalVenue.lng + lngDelta,
+        west: finalVenue.lng - lngDelta
+      })
     }
   }
 
@@ -618,9 +679,18 @@ export default function Home() {
     const savedVenueId = data.venueId
     const updatedVenue = await getVenueById(savedVenueId)
     if (updatedVenue) setSelectedVenue(updatedVenue)
-    const freshVenues = await loadVenues(exifGps ? { lat: exifGps.lat, lng: exifGps.lng } : undefined)
-    const refreshed = freshVenues.find(v => v.id === savedVenueId)
-    if (refreshed) setSelectedVenue(refreshed)
+    // Reload the list with bounds around the new venue's location
+    // (zoom-16 approximation, refined by the map's moveend).
+    if (exifGps) {
+      const latDelta = 0.003
+      const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
+      await loadVenues({
+        north: exifGps.lat + latDelta,
+        south: exifGps.lat - latDelta,
+        east: exifGps.lng + lngDelta,
+        west: exifGps.lng - lngDelta
+      })
+    }
 
     await trackEvent('menu_save_success', { deviceHash: getDeviceHash(), venueId: savedVenueId })
     await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
@@ -727,9 +797,17 @@ export default function Home() {
       const { venueId: savedVenueId } = await commitRes.json()
       const updatedVenue = await getVenueById(savedVenueId)
       if (updatedVenue) setSelectedVenue(updatedVenue)
-      const freshVenues = await loadVenues(phoneGps ?? undefined)
-      const refreshed = freshVenues.find(v => v.id === savedVenueId)
-      if (refreshed) setSelectedVenue(refreshed)
+      // Reload with bounds around the new venue's location
+      if (phoneGps) {
+        const latDelta = 0.003
+        const lngDelta = 0.003 / Math.cos(phoneGps.lat * Math.PI / 180)
+        await loadVenues({
+          north: phoneGps.lat + latDelta,
+          south: phoneGps.lat - latDelta,
+          east: phoneGps.lng + lngDelta,
+          west: phoneGps.lng - lngDelta
+        })
+      }
 
       await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
       await trackVenueEvent(savedVenueId, 'photo_upload', phoneGps)
@@ -816,9 +894,17 @@ export default function Home() {
       // Refresh map and select the new venue
       const updatedVenue = await getVenueById(savedVenueId)
       if (updatedVenue) setSelectedVenue(updatedVenue)
-      const freshVenues = await loadVenues(exifGps ? { lat: exifGps.lat, lng: exifGps.lng } : undefined)
-      const refreshed = freshVenues.find(v => v.id === savedVenueId)
-      if (refreshed) setSelectedVenue(refreshed)
+      // Reload the list with bounds around the new venue's location
+      if (exifGps) {
+        const latDelta = 0.003
+        const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
+        await loadVenues({
+          north: exifGps.lat + latDelta,
+          south: exifGps.lat - latDelta,
+          east: exifGps.lng + lngDelta,
+          west: exifGps.lng - lngDelta
+        })
+      }
 
       await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
       await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
@@ -925,8 +1011,13 @@ export default function Home() {
   const venueToReview = scan.confirmedVenue
   const newVenueNameToReview = scan.newVenueName
 
-  // Filter venues to what's visible in the current map bounds
-  function isVenueInBounds(venue: Venue, bounds: typeof mapBounds): boolean {
+  // Filter venues to what's visible in the current map bounds.
+  // Operates on the lean venue shape (just lat/lng) so it works
+  // with both the loaded list and any other source.
+  function isVenueInBounds(
+    venue: { lat: number | null; lng: number | null },
+    bounds: typeof mapBounds
+  ): boolean {
     if (!bounds || !venue.lat || !venue.lng) return true
     return (
       venue.lat <= bounds.north &&
@@ -938,32 +1029,14 @@ export default function Home() {
 
   // Both map and list use the same bounds — listBounds mirrors mapBounds when switching views
   const currentBounds = listBounds ?? mapBounds
-  // The center of the currently-loaded area. `searchedLocation` is
-  // set by the search bar and the map's "Search this area" button,
-  // and represents the anchor of the last venue fetch. Falls back
-  // to the user's open GPS location. When neither is set, there's
-  // no center to sort against (the venues array is empty in that
-  // case anyway — see loadVenues).
-  const loadedAreaCenter = searchedLocation ?? userLocation
-  // Re-sort the loaded venue set by distance from the current
-  // center. The server already returns the 100 closest to the
-  // fetch center; this client-side pass is a defensive re-sort for
-  // the case where the center has drifted (e.g. userLocation
-  // updated since the last fetch). Bounded to 100 (server cap) so
-  // the list never shows more than 100 at once.
+  // The loaded set is already sorted by distance from the bounds'
+  // centroid by getVenuesInBounds. The bounds filter is the only
+  // client-side transform we need — no re-sort here. The cap (150)
+  // is enforced server-side; if it bound, the list header surfaces
+  // a "showing top N — zoom in for more" hint via the `capped` flag.
   const visibleVenues = useMemo(() => {
-    const inBounds = venues.filter(v => isVenueInBounds(v, currentBounds))
-    if (!loadedAreaCenter) return inBounds
-    return inBounds
-      .filter((v): v is Venue & { lat: number; lng: number } =>
-        v.lat != null && v.lng != null
-      )
-      .sort((a, b) =>
-        haversineM(loadedAreaCenter.lat, loadedAreaCenter.lng, a.lat, a.lng) -
-        haversineM(loadedAreaCenter.lat, loadedAreaCenter.lng, b.lat, b.lng)
-      )
-      .slice(0, 100)
-  }, [venues, currentBounds, loadedAreaCenter])
+    return venues.filter(v => isVenueInBounds(v, currentBounds))
+  }, [venues, currentBounds])
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -1071,6 +1144,7 @@ export default function Home() {
                 areaName={areaName}
                 selectedVenue={selectedVenue}
                 onVenueSelect={handleVenueSelect}
+                capped={capped}
               />
             </div>
           </>
@@ -1081,6 +1155,7 @@ export default function Home() {
             areaName={areaName}
             selectedVenue={selectedVenue}
             onVenueSelect={handleVenueSelect}
+            capped={capped}
           />
         )}
 
@@ -1114,7 +1189,7 @@ export default function Home() {
               className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] max-w-sm mx-4 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-start gap-3"
             >
               <span className="text-sm leading-snug flex-1">
-                Location's off — enable it for this site to see what's near you.
+                Couldn't find your location — showing the default area. Enable location for nearby venues.
               </span>
               <button
                 onClick={() => setLocationToast(false)}

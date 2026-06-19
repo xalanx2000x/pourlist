@@ -1,13 +1,13 @@
 'use client'
 
-import type { Venue } from '@/lib/supabase'
+import type { LeanVenue } from '@/lib/venues'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getHHState, getHHColor } from '@/lib/hh-state'
 import ShareButton from './ShareButton'
 import { formatAddress } from '@/lib/format-address'
 
 interface VenueCardProps {
-  venue: Venue
+  venue: LeanVenue
   isSelected: boolean
   onClick: () => void
 }

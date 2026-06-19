@@ -21,6 +21,152 @@ export async function getVenuesByZip(zip: string): Promise<Venue[]> {
   return data || []
 }
 
+/**
+ * Lean venue — fields the map and list render. The card detail view
+ * (`VenueDetail`) does a separate full fetch via `getVenueById` when
+ * a venue is selected, so we can defer menu_text, hh_summary, audit
+ * fields, and the rest until the user actually opens the card. This
+ * keeps the wire ~30% smaller per row, and the cap of `limit`
+ * venues per fetch keeps the total bounded too.
+ */
+export type LeanVenue = {
+  id: string
+  name: string
+  slug: string | null
+  lat: number | null
+  lng: number | null
+  address: string | null
+  city: string | null
+  state: string | null
+  neighborhood: string | null
+  country: string | null
+  zip: string | null
+  address_autofilled: boolean
+  hh_type: string | null
+  hh_days: string | null
+  hh_exclude_days: string | null
+  hh_start: number | null
+  hh_end: number | null
+  hh_type_2: string | null
+  hh_days_2: string | null
+  hh_exclude_days_2: string | null
+  hh_start_2: number | null
+  hh_end_2: number | null
+  hh_type_3: string | null
+  hh_days_3: string | null
+  hh_exclude_days_3: string | null
+  hh_start_3: number | null
+  hh_end_3: number | null
+  hh_time: string | null
+  status: 'unverified' | 'verified' | 'stale' | 'closed'
+  is_seed_data: boolean
+  type: string | null
+  latest_menu_image_url: string | null
+  // Optional fields — the lean fetch doesn't return these, but
+  // downstream functions (dealSummary, getHhLabel) accept the
+  // Venue | LeanVenue union and gracefully skip them when missing.
+  menu_text?: string | null
+  hh_summary?: string | null
+}
+
+export type VenueBounds = {
+  north: number
+  south: number
+  east: number
+  west: number
+}
+
+export type VenuesInBoundsResult = {
+  venues: LeanVenue[]
+  /** True when the SQL returned the full `limit` (or more) — i.e. there
+   *  are venues in the viewport that didn't make the cap. The caller
+   *  surfaces this as a "showing 150 of more — zoom in" hint. */
+  capped: boolean
+}
+
+/**
+ * Fetch the venues whose coords fall within the given viewport bounds,
+ * up to `limit` rows. The result is sorted nearest-first by Haversine
+ * distance from the bounds' centroid.
+ *
+ * The map's `moveend` event (debounced 150ms) is the trigger; the list
+ * re-sorts on the client by the bounds' centroid to handle minor GPS
+ * drift between fetch and render. Clustering is handled at the map
+ * layer (Mapbox cluster source) so dense viewports degrade gracefully
+ * without pulling thousands of rows.
+ */
+export async function getVenuesInBounds(
+  north: number,
+  south: number,
+  east: number,
+  west: number,
+  limit: number = 150
+): Promise<VenuesInBoundsResult> {
+  // Bbox filter on lat/lng. No Haversine needed — the bounds are exact.
+  // .order('name') keeps dedup stable.
+  const { data, error } = await supabase
+    .from('venues')
+    .select(
+      `id, name, slug, lat, lng, address, city, state, neighborhood, country, zip, address_autofilled,
+       hh_type, hh_days, hh_exclude_days, hh_start, hh_end,
+       hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2,
+       hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3,
+       hh_time, status, is_seed_data, type, latest_menu_image_url`
+    )
+    .neq('status', 'closed')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
+    .gte('lat', south)
+    .lte('lat', north)
+    .gte('lng', west)
+    .lte('lng', east)
+    .order('name')
+    .limit(limit)
+
+  if (error) throw error
+  const rows = (data ?? []) as unknown as LeanVenue[]
+
+  // Deduplicate by name (case-insensitive, strip leading "The"):
+  // Keep the venue with the best status (verified > stale > unverified > new)
+  const statusRank: Record<string, number> = { verified: 0, stale: 1, unverified: 2, new: 3 }
+  const seen = new Map<string, LeanVenue>()
+  for (const v of rows) {
+    const key = v.name.replace(/^the\s+/i, '').toLowerCase().trim()
+    const existing = seen.get(key)
+    if (!existing || (statusRank[existing.status] ?? 3) > (statusRank[v.status] ?? 3)) {
+      seen.set(key, v)
+    }
+  }
+  const deduped = Array.from(seen.values())
+
+  // Sort by distance from the bounds' centroid, nearest first.
+  const centerLat = (north + south) / 2
+  const centerLng = (east + west) / 2
+  const sorted = deduped
+    .filter((v): v is LeanVenue & { lat: number; lng: number } =>
+      v.lat != null && v.lng != null
+    )
+    .sort((a, b) =>
+      haversineM(centerLat, centerLng, a.lat, a.lng) -
+      haversineM(centerLat, centerLng, b.lat, b.lng)
+    )
+
+  return {
+    venues: sorted,
+    // If the SQL returned the full limit, there's likely more in this
+    // viewport that didn't make the cut. Report it so the caller can
+    // show a "zoom in" hint.
+    capped: rows.length >= limit
+  }
+}
+
+/**
+ * Tight-radius full-venue lookup, used by the scan flow's
+ * "is this venue at my location?" checks and the seed-match
+ * detection. Returns the full venue (not the lean shape) so the
+ * scan state can hold a complete record. Not used for the list
+ * or map — those use getVenuesInBounds (lean, capped at 150).
+ */
 export async function getVenuesByProximity(
   lat: number,
   lng: number,
@@ -29,13 +175,6 @@ export async function getVenuesByProximity(
   const bboxLatDelta = radiusMeters / 111320
   const bboxLngDelta = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180))
 
-  // Bbox prefilter keeps the wire small. We then compute exact
-  // Haversine distance in JS, sort nearest-first, and return the
-  // top 100. The list view re-sorts on the client by the current
-  // loaded-area center — see page.tsx visibleVenues — so the
-  // server order is a snapshot of "100 closest to the query center
-  // at fetch time." `.order('name')` is kept so dedup is stable
-  // (deterministic choice between same-status duplicates).
   const { data, error } = await supabase
     .from('venues')
     .select('*')
@@ -47,39 +186,15 @@ export async function getVenuesByProximity(
     .gte('lng', lng - bboxLngDelta)
     .lte('lng', lng + bboxLngDelta)
     .order('name')
-    .limit(1000)
+    .limit(200)
 
   if (error) throw error
   if (!data) return []
 
-  // Filter by exact Haversine distance (rectangular bbox is wider than radius)
-  const filtered = (data as Venue[]).filter(v => {
-    if (v.lat == null || v.lng == null) return false
-    return haversineM(lat, lng, v.lat, v.lng) <= radiusMeters
-  })
-
-  // Deduplicate by name (case-insensitive, strip leading "The"):
-  // Keep the venue with the best status (verified > stale > unverified > new)
-  const statusRank: Record<string, number> = { verified: 0, stale: 1, unverified: 2, new: 3 }
-  const seen = new Map<string, Venue>()
-  for (const v of filtered) {
-    const key = v.name.replace(/^the\s+/i, '').toLowerCase().trim()
-    const existing = seen.get(key)
-    if (!existing || (statusRank[existing.status] ?? 3) > (statusRank[v.status] ?? 3)) {
-      seen.set(key, v)
-    }
-  }
-  const deduped = Array.from(seen.values())
-
-  // Sort by distance, nearest first, and cap to 100.
-  return deduped
-    .filter((v): v is Venue & { lat: number; lng: number } =>
-      v.lat != null && v.lng != null
-    )
-    .sort((a, b) =>
-      haversineM(lat, lng, a.lat, a.lng) - haversineM(lat, lng, b.lat, b.lng)
-    )
-    .slice(0, 100)
+  return (data as Venue[]).filter(v =>
+    v.lat != null && v.lng != null &&
+    haversineM(lat, lng, v.lat, v.lng) <= radiusMeters
+  )
 }
 
 export async function getVenueById(id: string): Promise<Venue | null> {

@@ -6,6 +6,7 @@
  * this file is safe to import from Server Components too.
  */
 import type { Venue } from './supabase'
+import type { LeanVenue } from './venues'
 import { venueSlug } from './slug'
 import { getHhLabel } from './format-schedule'
 
@@ -30,7 +31,7 @@ export function venueShareUrl(venue: { slug: string | null; name: string | null;
  * Heuristic: take the first non-empty line (most OCR'd menus are
  * line-per-deal), trim, cap at 140 chars with an ellipsis if longer.
  */
-export function dealSummary(venue: { menu_text: string | null }): string {
+export function dealSummary(venue: { menu_text?: string | null }): string {
   if (!venue.menu_text) return ''
   const firstLine = venue.menu_text
     .split('\n')
@@ -46,7 +47,7 @@ export function dealSummary(venue: { menu_text: string | null }): string {
  * has nothing — structured windows, legacy `hh_time`, and
  * `hh_summary` are all checked in priority order.
  */
-export function scheduleSummary(venue: Venue): string {
+export function scheduleSummary(venue: Venue | LeanVenue): string {
   return getHhLabel(venue) ?? venue.hh_time ?? ''
 }
 
@@ -66,7 +67,7 @@ export function scheduleSummary(venue: Venue): string {
  *   sched:  "🍸 Happy hour at Matador — Daily 4–6 PM. See it live on PourList:\nhttps://…"
  *   neither:"🍸 Happy hour at Matador. See it live on PourList:\nhttps://…"
  */
-export function buildShareText(venue: Venue, url?: string): string {
+export function buildShareText(venue: Venue | LeanVenue, url?: string): string {
   const deal = dealSummary(venue)
   const schedule = scheduleSummary(venue)
   const middle = [deal, schedule].filter(s => s.length > 0).join(', ')
@@ -86,7 +87,7 @@ export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'error'
  *   'cancelled' — User dismissed the share sheet (no UI)
  *   'error'     — Both APIs failed (caller should toast)
  */
-export async function shareVenue(venue: Venue): Promise<ShareResult> {
+export async function shareVenue(venue: Venue | LeanVenue): Promise<ShareResult> {
   const url = venueShareUrl(venue)
   // URL is embedded in the text body so SMS / iMessage recipients see
   // it even when the target app drops the separate `url` field. We

@@ -151,13 +151,6 @@ export default function Home() {
   // Function provided by <Map> to read current map center on demand
   const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
-  // True while the GPS→IP chain is still resolving. We skip the
-  // initial mapBounds-driven fetch until the chain settles, so a
-  // user with GPS doesn't see the default-Portland fetch flash
-  // before the flyTo lands. The chain always resolves (success →
-  // userLocation set, or fail → setUserLocation(originalGpsLocation)),
-  // so this never gets stuck.
-  const [gpsPending, setGpsPending] = useState(true)
   // True when getVenuesInBounds hit the 150-row cap — i.e. there are
   // more venues in the viewport that didn't make the cut. Surfaced
   // as a "showing top N — zoom in" hint in the list header.
@@ -270,20 +263,47 @@ export default function Home() {
   // deepLinkActive (React state). The URL check is the primary fix
   // for the first render before state has propagated; the state
   // check catches subsequent re-runs. Belt and suspenders.
-  // Map-bounds-driven fetch: the single trigger for venue loads.
-  // Fires on the map's `load` event (initial Portland viewport) and
-  // on every `moveend` (pan, zoom, flyTo). Gated on `gpsPending` so
-  // a user with GPS doesn't see the default-Portland fetch flash
-  // before the GPS flyTo lands. The deep-link useEffect below
-  // calls loadVenues directly with approximate bounds, so the
-  // deep-link case is not gated on gpsPending.
+  // Map-bounds-driven fetch with userLocation + default fallbacks.
+  // The trigger is "we have *some* bounds" — most accurate wins:
+  //
+  //   1. mapBounds (set on map load + on every moveend) — most
+  //      accurate, but the map only mounts after `loading` clears,
+  //      which is after this fetch completes. So this refines once
+  //      the map is visible.
+  //   2. userLocation (GPS / IP / default fallback from the chain
+  //      below) — available immediately after the GPS chain settles
+  //      (~1s for GPS, ~50ms for IP, immediate on no-GPS default).
+  //   3. Portland default (originalGpsLocation) — last-resort
+  //      bootstrap before the GPS chain has even started. Ensures
+  //      the user always sees something instead of a perpetual
+  //      "Loading venues..." spinner.
+  //
+  // Note: the deep-link useEffect below calls loadVenues directly
+  // with bounds, so the deep-link case is not gated here.
   useEffect(() => {
     if (isDeepLinkActive()) return
     if (deepLinkActive) return
-    if (gpsPending) return
-    if (!mapBounds) return
-    loadVenues(mapBounds)
-  }, [mapBounds, gpsPending, deepLinkActive, loadVenues])
+
+    // Approximate bounds at zoom 13 (the "Search this area" zoom).
+    // For the user's exact viewport, the mapBounds-driven refinement
+    // below produces a more accurate fetch.
+    const computeBounds = (lat: number, lng: number): VenueBounds => {
+      const latDelta = 0.03
+      const lngDelta = 0.03 / Math.cos(lat * Math.PI / 180)
+      return {
+        north: lat + latDelta,
+        south: lat - latDelta,
+        east: lng + lngDelta,
+        west: lng - lngDelta
+      }
+    }
+
+    const bounds = mapBounds
+      ?? (userLocation ? computeBounds(userLocation.lat, userLocation.lng) : null)
+      ?? computeBounds(originalGpsLocation.lat, originalGpsLocation.lng)
+
+    loadVenues(bounds)
+  }, [mapBounds, userLocation, deepLinkActive, loadVenues])
 
   // Get user location on mount.
   // Three layers of defense:
@@ -303,7 +323,6 @@ export default function Home() {
   useEffect(() => {
     if (isDeepLinkActive()) return
     if (deepLinkActive) return
-    setGpsPending(true)
     getBrowserLocation()
       .then(loc => setUserLocation(loc))
       .catch((err) => {
@@ -311,9 +330,6 @@ export default function Home() {
           showLocationToastOnce()
           setUserLocation(originalGpsLocation)
         }
-      })
-      .finally(() => {
-        setGpsPending(false)
       })
   }, [deepLinkActive, showLocationToastOnce])
 

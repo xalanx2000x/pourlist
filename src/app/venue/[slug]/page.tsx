@@ -1,9 +1,9 @@
 /**
  * /venue/[slug] — statically-generated venue page.
  *
- * generateStaticParams pre-renders only indexable venues (those with actual
- * HH data or menu text). Non-indexable slugs still resolve on demand
- * (dynamicParams = true) so shared links don't 404.
+ * generateStaticParams pre-renders only venues with happy-hour data
+ * (those with actual HH data or menu text). Slugs without content still
+ * resolve on demand (dynamicParams = true) so shared links don't 404.
  *
  * Server HTML = the permanent schedule only. The live "HH is active now"
  * badge lives in VenueLiveBadge.tsx ('use client') and hydrates after load.
@@ -11,7 +11,7 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-import { isIndexable } from '@/lib/is-indexable'
+import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { venueSlug } from '@/lib/slug'
 import { getHhLabel } from '@/lib/format-schedule'
 import VenueLiveBadge from '@/components/VenueLiveBadge'
@@ -48,9 +48,9 @@ async function getAllIndexableVenues() {
     .order('name')
 
   if (!data) return []
-  // isIndexable is true whenever hh_type is set, but also include
+  // hasHappyHourData is true whenever hh_type is set, but also include
   // venues with menu_text or hh_summary even if hh_type is null.
-  return data.filter(v => isIndexable(v))
+  return data.filter(v => hasHappyHourData(v))
 }
 
 // ─── Static params ─────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ export async function generateMetadata({
   const venue = await getVenueBySlug(slug)
   if (!venue) return { title: 'Venue not found' }
 
-  const indexable = isIndexable(venue)
+  const indexable = hasHappyHourData(venue)
   const name = venue.name ?? 'Unknown Venue'
   const schedule = getHhLabel(venue)
   const description = schedule
@@ -162,7 +162,7 @@ export default async function VenuePage({
   const venue = await getVenueBySlug(slug)
   if (!venue) notFound()
 
-  const indexable = isIndexable(venue)
+  const indexable = hasHappyHourData(venue)
   const schedule = getHhLabel(venue)
   const slug2 = venue.slug ?? venueSlug(venue)
   const canonical = `${BASE_URL}/venue/${slug2}`

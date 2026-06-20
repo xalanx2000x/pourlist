@@ -1,12 +1,12 @@
 /**
  * app/sitemap.ts — Next.js App Router sitemap.
  *
- * Returns only indexable venues (those with HH data or menu text).
- * Non-indexable stubs are excluded — they have no SEO value.
+ * Returns only venues with HH data or menu text. Stubs without content
+ * are excluded — they have no SEO value.
  */
 import type { MetadataRoute } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-import { isIndexable } from '@/lib/is-indexable'
+import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { venueSlug } from '@/lib/slug'
 
 const BASE_URL = 'https://pourlist.app'
@@ -19,7 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .order('name')
 
   const venueEntries: MetadataRoute.Sitemap = (data ?? [])
-    .filter(v => isIndexable(v))
+    .filter(v => hasHappyHourData(v))
     .map(v => {
       const slug = v.slug ?? venueSlug(v)
       return {

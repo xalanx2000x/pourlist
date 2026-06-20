@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { Venue } from './supabase'
+import { hasHappyHourData } from './happy-hour-data'
 
 export type GeoResult = {
   displayName: string
@@ -9,48 +10,84 @@ export type GeoResult = {
   lng: number
 }
 
-export type SearchResult =
-  | { type: 'venues'; venues: Venue[] }
-  | { type: 'geo'; geo: GeoResult }
-  | { type: 'none' }
+/**
+ * SearchResult: always returns BOTH venues and geo. Either may be empty.
+ * The caller renders one dropdown with two labeled sections — never an
+ * empty "no results" if either side has anything to show.
+ *
+ * Venue results are ranked verified-first (hasHappyHourData) and capped
+ * at VENUE_LIMIT. The geo section is capped at 1 (Nominatim returns 1).
+ */
+export type SearchResult = {
+  venues: Venue[]
+  geo: GeoResult | null
+}
+
+const VENUE_LIMIT = 5
+
+// Fields needed by the dropdown — includes hh_type/menu_text/hh_summary
+// so hasHappyHourData() works on the result client-side without a
+// second query.
+const VENUE_SELECT =
+  'id, name, slug, address, city, state, neighborhood, country, zip, address_autofilled, lat, lng, hh_type, hh_days, hh_exclude_days, hh_start, hh_end, hh_time, status, is_seed_data, type, latest_menu_image_url, menu_text, hh_summary'
 
 export async function searchVenues(query: string): Promise<SearchResult> {
   const trimmed = query.trim()
-  if (!trimmed) return { type: 'none' }
+  if (!trimmed) return { venues: [], geo: null }
 
-  // Search Supabase for venues matching the name
-  const { data: venues } = await supabase
-    .from('venues')
-    .select('id, name, address, lat, lng, latest_menu_image_url, hh_time, status')
-    .eq('is_seed_data', false)
-    .ilike('name', `%${trimmed}%`)
-    .limit(5)
+  // Run both queries in parallel. Each is independent; Nominatim is the
+  // slow one and shouldn't block the venue result.
+  const [venues, geo] = await Promise.all([
+    searchVenueMatches(trimmed),
+    geocodeWithNominatim(trimmed),
+  ])
 
-  // Fall back: strip punctuation and try again (handles "QD's"↔"QDS", "O'Brien"↔"OBrien", etc.)
-  if ((!venues || venues.length === 0) && trimmed.length >= 2) {
-    const normalized = trimmed.replace(/[^a-zA-Z0-9]/g, '')
-    if (normalized !== trimmed) {
-      const { data: venues2 } = await supabase
-        .from('venues')
-        .select('id, name, address, lat, lng, latest_menu_image_url, hh_time, status')
-        .eq('is_seed_data', false)
-        .ilike('name', `%${normalized}%`)
-        .limit(5)
-      if (venues2 && venues2.length > 0) {
-        return { type: 'venues', venues: venues2 as Venue[] }
-      }
+  return { venues, geo }
+}
+
+/**
+ * Venue search by name, with punctuation-fallback. Returns up to
+ * VENUE_LIMIT venues ranked verified-first (venues with happy-hour
+ * data bubble up; unverified venues fill the rest). No seed filter —
+ * all venues are searchable; unverified seed venues show as
+ * contribution invitations in the dropdown.
+ */
+async function searchVenueMatches(query: string): Promise<Venue[]> {
+  // Fetch more than the cap so we can rank + cut in JS without
+  // needing a SQL CASE expression. The trigram index on `name` makes
+  // the ILIKE cheap; VENUE_FETCH is the candidate pool, not the cap.
+  const VENUE_FETCH = 30
+
+  const runQuery = (q: string) =>
+    supabase
+      .from('venues')
+      .select(VENUE_SELECT)
+      .ilike('name', `%${q}%`)
+      .limit(VENUE_FETCH)
+
+  let { data } = await runQuery(query)
+
+  // Punctuation fallback (QD's↔QDS, O'Brien↔OBrien, etc.) — only if the
+  // first attempt came back empty.
+  if ((!data || data.length === 0) && query.length >= 2) {
+    const normalized = query.replace(/[^a-zA-Z0-9]/g, '')
+    if (normalized !== query) {
+      const retry = await runQuery(normalized)
+      if (retry.data && retry.data.length > 0) data = retry.data
     }
   }
 
-  if (venues && venues.length > 0) {
-    return { type: 'venues', venues: venues as Venue[] }
-  }
+  if (!data || data.length === 0) return []
 
-  // No venue match — fall back to Nominatim for geographic search
-  const geo = await geocodeWithNominatim(trimmed)
-  if (geo) return { type: 'geo', geo }
+  // Rank: verified venues first (hasHappyHourData), then by name.
+  const ranked = (data as Venue[]).slice().sort((a, b) => {
+    const aH = hasHappyHourData(a) ? 0 : 1
+    const bH = hasHappyHourData(b) ? 0 : 1
+    if (aH !== bH) return aH - bH
+    return (a.name ?? '').localeCompare(b.name ?? '')
+  })
 
-  return { type: 'none' }
+  return ranked.slice(0, VENUE_LIMIT)
 }
 
 async function geocodeWithNominatim(query: string): Promise<GeoResult | null> {

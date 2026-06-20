@@ -236,16 +236,23 @@ export default async function VenuePage({
               )}
             </div>
           ) : (
-            /* Non-indexable: lighter page */
+            /* No happy-hour data yet — positive invitation, not an error.
+               This is the venue's contribution CTA: sends the user to
+               the scan flow with this venue pre-selected so they can
+               snap a menu photo and put it on the map. */
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
-              <p className="text-gray-700 mb-4">
-                We don't have this venue's happy hour yet.
+              <p className="text-gray-900 font-semibold mb-1.5 text-base">
+                No happy hour here yet — be the first!
+              </p>
+              <p className="text-gray-700 text-sm mb-5">
+                Snap a photo of the menu and you’ll put{' '}
+                <span className="font-medium">{venue.name}</span> on the map for everyone.
               </p>
               <a
-                href="/"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-amber-600 hover:text-amber-700"
+                href={`/?venue=${slug2}`}
+                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
               >
-                🏠 Know the happy hour? Add it →
+                📷 Scan Menu
               </a>
             </div>
           )}

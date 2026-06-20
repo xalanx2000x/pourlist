@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { searchVenues, type GeoResult } from '@/lib/geocode'
 import type { Venue } from '@/lib/supabase'
 import { formatAddress } from '@/lib/format-address'
+import { hasHappyHourData } from '@/lib/happy-hour-data'
 
 interface SearchBarProps {
   onSearch: (coords: { lat: number; lng: number }) => void
@@ -39,15 +40,15 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     const result = await searchVenues(q)
     setLoading(false)
 
-    if (result.type === 'venues' && result.venues) {
-      setVenueResults(result.venues)
-      setShowDropdown(true)
-    } else if (result.type === 'geo' && result.geo) {
-      // No venue match — show geographic result in dropdown instead of jumping map
-      setGeoResult(result.geo)
-      setShowDropdown(true)
+    // Both surfaces always come back — show a single dropdown with
+    // two labeled sections (Venues / Places). Only fall back to the
+    // "no matches" error when BOTH sides are empty.
+    setVenueResults(result.venues)
+    setGeoResult(result.geo)
+    if (result.venues.length === 0 && !result.geo) {
+      showError('No matches.')
     } else {
-      showError('No venue or location found.')
+      setShowDropdown(true)
     }
   }
 
@@ -132,7 +133,8 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     onClear()
   }
 
-  const showGeoOption = showDropdown && venueResults.length === 0 && geoResult
+  const showVenues = showDropdown && venueResults.length > 0
+  const showGeo = showDropdown && geoResult
 
   return (
     <div className="shrink-0 px-4 py-2 bg-white border-b border-gray-100">
@@ -181,36 +183,60 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
         )}
       </form>
 
-      {/* Venue results dropdown */}
-      {showDropdown && venueResults.length > 0 && (
+      {/* Single dropdown with two labeled sections.
+          - Venues on top (verified bubble up via searchVenues ranking)
+          - Places below (single Nominatim hit, if any) */}
+      {(showVenues || showGeo) && (
         <div className="absolute z-50 w-[calc(100%-2rem)] mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
-          {venueResults.map(venue => (
-            <button
-              key={venue.id}
-              onClick={() => handleVenueClick(venue)}
-              className="w-full text-left px-4 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
-            >
-              <p className="text-sm font-medium text-gray-800">{venue.name}</p>
-              {formatAddress(venue) && (
-                <p className="text-xs text-gray-500 mt-0.5">{formatAddress(venue)}</p>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+          {showVenues && (
+            <div>
+              <div className="px-4 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Venues
+              </div>
+              {venueResults.map(venue => {
+                const verified = hasHappyHourData(venue)
+                return (
+                  <button
+                    key={venue.id}
+                    onClick={() => handleVenueClick(venue)}
+                    className="w-full text-left px-4 py-3 hover:bg-amber-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-800 truncate">{venue.name}</p>
+                      {!verified && (
+                        <span className="shrink-0 text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">
+                          Unverified happy hour
+                        </span>
+                      )}
+                    </div>
+                    {formatAddress(venue) && (
+                      <p className="text-xs text-gray-500 mt-0.5">{formatAddress(venue)}</p>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
-      {/* Geographic result — shown when no venue matched */}
-      {showGeoOption && (
-        <div className="absolute z-50 w-[calc(100%-2rem)] mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
-          <button
-            onClick={handleGeoClick}
-            className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors"
-          >
-            <p className="text-sm text-gray-500">
-              <span className="mr-1.5">📍</span>
-              {geoResult.displayName}
-            </p>
-          </button>
+          {showGeo && (
+            <div>
+              {showVenues && (
+                <div className="border-t border-gray-100" />
+              )}
+              <div className="px-4 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Places
+              </div>
+              <button
+                onClick={handleGeoClick}
+                className="w-full text-left px-4 py-3 hover:bg-amber-50 transition-colors"
+              >
+                <p className="text-sm text-gray-700">
+                  <span className="mr-1.5">📍</span>
+                  {geoResult!.displayName}
+                </p>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

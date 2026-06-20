@@ -15,7 +15,7 @@ import { isIndexable } from '@/lib/is-indexable'
 import { venueSlug } from '@/lib/slug'
 import { getHhLabel } from '@/lib/format-schedule'
 import VenueLiveBadge from '@/components/VenueLiveBadge'
-import { formatAddress } from '@/lib/format-address'
+import { formatAddress, normalizeAddress } from '@/lib/format-address'
 import { buildVenueTitle } from '@/lib/format-title'
 
 const BASE_URL = 'https://pourlist.app'
@@ -121,10 +121,14 @@ function buildJsonLd(venue: NonNullable<Awaited<ReturnType<typeof getVenueBySlug
     url,
   }
 
-  if (venue.address) {
+  // JSON-LD PostalAddress — use the normalized address so the
+  // OSM "Unknown" placeholder doesn't leak into schema.org markup
+  // (search engines would index it and link previews would show it).
+  const cleanAddress = normalizeAddress(venue.address)
+  if (cleanAddress) {
     fields.address = {
       '@type': 'PostalAddress',
-      streetAddress: venue.address,
+      streetAddress: cleanAddress,
       addressLocality: 'Portland',
       addressRegion: 'OR',
       postalCode: venue.zip ?? '',

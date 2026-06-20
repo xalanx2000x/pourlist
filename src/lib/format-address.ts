@@ -41,6 +41,34 @@ function getCountryName(code: string): string {
   return countryNameCache.of(code) || code
 }
 
+/**
+ * The OSM seed script wrote the literal string "Unknown" into
+ * `venues.address` for any row whose OSM record had no street address
+ * (~20K of the ~59K seed rows, confirmed in DB: all 20,183 rows are
+ * exactly "Unknown" capital U today). That's a real value (not null),
+ * so it leaks into the visible card, JSON-LD, share text, and the
+ * Google Maps search URL unless every read site normalizes it.
+ *
+ * This helper is the SINGLE normalization point. Every code path
+ * that surfaces venue.address in a user-facing string (visible
+ * text, SEO metadata, link previews, outbound URLs) must call
+ * `normalizeAddress(...)` first. Returns '' for the OSM placeholder
+ * and for null/empty. Add new placeholders to ADDRESS_PLACEHOLDERS,
+ * not to scattered `if` checks across the codebase.
+ *
+ * Comparison is case-insensitive — the placeholder set stores canonical
+ * lowercase forms, and incoming strings are trimmed + lowercased before
+ * lookup. Future seed data with "UNKNOWN", "Unknown", "unknown", or any
+ * other casing is caught automatically.
+ */
+const ADDRESS_PLACEHOLDERS = new Set(['unknown'])
+
+export function normalizeAddress(addr: string | null | undefined): string {
+  if (!addr) return ''
+  if (ADDRESS_PLACEHOLDERS.has(addr.trim().toLowerCase())) return ''
+  return addr
+}
+
 export function formatAddress(venue: {
   address: string | null
   city: string | null
@@ -52,8 +80,10 @@ export function formatAddress(venue: {
   // Non-autofilled: render the stored string untouched. This is the
   // fallback that keeps seed venues rendering correctly — their
   // structured fields are all null because a human curated them.
+  // normalizeAddress() ensures the OSM "Unknown" placeholder
+  // (~20K seed rows) renders as '' instead of leaking through.
   if (!venue.address_autofilled) {
-    return venue.address || ''
+    return normalizeAddress(venue.address)
   }
 
   // Autofilled: derive from structured fields.
@@ -88,8 +118,9 @@ export function formatAddress(venue: {
   // Safety net: an autofilled venue with no parseable structured fields
   // should never happen (reverseGeocodeStructured always returns at least
   // place_name), but if it does, fall back to the stored address.
+  // Normalized for the same reason as the non-autofilled branch above.
   if (!display) {
-    return venue.address || ''
+    return normalizeAddress(venue.address)
   }
 
   return display

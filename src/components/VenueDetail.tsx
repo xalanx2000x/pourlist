@@ -7,7 +7,7 @@ import { hasActiveHappyHour } from '@/lib/activeHH'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
 import ShareButton from './ShareButton'
-import { formatAddress } from '@/lib/format-address'
+import { formatAddress, normalizeAddress } from '@/lib/format-address'
 
 type ActionState = 'idle' | 'loading' | 'success' | 'error'
 
@@ -496,7 +496,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address || ''))}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([venue.name, normalizeAddress(venue.address)].filter(s => s).join(' '))}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 text-center bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors"
@@ -504,7 +504,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             📍 Directions
           </a>
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.name + ' ' + (venue.address || ''))}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([venue.name, normalizeAddress(venue.address)].filter(s => s).join(' '))}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 text-center bg-amber-100 hover:bg-amber-200 text-amber-700 py-2.5 px-4 rounded-lg text-sm font-medium transition-colors"

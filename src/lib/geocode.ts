@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { Venue } from './supabase'
 import { hasHappyHourData } from './happy-hour-data'
+import { normalizeForSearch } from './search-text'
 
 export type GeoResult = {
   displayName: string
@@ -46,36 +47,31 @@ export async function searchVenues(query: string): Promise<SearchResult> {
 }
 
 /**
- * Venue search by name, with punctuation-fallback. Returns up to
- * VENUE_LIMIT venues ranked verified-first (venues with happy-hour
- * data bubble up; unverified venues fill the rest). No seed filter —
- * all venues are searchable; unverified seed venues show as
- * contribution invitations in the dropdown.
+ * Venue search by normalized name. Returns up to VENUE_LIMIT venues
+ * ranked verified-first (venues with happy-hour data bubble up;
+ * unverified venues fill the rest). No seed filter — all venues are
+ * searchable; unverified seed venues show as contribution invitations.
+ *
+ * Both the query and the `venues.search_name` column are normalized
+ * via `normalizeForSearch()` (single source of truth, mirrored in the
+ * SQL that generated the column). This is what makes "ajs", "AJs",
+ * and "AJ's" all match "AJ's Hideaway Bar" — and what makes "barrel
+ * vine" match "Barrel & Vine".
  */
 async function searchVenueMatches(query: string): Promise<Venue[]> {
   // Fetch more than the cap so we can rank + cut in JS without
-  // needing a SQL CASE expression. The trigram index on `name` makes
-  // the ILIKE cheap; VENUE_FETCH is the candidate pool, not the cap.
+  // needing a SQL CASE expression. The trigram index on `search_name`
+  // keeps the ILIKE cheap; VENUE_FETCH is the candidate pool, not the cap.
   const VENUE_FETCH = 30
 
-  const runQuery = (q: string) =>
-    supabase
-      .from('venues')
-      .select(VENUE_SELECT)
-      .ilike('name', `%${q}%`)
-      .limit(VENUE_FETCH)
+  const normalizedQuery = normalizeForSearch(query)
+  if (!normalizedQuery) return []
 
-  let { data } = await runQuery(query)
-
-  // Punctuation fallback (QD's↔QDS, O'Brien↔OBrien, etc.) — only if the
-  // first attempt came back empty.
-  if ((!data || data.length === 0) && query.length >= 2) {
-    const normalized = query.replace(/[^a-zA-Z0-9]/g, '')
-    if (normalized !== query) {
-      const retry = await runQuery(normalized)
-      if (retry.data && retry.data.length > 0) data = retry.data
-    }
-  }
+  const { data } = await supabase
+    .from('venues')
+    .select(VENUE_SELECT)
+    .ilike('search_name', `%${normalizedQuery}%`)
+    .limit(VENUE_FETCH)
 
   if (!data || data.length === 0) return []
 

@@ -8,6 +8,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export type Venue = {
   id: string
   name: string
+  // Normalized form of `name` used for case- and punctuation-insensitive
+  // search. Populated by the `venues.search_name` GENERATED column (see
+  // migrations/004_venues_search_name.sql) and matched via the helper
+  // in src/lib/search-text.ts. Drift between the SQL expression and the
+  // TS helper = silent misses.
+  search_name?: string | null
   slug: string | null
   // Display address (single string, set by seed data or reverse-geocoded
   // for user-contributed venues via the new-contribution hook in

@@ -101,11 +101,7 @@ export async function resolveNewSlug(
   const hasCity = cityRaw.trim().length > 0
   const needsGeoReview = !hasState || !hasCity
 
-  // Build the path segments
-  const stateSegment = hasState ? stateCode : 'unknown'
-  const citySegment = hasCity ? citySlug : 'unknown-city'
-
-  // Query existing slugs in the same city (if city is known)
+  // Query existing slugs in the same city for uniqueness check (if geo is complete)
   let existingInCity = new Set<string>()
   if (hasCity && hasState) {
     try {
@@ -113,7 +109,7 @@ export async function resolveNewSlug(
         .from('venues')
         .select('new_slug')
         .eq('state', venue.state)
-        .ilike('new_slug', `${stateSegment}/${citySegment}/%`)
+        .ilike('new_slug', `${stateCode}/${citySlug}/%`)
       existingInCity = new Set(
         (data ?? [])
           .map((r: any) => {
@@ -129,13 +125,24 @@ export async function resolveNewSlug(
   }
 
   const uniqueSlug = uniqueInCity(venueSlug, existingInCity)
-  const fullPath = `/${stateSegment}/${citySegment}/${uniqueSlug}`
-  const fallbackPath = `/${stateSegment}/${citySegment}/${uniqueSlug}`
 
+  if (needsGeoReview) {
+    // Geo-incomplete: land in /atlantis/{slug} — the review holding pen.
+    // No uniqueness check needed (atlantis is a shared pen, slugs don't need
+    // to be unique there — the venue will get a real unique slug after review).
+    return {
+      path: `/atlantis/${uniqueSlug}`,
+      needsGeoReview: true,
+      fallbackPath: `/atlantis/${uniqueSlug}`,
+    }
+  }
+
+  // Geo-complete: /{state}/{city}/{venueSlug}, per-city unique
+  const fullPath = `/${stateCode}/${citySlug}/${uniqueSlug}`
   return {
-    path: needsGeoReview ? fallbackPath : fullPath,
-    needsGeoReview,
-    fallbackPath,
+    path: fullPath,
+    needsGeoReview: false,
+    fallbackPath: fullPath,
   }
 }
 

@@ -26,6 +26,7 @@ export interface HHWindow {
 export interface HHSchedule {
   windows: [HHWindow | null, HHWindow | null, HHWindow | null]  // [window1, window2, window3]
   rawText: string                                  // original text
+  totalParsed: number  // count of windows parsed before the 3-window cap
 }
 
 /**
@@ -578,7 +579,7 @@ function addWindowWithOverlap(stored: HHWindow[], newWindow: HHWindow): void {
  */
 export function parseHHSchedule(text: string): HHSchedule {
   if (!text || !text.trim()) {
-    return { windows: [null, null, null], rawText: text }
+    return { windows: [null, null, null], rawText: text, totalParsed: 0 }
   }
 
   // Step 1: Split on commas
@@ -622,7 +623,7 @@ export function parseHHSchedule(text: string): HHSchedule {
     windows[i] = stored[i]
   }
 
-  return { windows, rawText: text }
+  return { windows, rawText: text, totalParsed: stored.length }
 }
 
 /**

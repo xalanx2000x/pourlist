@@ -241,7 +241,7 @@ export function parseOneClause(text: string): HHWindow | null {
   const lower = text.trim()
   if (!lower) return null
 
-  const { type, adjustedText } = classifyHHType(lower)
+  let { type, adjustedText } = classifyHHType(lower)
 
   // ── ALL DAY ──────────────────────────────────────────────────────────
   if (type === 'all_day') {
@@ -338,6 +338,11 @@ export function parseOneClause(text: string): HHWindow | null {
       startMin = startMin ?? parseTimeToMin(startStr + (suffix || ''))
       endMin = null
     }
+    // Cross-midnight: end before start means the range runs into next morning
+    if (startMin !== null && endMin !== null && endMin < startMin && type !== 'open_through') {
+      if (endMin >= 12 * 60) endMin -= 12 * 60 // undo wrong PM assumption → AM
+      type = 'late_night'
+    }
   }
 
   // ── TIME RANGE PARSER (no opening_hours.js dependency) ─────────────
@@ -376,6 +381,11 @@ export function parseOneClause(text: string): HHWindow | null {
       } else if (type === 'late_night') {
         startMin = startMin ?? parseTimeToMin(startStr + (startSuffix || ''))
         endMin = null
+      }
+      // Cross-midnight: end before start means the range runs into next morning
+      if (startMin !== null && endMin !== null && endMin < startMin && type !== 'open_through') {
+        if (endMin >= 12 * 60) endMin -= 12 * 60 // undo wrong PM assumption → AM
+        type = 'late_night'
       }
     } else if (type === 'late_night' && /^\d/.test(timePortion)) {
       // Single time expression without a range (e.g. "10pm" in "10pm to midnight")

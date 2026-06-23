@@ -406,12 +406,15 @@ export function parseOneClause(text: string): HHWindow | null {
     // Capture explicit am/pm: "before 2am" → endMin=120 (2am), startMin=840
     const bareMatch = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|p|a)?$/i)
     if (bareMatch) {
-      const [, , rawSuffix] = bareMatch
+      const [, , , rawSuffix] = bareMatch
       const hasExplicitAm = /am|a\.m\.|a$/i.test(rawSuffix ?? '')
       const hasExplicitPm = /pm|p\.m\.|p$/i.test(rawSuffix ?? '')
+      const rawNum12 = parseInt(bareMatch[1])
       const rawMin = parseTimeToMin(bareMatch[0])
       if (rawMin !== null) {
-        if (hasExplicitAm) {
+        if (rawNum12 === 12 && !hasExplicitAm && !hasExplicitPm) {
+          endMin = 1440
+        } else if (hasExplicitAm) {
           // "before 2am" → endMin=120, startMin=840 (2pm-2am next day)
           endMin = rawMin
         } else if (hasExplicitPm) {
@@ -460,11 +463,11 @@ export function parseOneClause(text: string): HHWindow | null {
         // 1. startMin already set → "midnight" is the END time (e.g. "10pm-midnight")
         //    → set endMin=1440 (midnight), leave startMin as-is
         // 2. startMin is null → "midnight to close" (no start specified)
-        //    → startMin=0 (midnight as start), endMin=null (close)
+        //    → startMin=1440 (midnight as start), endMin=null (close)
         if (startMin !== null) {
           endMin = 1440
         } else {
-          startMin = 0
+          startMin = 1440
           endMin = null
         }
       }

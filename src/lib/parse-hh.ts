@@ -429,6 +429,23 @@ export function parseOneClause(text: string): HHWindow | null {
     }
   }
 
+  // ── "(time) midnight": "10pm-midnight", "10pm to midnight" → typical, end=midnight ──
+  // normalizeText collapses these to "10pm midnight" (space-separated); parse leading time, end=1440
+  if (startMin === null && endMin === null) {
+    const midnightEnd = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|p\.?m\.?)?[\s-]*midnight$/i)
+    if (midnightEnd) {
+      const hasPm = /pm|p\.?m\.?/i.test(midnightEnd[3] ?? '')
+      const rawN = parseInt(midnightEnd[1])
+      const sfx = hasPm ? 'pm' : (rawN >= 4 ? 'pm' : '')
+      const parsedStart = parseTimeToMin(midnightEnd[1] + (midnightEnd[2] ? ':' + midnightEnd[2] : '') + sfx)
+      if (parsedStart !== null) {
+        startMin = parsedStart
+        endMin = 1440
+        type = 'typical'
+      }
+    }
+  }
+
   // ── LATE NIGHT "X-close" / "after X" / "midnight": e.g. "10pm-close", "after 9", "midnight" ──
   if (type === 'late_night' && startMin === null && endMin === null) {
     // e.g. "10pm-close", "10-close", "10 p.m. to close", "4-close", "after 9", "after 10"

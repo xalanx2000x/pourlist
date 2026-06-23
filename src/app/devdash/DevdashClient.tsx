@@ -84,6 +84,12 @@ interface Stats {
     zeroResultSearches: number
     topQueries: { query: string; count: number }[]
   }
+  // Public-safe: daily usage bucketed by PourList-day (2pm–1:59pm)
+  usageOverTime: {
+    uniqueDevices: { day: string; count: number }[]
+    searches: { day: string; count: number }[]
+    venuesAdded: { day: string; count: number }[]
+  }
 }
 
 function pct(n: number) {
@@ -422,7 +428,76 @@ export default function DevdashClient() {
       </SectionCard>
 
 
-      {/* Row 2.5c: Search Analytics (internal-only) */}
+      {/* Row 2.5c: Usage Over Time — Public-safe daily counts, PourList-day bucketing */}
+      <SectionCard title="Usage Over Time (PourList Days, 2pm–2pm)">
+        {stats.usageOverTime && stats.usageOverTime.uniqueDevices.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Unique Devices / day */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Unique Devices / Day</p>
+              <div className="flex items-end gap-0.5 h-20">
+                {stats.usageOverTime.uniqueDevices.map((d, i) => {
+                  const max = Math.max(...stats.usageOverTime.uniqueDevices.map(x => x.count), 1)
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{d.count}</span>
+                      <div
+                        className="w-full bg-blue-400 rounded-t"
+                        style={{ height: `${Math.max((d.count / max) * 60, d.count > 0 ? 4 : 0)}px` }}
+                      />
+                      <span className="text-xs text-gray-400">{d.day.slice(5)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Searches / day */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Searches / Day</p>
+              <div className="flex items-end gap-0.5 h-20">
+                {stats.usageOverTime.searches.map((d, i) => {
+                  const max = Math.max(...stats.usageOverTime.searches.map(x => x.count), 1)
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{d.count}</span>
+                      <div
+                        className="w-full bg-amber-400 rounded-t"
+                        style={{ height: `${Math.max((d.count / max) * 60, d.count > 0 ? 4 : 0)}px` }}
+                      />
+                      <span className="text-xs text-gray-400">{d.day.slice(5)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Venues Added / day */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Venues Added / Day</p>
+              <div className="flex items-end gap-0.5 h-20">
+                {stats.usageOverTime.venuesAdded.map((d, i) => {
+                  const max = Math.max(...stats.usageOverTime.venuesAdded.map(x => x.count), 1)
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{d.count}</span>
+                      <div
+                        className="w-full bg-green-400 rounded-t"
+                        style={{ height: `${Math.max((d.count / max) * 60, d.count > 0 ? 4 : 0)}px` }}
+                      />
+                      <span className="text-xs text-gray-400">{d.day.slice(5)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No usage data yet.</p>
+        )}
+      </SectionCard>
+
+      {/* Row 2.5d: Search Analytics (internal-only) */}
       <SectionCard title="Search Analytics (Last 30 Days)">
         {stats.searchStats ? (
           <div className="space-y-4">

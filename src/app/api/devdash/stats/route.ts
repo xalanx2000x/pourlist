@@ -399,7 +399,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats, usageOverTime] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -416,9 +416,10 @@ export async function GET() {
       getDataAging(),
       getGrowthTrends(),
       getSearchStats(),
+      getUsageOverTime(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats, usageOverTime })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -533,6 +534,72 @@ async function getGrowthTrends() {
   const submissionTrend = weeks.map((w, i) => ({ week: w, submissions: submissionCounts[i], newVenues: newVenueCounts[i] }))
 
   return { venueTrend, submissionTrend }
+}
+
+// Public-safe aggregate: daily usage metrics bucketed by PourList-day (2pm–1:59pm).
+// A PourList day runs from 2pm to 1:59pm the next calendar day.
+// Implementation: shift each timestamp back 14 hours before extracting the calendar date.
+// Spot-check: 1am June 2 → shifted to 11am June 1 → bucket = June 1 ✓
+async function getUsageOverTime() {
+  const SHIFT_MS = 14 * 3_600_000 // shift back 14 hours so 2pm–midnight stays same-day, midnight–1:59am rolls back
+
+  // 35-day window → up to 30 full PourList days
+  const thirtyFiveDaysAgo = daysAgo(35)
+
+  const [eventsRes, venuesRes] = await Promise.all([
+    // Fetch only what we need: device_hash (for uniqueness) + event_name (for search filter)
+    // No select=id,metadata — avoids pulling unneeded JSON blobs
+    supabase
+      .from('events')
+      .select('created_at, device_hash, event_name')
+      .gte('created_at', thirtyFiveDaysAgo)
+      .limit(10000),
+    supabase
+      .from('venues')
+      .select('created_at')
+      .neq('status', 'unverified')
+      .gte('created_at', thirtyFiveDaysAgo)
+      .limit(5000),
+  ])
+
+  const events = eventsRes.data ?? []
+
+  const uniqueDevices: Record<string, Set<string>> = {}
+  const searches: Record<string, number> = {}
+  const venuesAdded: Record<string, number> = {}
+
+  function pourDate(isoString: string): string {
+    const ms = new Date(isoString).getTime() - SHIFT_MS
+    const d = new Date(ms)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  for (const row of events) {
+    const day = pourDate(row.created_at)
+    if (!uniqueDevices[day]) uniqueDevices[day] = new Set()
+    if (row.device_hash) uniqueDevices[day].add(row.device_hash)
+    if (row.event_name === 'search') {
+      searches[day] = (searches[day] ?? 0) + 1
+    }
+  }
+
+  for (const row of venuesRes.data ?? []) {
+    const day = pourDate(row.created_at)
+    venuesAdded[day] = (venuesAdded[day] ?? 0) + 1
+  }
+
+  // Collect all dates that have any data, sort, keep last 30
+  const allDays = [...new Set([
+    ...Object.keys(uniqueDevices),
+    ...Object.keys(searches),
+    ...Object.keys(venuesAdded),
+  ])].sort().slice(-30)
+
+  return {
+    uniqueDevices: allDays.map(d => ({ day: d, count: uniqueDevices[d]?.size ?? 0 })),
+    searches: allDays.map(d => ({ day: d, count: searches[d] ?? 0 })),
+    venuesAdded: allDays.map(d => ({ day: d, count: venuesAdded[d] ?? 0 })),
+  }
 }
 
 // Public-safe aggregate: age breakdown of venues with HH data.

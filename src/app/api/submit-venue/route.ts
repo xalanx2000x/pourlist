@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { reverseGeocodeStructured } from '@/lib/gps'
-import { slugifyName, uuidShort } from '@/lib/slug'
+import { resolveNewSlug } from '@/lib/slug'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -350,6 +350,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Extract city/state for slug generation (from geocode or direct form input).
+    // Type-cast needed: venueInsert is Record<string, unknown> so city/state are inferred
+    // as {} | null rather than string | null.
+    const venueCity = (venueInsert.city as string | null) ?? null
+    const venueState = (venueInsert.state as string | null) ?? null
+
     const { data: newVenue, error: venueError } = await supabase
       .from('venues')
       .insert(venueInsert)
@@ -370,14 +376,29 @@ export async function POST(req: NextRequest) {
 
     const venueId = newVenue.id
 
-    // Persist a stable slug so the venue page is SEO-friendly from day one.
-    // Uses the updated slugifyName (apostrophes stripped). UUID suffix makes
-    // it collision-proof even if the same name is submitted twice.
-    const slug = `${slugifyName(venueName.trim())}-${uuidShort(venueId, 6)}`
-    await supabase
+    // Generate the new SEO-friendly URL slug (/{state}/{city}/{venueSlug}).
+    // Gracefully degrades if the new_slug/needs_geo_review columns don't exist
+    // yet (migration runs in a later phase — this won't error).
+    const { path: newSlug, needsGeoReview } = await resolveNewSlug(
+      { id: venueId, name: venueName, city: venueCity, state: venueState },
+      supabase
+    )
+
+    // Persist slug + geo-review flag. Each update is independent: absence of
+    // a column silently no-ops rather than erroring.
+    const slugUpdate = await supabase
       .from('venues')
-      .update({ slug })
+      .update({ new_slug: newSlug })
       .eq('id', venueId)
+    if (!slugUpdate.error) {
+      // Only write needs_geo_review if the column exists and we need it
+      if (needsGeoReview) {
+        await supabase
+          .from('venues')
+          .update({ needs_geo_review: true })
+          .eq('id', venueId)
+      }
+    }
 
     // ── Upload photos (with rollback on failure) ───────────────────────────
     const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]

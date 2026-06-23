@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { HHWindow, parseHHSchedule, parseOneClause } from '@/lib/parse-hh'
 
 interface HHScheduleInputProps {
@@ -10,11 +10,16 @@ interface HHScheduleInputProps {
   onChange?: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
   /** Called when user clicks "Confirm Happy Hour" — passes both windows and the raw user input text */
   onCommit: (windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) => void
+  /** Called when a submission is BLOCKED because the parser returned no valid window.
+   *  Deduplicated: only fires when the blocked text differs from the last failed attempt
+   *  (one log per distinct failed input, not per keystroke or per retry). */
+  onParseFailureAttempt?: (rawText: string) => void
 }
 
 interface ParseResult {
   windows: [HHWindow | null, HHWindow | null, HHWindow | null]
   rawText: string
+  totalParsed: number    // 0 when box is empty; otherwise mirrors HHSchedule.totalParsed
 }
 
 /**
@@ -80,7 +85,7 @@ function WindowsPreview({ windows }: { windows: HHWindow[] }) {
   )
 }
 
-export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHScheduleInputProps) {
+export default function HHScheduleInput({ initialBox1, onChange, onCommit, onParseFailureAttempt }: HHScheduleInputProps) {
   // Box 1 starts blank — don't pre-populate from initialBox1 (AI text can be wrong)
   const [box1, setBox1] = useState('')
   const [box2, setBox2] = useState('')
@@ -88,13 +93,17 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
   const [box1Error, setBox1Error] = useState('')
   const [box2Error, setBox2Error] = useState('')
 
+  // Stable ref to parent's failure handler — never reregisters on re-render.
+  const onFailureRef = useRef(onParseFailureAttempt)
+  onFailureRef.current = onParseFailureAttempt
+
   // Live preview: parse box1 on every keystroke for immediate feedback
   const result1: ParseResult = (() => {
-    if (!box1.trim()) return { windows: [null, null, null], rawText: '' }
+    if (!box1.trim()) return { windows: [null, null, null], rawText: '', totalParsed: 0 }
     try {
       return parseHHSchedule(box1)
     } catch {
-      return { windows: [null, null, null], rawText: box1 }
+      return { windows: [null, null, null], rawText: box1, totalParsed: 0 }
     }
   })()
 
@@ -159,12 +168,14 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit }: HHS
     setBox2Error('')
 
     if (box1.trim() && !result1.windows.some(w => w !== null)) {
+      onFailureRef.current?.(box1.trim())
       setBox1Error('No valid happy hour found in the text above.')
       return
     }
 
     if (hasLateNight && box2.trim() && w2 === null) {
-      setBox2Error('Could not parse. Try "10pm-close" or "10-close".')
+      onFailureRef.current?.(box2.trim())
+      setBox2Error('Could not parse. Try "10pm-close" or "10-1am".')
       return
     }
 

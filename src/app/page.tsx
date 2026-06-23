@@ -20,6 +20,7 @@ import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getBrowserLocation, LocationUnavailableError } from '@/lib/gps'
+import { parseHHSchedule } from '@/lib/parse-hh'
 import { haversineM } from '@/lib/geo'
 import { isDeepLinkActive, setDeepLinkFlag } from '@/lib/deep-link'
 import SearchBar from '@/components/SearchBar'
@@ -165,6 +166,10 @@ export default function Home() {
   const [scanStep, setScanStep] = useState<ScanStep>('idle')
   const [scan, setScan] = useState<ScanState>(emptyScanState())
   const [saveSuccess, setSaveSuccess] = useState(false)
+  // Per-scan-session dedup for hh_blocked_input: prevents logging the same failed
+  // text twice if user types it again after a successful commit within the session.
+  // Lives at page.tsx level (above scanStep) so it survives MenuReview remounts.
+  const lastLoggedFailedText = useRef<string>('')
   // Friendly hint when location is genuinely unavailable (OS off,
   // browser denied, IP lookup failed). One per session — ref-guarded
   // so retries don't re-nag. The deep-link chokepoint rejection is
@@ -378,12 +383,33 @@ export default function Home() {
     setListBounds(null)
   }
 
-  function handleSearch(coords: { lat: number; lng: number }) {
+  function handleSearch(coords: { lat: number; lng: number }, meta?: {
+    query: string
+    queryType: 'venue' | 'location'
+    resultCount: number
+    resultVenueIds: string[]
+    searchArea: string
+  }) {
     setSearchedLocation(coords)
     setUserLocation(coords)
     setMapBounds(null)
     setListBounds(null)
     setShowSearchThisArea(false)
+
+    // Fire-and-forget search analytics event with result attribution
+    if (meta) {
+      trackEvent('search', {
+        deviceHash: getDeviceHash(),
+        metadata: {
+          query: meta.query,
+          queryType: meta.queryType,
+          resultCount: meta.resultCount,
+          resultVenueIds: meta.resultVenueIds,
+          searchArea: meta.searchArea,
+        },
+      })
+    }
+
     // Trigger immediate fetch with approximate bounds at zoom 13
     // (the default for the search-bar flyTo). The map will fly in
     // parallel; a second fetch fires via the mapBounds useEffect
@@ -521,9 +547,73 @@ export default function Home() {
    * Accumulates all extracted text into one string.
    * Silently fails — MenuReview falls back to manual HH entry on error.
    */
+  /**
+   * Log a parse failure to the events table for dashboard analysis.
+   * Fire-and-forget — never blocks UX.
+   *
+   * failureType:
+   *   'hh_blocked_input' — user typed HH text the parser couldn't interpret (block point = submission)
+   *   'gpt_image'         — GPT failed to read menu photo (parked feature; kept for future use)
+   */
+  async function logParseFailure(opts: {
+    failureType: string
+    rawText: string
+    error?: string
+    metadata?: Record<string, unknown>
+  }) {
+    try {
+      await fetch('/api/log-parse-failure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceHash: getDeviceHash(),
+          failureType: opts.failureType,
+          rawText: opts.rawText,
+          error: opts.error,
+          metadata: opts.metadata ?? null,
+        }),
+      })
+    } catch {
+      // Silently ignore — analytics must never break UX
+    }
+  }
+
+  /**
+   * Extract the specific failing clauses from a multi-clause HH input string.
+   * Splits on comma/semicolon the same way parseHHSchedule does, then identifies
+   * which clauses returned null. Used to log only the actionable failing text.
+   */
+  function getFailingClauses(text: string): string[] {
+    const clauses = text.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+    if (clauses.length <= 1) return []  // single-clause: whole text is the failure
+    return clauses.filter(clause => {
+      try { return parseHHSchedule(clause).totalParsed === 0 }  // eslint-disable-line @typescript-eslint/no-unused-expressions
+      catch { return true }
+    })
+  }
+
+  /**
+   * Log a blocked HH submission: distinct failed input per scan session.
+   * Also extracts the specific failing clause(s) for actionable logging.
+   */
+  function handleHhParseFailureAttempt(rawText: string) {
+    if (rawText !== lastLoggedFailedText.current) {
+      lastLoggedFailedText.current = rawText
+      const failingClauses = getFailingClauses(rawText)
+      logParseFailure({
+        failureType: 'hh_blocked_input',
+        rawText,
+        metadata: failingClauses.length > 0 ? { failingClauses } : undefined,
+      })
+    }
+  }
+
   async function parseMenuPhotos(files: File[]): Promise<string> {
     if (files.length === 0) return ''
-    let hadFailure = false
+    const deviceHash = getDeviceHash()
+    let hadApiError = false
+    let apiErrorMsg = ''
+
     try {
       const results = await Promise.all(
         files.map(async (file) => {
@@ -533,11 +623,12 @@ export default function Home() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               imageData: base64,
-              deviceHash: getDeviceHash()
+              deviceHash,
             })
           })
           if (!res.ok) {
-            hadFailure = true
+            hadApiError = true
+            apiErrorMsg = `HTTP ${res.status}`
             return ''
           }
           const { text } = await res.json()
@@ -545,14 +636,15 @@ export default function Home() {
         })
       )
       const combined = results.filter(Boolean).join('\n---\n')
+
       if (combined) {
-        trackEvent('menu_parse_success', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
-      } else if (hadFailure) {
-        trackEvent('menu_parse_failure', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
+        // At least one page produced text
+        trackEvent('menu_parse_success', { deviceHash, metadata: { pageCount: files.length } })
       }
+      // GPT image feature is parked — parse_failure events not written for image failures.
+      // The analytics trackEvent above still fires for funnel analysis.
       return combined
     } catch {
-      trackEvent('menu_parse_failure', { deviceHash: getDeviceHash(), metadata: { pageCount: files.length } })
       return ''
     }
   }
@@ -760,8 +852,9 @@ export default function Home() {
     hhWindows: [import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null, import('@/lib/parse-hh').HHWindow | null]
     hhTime: string
     hhSummary: string
+    failedHhInput?: string | null
   }) {
-    const { hhWindows, hhTime, hhSummary } = data
+    const { hhWindows, hhTime, hhSummary, failedHhInput } = data
     const deviceHash = getDeviceHash()
     const limit = checkRateLimit(deviceHash)
     if (!limit.allowed) {
@@ -845,6 +938,14 @@ export default function Home() {
           durationSec,
         },
       })
+
+      // If user had a blocked attempt before succeeding, log the recovery pair quietly.
+      // lastLoggedFailedText is cleared on recovery so the same failed input
+      // can be logged again in a future scan session.
+      if (failedHhInput) {
+        logParseFailure({ failureType: 'hh_recovery', rawText: failedHhInput, metadata: { hhSummary } })
+        lastLoggedFailedText.current = ''
+      }
 
       setSaveSuccess(true)
       setLastSavedVenue(`${confirmedVenue.name} menu updated`)
@@ -946,6 +1047,15 @@ export default function Home() {
       setSaveSuccess(true)
       setLastSavedVenue(`"${newVenueName}" added`)
       setTimeout(() => setSaveSuccess(false), 3000)
+
+      // If user had a blocked attempt before succeeding, log the recovery pair quietly.
+      // lastLoggedFailedText is cleared on recovery so the same failed input
+      // can be logged again in a future scan session.
+      if (failedHhInput) {
+        logParseFailure({ failureType: 'hh_recovery', rawText: failedHhInput, metadata: { hhSummary } })
+        lastLoggedFailedText.current = ''
+      }
+
       resetScan()
       return
     }
@@ -1329,6 +1439,7 @@ export default function Home() {
           onDiscard={handleMenuDiscard}
           onRetry={handleMenuRetry}
           onClose={handleScanClose}
+          onParseFailureAttempt={handleHhParseFailureAttempt}
         />
       )}
 

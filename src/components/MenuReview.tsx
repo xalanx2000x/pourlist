@@ -19,7 +19,11 @@ interface MenuReviewProps {
     hhWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
     hhTime: string
     hhSummary: string
+    failedHhInput?: string | null   // set when commit SUCCEEDED but a prior attempt had been blocked
   }) => Promise<void>
+  /** Callback (fire-and-forget) when HHScheduleInput blocks a submission attempt.
+   *  Passed through to page.tsx for the parse_failure event. */
+  onParseFailureAttempt?: (rawText: string) => void
   onDiscard: () => void
   onRetry: () => void
   onClose: () => void
@@ -35,11 +39,14 @@ export default function MenuReview({
   onCommit,
   onDiscard,
   onRetry,
-  onClose
+  onClose,
+  onParseFailureAttempt
 }: MenuReviewProps) {
   // Ref to always hold the current windows — avoids stale closure in handleSave
   const hhWindowsRef = useRef<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const hhSummaryRef = useRef('')
+  // Holds the last distinct HH input that was blocked by the parser
+  const failedHhInputRef = useRef<string | null>(null)
   const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
@@ -59,6 +66,12 @@ export default function MenuReview({
       .finally(() => setIsCommitting(false))
   }
 
+  // Called when HHScheduleInput blocks a parse failure — store distinct failed input
+  function handleParseFailureAttempt(rawText: string) {
+    failedHhInputRef.current = rawText
+    onParseFailureAttempt?.(rawText)
+  }
+
   // Called by the Save button in MenuReview
   // "Save Happy Hour" is the ONE button that both confirms AND saves.
   async function handleSave() {
@@ -71,7 +84,10 @@ export default function MenuReview({
     setCommitError('')
     setIsCommitting(true)
     try {
-      await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current })
+      // Pass the blocked input so page.tsx can log it; then clear it
+      const failedInput = failedHhInputRef.current
+      failedHhInputRef.current = null
+      await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current, failedHhInput: failedInput })
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
     } finally {
@@ -127,6 +143,7 @@ export default function MenuReview({
 
         {/* HH Schedule — two-box input */}
         <HHScheduleInput
+          onParseFailureAttempt={handleParseFailureAttempt}
           onChange={(windows) => {
             setHhWindows(windows)
             hhWindowsRef.current = windows

@@ -21,11 +21,12 @@ export type EventName =
   | 'venue_detail_open'   // detail panel opened
   | 'onboarding_complete' // user finished the tour
   | 'onboarding_skip'    // user skipped the tour
+  | 'search'             // user performed a location search that moved the map
 
 interface TrackEventOptions {
   deviceHash: string
   venueId?: string
-  metadata?: Record<string, string | number | boolean | undefined>
+  metadata?: Record<string, string | number | boolean | string[] | undefined>
 }
 
 export async function trackEvent(

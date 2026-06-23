@@ -5,9 +5,17 @@ import { searchVenues, type GeoResult } from '@/lib/geocode'
 import type { Venue } from '@/lib/supabase'
 import { formatAddress } from '@/lib/format-address'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
+import { trackEvent } from '@/lib/analytics'
+import { getDeviceHash } from '@/lib/device'
 
 interface SearchBarProps {
-  onSearch: (coords: { lat: number; lng: number }) => void
+  onSearch: (coords: { lat: number; lng: number }, meta: {
+    query: string
+    queryType: 'venue' | 'location'
+    resultCount: number
+    resultVenueIds: string[]
+    searchArea: string
+  }) => void
   onVenueSelect: (venue: Venue) => void
   onClear: () => void
 }
@@ -23,6 +31,14 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const preUserValueRef = useRef<string>('')
   const isFirstChangeRef = useRef(false)
+  // Stores the last search result so handleGeoClick can read it after doSearch resolves
+  const lastSearchMetaRef = useRef<{
+    query: string
+    queryType: 'venue' | 'location'
+    resultCount: number
+    resultVenueIds: string[]
+    searchArea: string
+  }>({ query: '', queryType: 'location', resultCount: 0, resultVenueIds: [], searchArea: '' })
 
   async function doSearch(q: string) {
     if (!q.trim()) {
@@ -39,6 +55,15 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
 
     const result = await searchVenues(q)
     setLoading(false)
+
+    // Store result metadata in a ref so handleGeoClick can read it after state updates
+    lastSearchMetaRef.current = {
+      query: q,
+      queryType: 'location',
+      resultCount: result.venues.length,
+      resultVenueIds: result.venues.map(v => v.id),
+      searchArea: result.geo?.displayName ?? '',
+    }
 
     // Both surfaces always come back — show a single dropdown with
     // two labeled sections (Venues / Places). Only fall back to the
@@ -106,20 +131,43 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
   }
 
   function handleVenueClick(venue: Venue) {
+    // Capture metadata before state clears
+    const meta = { ...lastSearchMetaRef.current }
+    // Update queryType since this is a venue-selection path
+    meta.queryType = 'venue'
+    meta.resultCount = 1
+    meta.resultVenueIds = [venue.id]
+
     setShowDropdown(false)
     setVenueResults([])
     setGeoResult(null)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onVenueSelect(venue)
+
+    // Fire search event with venue-selection metadata (after state clears are deferred)
+    // Use setTimeout so state clears complete first; fire-and-forget
+    setTimeout(() => {
+      trackEvent('search', {
+        deviceHash: getDeviceHash(),
+        metadata: {
+          query: meta.query,
+          queryType: meta.queryType,
+          resultCount: meta.resultCount,
+          resultVenueIds: meta.resultVenueIds,
+          searchArea: meta.searchArea,
+        },
+      })
+    }, 0)
   }
 
   function handleGeoClick() {
     if (!geoResult) return
+    const meta = { ...lastSearchMetaRef.current }
     setShowDropdown(false)
     setVenueResults([])
     setGeoResult(null)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    onSearch({ lat: geoResult.lat, lng: geoResult.lng })
+    onSearch({ lat: geoResult.lat, lng: geoResult.lng }, meta)
   }
 
   function handleClear() {

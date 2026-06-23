@@ -280,6 +280,18 @@ function parseMapboxFeature(feature: any): StructuredAddress {
 function parseNominatimResult(data: any): StructuredAddress {
   const place_name: string = data.display_name || ''
   const addr = data.address || {}
+
+  // Nominatim encodes ISO3166-2-lvl4 as "US-OR", "US-CA" in addr.state_code.
+  // Extract the right side of the dash to get the 2-letter code, matching
+  // the Mapbox output. Falls back to addr.state (full name) only if absent.
+  let state: string | null = null
+  if (addr.state_code) {
+    const parts = addr.state_code.split('-')
+    state = parts.length > 1 ? parts[parts.length - 1] : addr.state_code
+  } else if (addr.state) {
+    state = addr.state
+  }
+
   return {
     place_name,
     // Nominatim puts house number + road in separate fields.
@@ -287,7 +299,7 @@ function parseNominatimResult(data: any): StructuredAddress {
       ? `${addr.house_number} ${addr.road}`
       : addr.road || null,
     city: addr.city || addr.town || addr.village || addr.hamlet || null,
-    state: addr.state_code || addr.state || null,
+    state,
     neighborhood: addr.neighbourhood || addr.suburb || null,
     country: addr.country_code
       ? addr.country_code.toUpperCase()

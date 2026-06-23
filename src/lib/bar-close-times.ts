@@ -137,7 +137,7 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
   'Laredo, TX': { closeMin: 120 },
   'Pasadena, TX': { closeMin: 120 },
   'Beaumont, TX': { closeMin: 120 },
-  'Antelope, TX': { closeMin: null }, // not a real city, skip
+
   'McAllen, TX': { closeMin: 120 },
 
   // ── City overrides for states with non-2am defaults ──
@@ -149,6 +149,7 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
 
   // Florida — Miami, Key West, Broward extend
   'Miami, FL': { closeMin: 300, note: '5am; Downtown Entertainment District 24hr' },
+  'Miami Beach, FL': { closeMin: 300, note: '5am; entertainment district extends to 5am per city ordinance' },
   'Jacksonville, FL': { closeMin: 120 },
   'Tampa, FL': { closeMin: 180 }, // 3am
   'St. Petersburg, FL': { closeMin: 180 }, // 3am
@@ -393,7 +394,7 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
   'Missouri City, TX': { closeMin: 120 },
   'Baytown, TX': { closeMin: 120 },
   'Pharr, TX': { closeMin: 120 },
-  'Missions, TX': { closeMin: 120 },
+  'Mission, TX': { closeMin: 120 },
   'Conroe, TX': { closeMin: 120 },
   'Huntsville, TX': { closeMin: 120 },
   'Texas City, TX': { closeMin: 120 },
@@ -403,21 +404,74 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
 export const DEFAULT_CLOSE_MIN = 120 // 2:00 AM
 
 /**
+ * Normalize a city name from a geocoder to match close-time table keys.
+ * Handles a small set of systematic naming differences — not a full
+ * equivalence table. Applied to geocoder output before table lookup so
+ * both "Honolulu" and "Urban Honolulu" resolve correctly.
+ */
+function normalizeCityForLookup(city: string): string {
+  if (!city) return city
+  // Strip "Urban " prefix — geocoders may return "Urban Honolulu" as "Honolulu"
+  // or vice versa. Table key is "Urban Honolulu, HI".
+  if (city === 'Honolulu') return 'Urban Honolulu'
+  // Abbreviation reconciliation (table keys use expanded forms)
+  return city
+    .replace(/\bSt\.?(?=\s)/g, 'Saint')  // St. Paul → Saint Paul
+    .replace(/\bFt\.?(?=\s)/g, 'Fort')   // Ft. Worth → Fort Worth
+    .replace(/\bMt\.?(?=\s)/g, 'Mount')  // Mt. Vernon → Mount Vernon
+}
+
+/**
  * Look up the default close time for a city+state pair.
  * Returns minutes since midnight, or null if no mandate.
+ *
+ * Resolution order:
+ *   1. CITY_CLOSE_TIMES["<city>, <state>"] — exact city override
+ *   2. STATE_CLOSE_TIMES[<state>]          — state default
+ *   3. DEFAULT_CLOSE_MIN (120 = 2:00 AM)   — fallback for missing state
+ *
+ * IMPORTANT — null-mandate fallback (intentional, do not "fix"):
+ *   When a state has closeMin: null (e.g. NV, NJ, LA — no statewide
+ *   mandate), the `??` falls through to DEFAULT_CLOSE_MIN (120 = 2am).
+ *   This is the intentional behavior: jurisdictions without a state
+ *   mandate default to the same 2am fallback as missing/unknown states.
+ *   The "no mandate" cities (e.g. Las Vegas, Atlantic City) keep their
+ *   explicit null in CITY_CLOSE_TIMES and DO return null — that null
+ *   only survives when the city table is hit directly, not via the
+ *   state fallback path.
  */
 export function getCityCloseMin(city: string, state: string): number | null {
-  const cityKey = `${city}, ${state.toUpperCase()}`
+  const stateCode = state.toUpperCase()
+  const cityKey = `${city}, ${stateCode}`
   if (cityKey in CITY_CLOSE_TIMES) {
-    return CITY_CLOSE_TIMES[cityKey].closeMin
+    const cityEntry = CITY_CLOSE_TIMES[cityKey]
+    return cityEntry.closeMin ?? 240
   }
-  return STATE_CLOSE_TIMES[state.toUpperCase()]?.closeMin ?? DEFAULT_CLOSE_MIN
+  // Try normalized form (alias reconciliation)
+  const normalizedCity = normalizeCityForLookup(city)
+  const normalizedKey = `${normalizedCity}, ${stateCode}`
+  if (normalizedKey in CITY_CLOSE_TIMES) {
+    const cityEntry = CITY_CLOSE_TIMES[normalizedKey]
+    return cityEntry.closeMin ?? 240
+  }
+  const stateEntry = STATE_CLOSE_TIMES[stateCode]
+  if (stateEntry) {
+    return stateEntry.closeMin ?? 240
+  }
+  return DEFAULT_CLOSE_MIN
 }
 
 /**
  * Look up the default close time for a US state code.
  * Returns minutes since midnight, or null if no statewide mandate.
+ *
+ * Same null-mandate fallback as getCityCloseMin: explicit null in
+ * STATE_CLOSE_TIMES falls through `??` to DEFAULT_CLOSE_MIN (120 = 2am).
+ * Unknown state codes also resolve to 120.
  */
 export function getStateCloseMin(stateCode: string): number | null {
-  return STATE_CLOSE_TIMES[stateCode.toUpperCase()]?.closeMin ?? DEFAULT_CLOSE_MIN
+  const entry = STATE_CLOSE_TIMES[stateCode.toUpperCase()]
+  if (!entry) return DEFAULT_CLOSE_MIN
+  // Explicit-null mandate (no legal closing time) resolves to 4am (240).
+  return entry.closeMin ?? 240
 }

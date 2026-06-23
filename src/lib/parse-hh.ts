@@ -178,6 +178,7 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
       .replace(/\btill\s*midnight\b/gi, '')  // strip "till midnight" but keep nothing
       .replace(/\bafter\s+\d+\b/gi, '')      // strip "after 12" etc, keep nothing (time already handled)
       .replace(/\bafter\s+midnight\b/gi, '')  // strip "after midnight" but keep nothing
+      .replace(/-midnight/, 'midnight')        // clean up residual from normalizeText
       .trim()
     return { type: 'late_night', adjustedText: adjusted }
   }
@@ -208,9 +209,11 @@ function normalizeText(text: string): string {
     .replace(/\btil\s+close\b/g, 'till close')
     // Normalize "to midnight" → "start-midnight" (preserve start time for parser)
     // "10 to midnight" → "10-midnight", "10 til midnight" → "10-midnight", etc.
-    .replace(/(?<!\d)to\s+midnight\b/g, '-midnight')
-    .replace(/(?<!\d)until\s+midnight\b/g, '-midnight')
+    // Use (?<![a-zA-Z\d]) not (?<!\d) — must not fire after "pm"/"am" abbreviations
+    .replace(/(?<![a-zA-Z\d])to\s+midnight\b/g, '-midnight')
+    .replace(/(?<![a-zA-Z\d])until\s+midnight\b/g, '-midnight')
     .replace(/\btil\s+midnight\b/g, '-midnight')   // "10 til midnight" → "10-midnight"
+    .replace(/-midnight/g, 'midnight')             // clean up residual "-midnight" before parser
     // Normalize "from X" prefix (remove, keep the time)
     .replace(/\bfrom\s+/g, '')
     // Normalize "after X" (treat as late_night: X → close)
@@ -219,8 +222,11 @@ function normalizeText(text: string): string {
     .replace(/\bstarts?\s+at\b/g, '')
     // Normalize "happy hour" mentions that don't add semantic meaning
     .replace(/\bhap*y\s*hour\b/gi, '')
-    // Normalize "til" between letters → "till" (day ranges like "Mon til Fri")
-    .replace(/(\D)til(\s|$)/g, '$1till$2')          // "Mon til Fri" → "Mon till Fri"
+    // Normalize day-til-day → day-day (removes "til"/"till"/"to" keyword before type classification)
+    // e.g. "Mon til Fri" → "Mon-Fri", "Friday to Sunday" → "Friday-Sunday"
+    .replace(/([a-z])\s*(?:til|till|to)\s*([a-z])/gi, '$1-$2')
+    // Normalize time-til-time → time-time (converts "4 til 7" → "4-7")
+    .replace(/(\d)\s*(?:til|till|to)\s*(\d)/g, '$1-$2')
     .replace(/\bthru\b/g, 'through')                 // "thru" → "through"
     // Remove extra whitespace
     .replace(/\s+/g, ' ').trim()
@@ -375,7 +381,6 @@ export function parseOneClause(text: string): HHWindow | null {
       // Single time expression without a range (e.g. "10pm" in "10pm to midnight")
       // → parse it as the start time, end is implicit close
       const single = parseTimeToMin(timePortion.trim())
-      console.log('[DEBUG] single time branch for late_night, timePortion:', timePortion, '→ single:', single)
       if (single !== null) {
         startMin = single
         endMin = null
@@ -384,16 +389,27 @@ export function parseOneClause(text: string): HHWindow | null {
   }
 
   // ── "before X" in open_through: "before 5" → 2pm-5pm ──────────────
-  // "before" was stripped from adjustedText by classifyHHType, so we check original `lower`
+  // "before" was stripped from adjustedText by classifyHHType, so we check adjustedText
   if (type === 'open_through' && startMin === null && endMin === null) {
-    // Look for a bare number at the start of adjustedText (the "X" in "before X")
-    const bareMatch = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?(?:\s*(?:am|pm|a|p))?$/i)
+    // Look for a number at the start of adjustedText (the "X" in "before X")
+    // Capture explicit am/pm: "before 2am" → endMin=120 (2am), startMin=840
+    const bareMatch = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|p|a)?$/i)
     if (bareMatch) {
+      const [, , rawSuffix] = bareMatch
+      const hasExplicitAm = /am|a\.m\.|a$/i.test(rawSuffix ?? '')
+      const hasExplicitPm = /pm|p\.m\.|p$/i.test(rawSuffix ?? '')
       const rawMin = parseTimeToMin(bareMatch[0])
       if (rawMin !== null) {
-        // Bare number in "before X" → treat as PM (e.g. "before 5" = before 5pm)
-        endMin = rawMin < 12 * 60 ? rawMin + 12 * 60 : rawMin
-        // Start = 2pm (typical HH start)
+        if (hasExplicitAm) {
+          // "before 2am" → endMin=120, startMin=840 (2pm-2am next day)
+          endMin = rawMin
+        } else if (hasExplicitPm) {
+          // "before 2pm" → endMin=840, startMin=840 (before 2pm = same-day 2pm-2pm)
+          endMin = rawMin
+        } else {
+          // Bare number: treat as PM (e.g. "before 5" = before 5pm)
+          endMin = rawMin < 12 * 60 ? rawMin + 12 * 60 : rawMin
+        }
         startMin = 14 * 60
       }
     }
@@ -442,8 +458,6 @@ export function parseOneClause(text: string): HHWindow | null {
       }
     }
   }
-
-  console.log('[DEBUG parseOneClause] lower=', JSON.stringify(lower), 'adjustedText=', JSON.stringify(adjustedText))
 
   // Nothing usable found
   if (startMin === null && endMin === null && type === 'typical') return null

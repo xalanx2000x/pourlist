@@ -295,6 +295,7 @@ export async function POST(req: NextRequest) {
     // ── Insert new venue ───────────────────────────────────────────────────
     // Build the insert payload. We start with empty address fields and
     // let the reverse-geocode hook fill them in if GPS is present.
+    const now = new Date().toISOString()
     const venueInsert: Record<string, unknown> = {
       name: venueName.trim(),
       lat: venueLat,
@@ -310,6 +311,7 @@ export async function POST(req: NextRequest) {
       website: null,
       type: null,
       hh_summary: hhSummary?.trim() || null,
+      hh_updated_at: now, // timestamp of when HH data was first submitted
       hh_type: hh_type || null,
       hh_days: hh_days || null,
       hh_exclude_days: hh_exclude_days || null,
@@ -440,6 +442,12 @@ export async function POST(req: NextRequest) {
     // ── Trust + flag management ────────────────────────────────────────────
     await supabase.rpc('clear_flags_on_menu_commit', { p_venue_id: venueId })
     await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
+
+    // Reset HH staleness clock: HH data was just confirmed → hh_updated_at = now
+    await supabase
+      .from('venues')
+      .update({ hh_updated_at: new Date().toISOString() })
+      .eq('id', venueId)
 
     // ── Fraud signal logging ───────────────────────────────────────────────
     // Log the phone GPS vs EXIF GPS distance to venue_events for fraud analysis

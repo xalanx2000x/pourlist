@@ -652,41 +652,89 @@ async function getDataAging() {
   return buckets
 }
 
-// Internal-only: venues with HH data that is oldest — most stale first.
-// "Real" = user-added, not OSM seed (filters by status).
-// Sorts by hh_updated_at ascending (oldest first), joins city/state for display.
+// Internal-only: venues with HH data, oldest first by last-confirmed date.
+// lastConfirmed = hh_updated_at ?? last_verified ?? created_at
+// hh_updated_at takes precedence (set on HH edit/confirm).
+// If null (old venues before this field existed): falls back to last_verified / created_at.
+// Real-venue filter (status != unverified).
 async function getStaleVenues() {
-  const res = await supabase
-    .from('venues')
-    .select('name, city, state, hh_type, hh_updated_at, status')
-    .not('hh_type', 'is', null)
-    .neq('status', 'unverified')
-    .order('hh_updated_at', { ascending: true })
-    .limit(15)
+  let res
+  try {
+    // Try with hh_updated_at — will throw if column doesn't exist yet (migration not applied)
+    res = await supabase
+      .from('venues')
+      .select('name, city, state, hh_updated_at, last_verified, created_at')
+      .not('hh_type', 'is', null)
+      .neq('status', 'unverified')
+      .limit(5000)
+    if (res.error?.message.includes('hh_updated_at')) throw null
+  } catch {
+    // Fallback: column missing — use last_verified ?? created_at (pre-migration state)
+    res = await supabase
+      .from('venues')
+      .select('name, city, state, last_verified, created_at')
+      .not('hh_type', 'is', null)
+      .neq('status', 'unverified')
+      .limit(5000)
+  }
 
-  return {
-    staleVenues: (res.data ?? []).map(v => {
-      const updated = v.hh_updated_at
-        ? new Date(v.hh_updated_at).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: 'short', day: 'numeric' })
+  type VenueDateRow = {
+    name: string
+    city: string | null
+    state: string | null
+    hh_updated_at: string | null | undefined
+    last_verified: string | null
+    created_at: string
+  }
+
+  const now = Date.now()
+  const MS_PER_DAY = 86_400_000
+
+  function ageLabel(days: number): string {
+    if (days === 0) return 'today'
+    if (days === 1) return '1 day'
+    if (days < 30) return `${days} days`
+    if (days < 60) return '1 month'
+    if (days < 365) return `${Math.floor(days / 30)} months`
+    return `${Math.floor(days / 365)} year${Math.floor(days / 365) > 1 ? 's' : ''}`
+  }
+
+  function fmtDate(iso: string | null | undefined) {
+    if (!iso) return null
+    return new Date(iso).toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: 'short', day: 'numeric',
+    })
+  }
+
+  // Sort in JS: oldest first
+  const rows = res.data ?? []
+  const sorted = (rows as unknown as VenueDateRow[])
+    .map((v: VenueDateRow) => {
+      const lastConfirmedIso = v.hh_updated_at ?? v.last_verified ?? v.created_at
+      const lastConfirmed = fmtDate(lastConfirmedIso)
+      const ageDays = lastConfirmedIso
+        ? Math.floor((now - new Date(lastConfirmedIso).getTime()) / MS_PER_DAY)
         : null
-      const ageMs = updated ? Date.now() - new Date(v.hh_updated_at).getTime() : null
-      const ageDays = ageMs ? Math.floor(ageMs / 86_400_000) : null
-      const ageLabel = ageDays !== null
-        ? ageDays === 0 ? 'today'
-        : ageDays === 1 ? '1 day'
-        : ageDays < 30 ? `${ageDays} days`
-        : ageDays < 60 ? '1 month'
-        : `${Math.floor(ageDays / 30)} months`
-        : null
+      const kind: 're-verified' | 'added' =
+        (v.hh_updated_at ?? v.last_verified) ? 're-verified' : 'added'
       return {
         name: v.name,
         city: v.city ?? '',
         state: v.state ?? '',
-        ageLabel: ageLabel ?? 'unknown',
-        updatedAt: updated,
+        lastConfirmed,
+        ageLabel: ageDays !== null ? ageLabel(ageDays) : 'unknown',
+        kind,
       }
-    }),
-  }
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.lastConfirmed ?? 0).getTime()
+      const dateB = new Date(b.lastConfirmed ?? 0).getTime()
+      return dateA - dateB
+    })
+    .slice(0, 15)
+
+  return { staleVenues: sorted }
 }
 
 // Public-safe (aggregate only, no PII): searches that returned zero results.

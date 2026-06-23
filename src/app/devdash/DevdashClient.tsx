@@ -90,7 +90,14 @@ interface Stats {
   }
   // Internal-only: venues with HH data, oldest first — shows which need re-verification
   staleVenues: {
-    staleVenues: { name: string; city: string; state: string; ageLabel: string; updatedAt: string | null }[]
+    staleVenues: {
+      name: string
+      city: string
+      state: string
+      lastConfirmed: string | null
+      ageLabel: string
+      kind: 're-verified' | 'added'
+    }[]
   }
   // Public-safe (aggregate): searches that returned zero results — most wanted / most missing
   topZeroSearches: { topZeroSearches: { query: string; count: number }[] }
@@ -365,7 +372,8 @@ export default function DevdashClient() {
                 <tr className="text-xs text-gray-400 uppercase tracking-wider">
                   <th className="text-left pb-2">Venue</th>
                   <th className="text-left pb-2">Location</th>
-                  <th className="text-right pb-2">HH Data Age</th>
+                  <th className="text-left pb-2">Last Confirmed</th>
+                  <th className="text-right pb-2">Age</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -373,6 +381,10 @@ export default function DevdashClient() {
                   <tr key={i} className="text-gray-700 dark:text-gray-300">
                     <td className="py-2 font-medium">{v.name}</td>
                     <td className="py-2 text-gray-500">{[v.city, v.state].filter(Boolean).join(', ')}</td>
+                    <td className="py-2">
+                      <span className="text-gray-600 dark:text-gray-400">{v.lastConfirmed ?? 'unknown'}</span>
+                      <span className="ml-2 text-xs text-gray-400">({v.kind === 're-verified' ? 're-verified' : 'added'})</span>
+                    </td>
                     <td className="py-2 text-right font-bold text-amber-600">{v.ageLabel}</td>
                   </tr>
                 ))}

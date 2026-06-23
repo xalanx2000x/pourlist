@@ -80,6 +80,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to confirm venue' }, { status: 500 })
     }
 
+    // Reset HH staleness clock: venue was confirmed → hh_updated_at = now
+    await supabase
+      .from('venues')
+      .update({ hh_updated_at: new Date().toISOString() })
+      .eq('id', venueId)
+
     const result = Array.isArray(data) ? data[0] : data
 
     if (!result?.success) {

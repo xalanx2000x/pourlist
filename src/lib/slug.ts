@@ -26,8 +26,9 @@ export function slugifyName(name: string): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritics
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/['\u2018\u2019\u2018\u2019]/g, '') // strip apostrophes/curly quotes entirely
+    .replace(/[^a-z0-9]+/g, '-')  // non-alphanumeric → hyphen
+    .replace(/^-+|-+$/g, '')       // trim leading/trailing hyphens
   return cleaned || 'venue'
 }
 

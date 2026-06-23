@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { reverseGeocodeStructured } from '@/lib/gps'
+import { slugifyName, uuidShort } from '@/lib/slug'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -368,6 +369,15 @@ export async function POST(req: NextRequest) {
     }
 
     const venueId = newVenue.id
+
+    // Persist a stable slug so the venue page is SEO-friendly from day one.
+    // Uses the updated slugifyName (apostrophes stripped). UUID suffix makes
+    // it collision-proof even if the same name is submitted twice.
+    const slug = `${slugifyName(venueName.trim())}-${uuidShort(venueId, 6)}`
+    await supabase
+      .from('venues')
+      .update({ slug })
+      .eq('id', venueId)
 
     // ── Upload photos (with rollback on failure) ───────────────────────────
     const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]

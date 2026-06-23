@@ -399,7 +399,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats, usageOverTime] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -412,14 +412,16 @@ export async function GET() {
       getLiveHhCount(),
       getUserCounts(),
       getParseQuality(),
-      getCoverageGaps(),
       getDataAging(),
       getGrowthTrends(),
       getSearchStats(),
       getUsageOverTime(),
+      getStaleVenues(),
+      getTopZeroResultSearches(),
+      getDemandVsSupply(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, coverageGaps, dataAging, growthTrends, searchStats, usageOverTime })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -650,33 +652,116 @@ async function getDataAging() {
   return buckets
 }
 
-// Public-safe aggregate: cities with map presence but zero HH data — "empty pins" ranked by pin count.
-// Useful as a contribution-priority signal: these cities have users but no real data yet.
-async function getCoverageGaps() {
-  // Fetch all user-created venues with city/state and HH type
+// Internal-only: venues with HH data that is oldest — most stale first.
+// "Real" = user-added, not OSM seed (filters by status).
+// Sorts by hh_updated_at ascending (oldest first), joins city/state for display.
+async function getStaleVenues() {
   const res = await supabase
     .from('venues')
-    .select('city, state, hh_type')
+    .select('name, city, state, hh_type, hh_updated_at, status')
+    .not('hh_type', 'is', null)
+    .neq('status', 'unverified')
+    .order('hh_updated_at', { ascending: true })
+    .limit(15)
+
+  return {
+    staleVenues: (res.data ?? []).map(v => {
+      const updated = v.hh_updated_at
+        ? new Date(v.hh_updated_at).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: 'short', day: 'numeric' })
+        : null
+      const ageMs = updated ? Date.now() - new Date(v.hh_updated_at).getTime() : null
+      const ageDays = ageMs ? Math.floor(ageMs / 86_400_000) : null
+      const ageLabel = ageDays !== null
+        ? ageDays === 0 ? 'today'
+        : ageDays === 1 ? '1 day'
+        : ageDays < 30 ? `${ageDays} days`
+        : ageDays < 60 ? '1 month'
+        : `${Math.floor(ageDays / 30)} months`
+        : null
+      return {
+        name: v.name,
+        city: v.city ?? '',
+        state: v.state ?? '',
+        ageLabel: ageLabel ?? 'unknown',
+        updatedAt: updated,
+      }
+    }),
+  }
+}
+
+// Public-safe (aggregate only, no PII): searches that returned zero results.
+// Counts search events where resultCount === 0, groups by query text.
+async function getTopZeroResultSearches() {
+  const res = await supabase
+    .from('events')
+    .select('metadata')
+    .eq('event_name', 'search')
+    .limit(5000)
+
+  const queryCounts: Record<string, number> = {}
+  for (const row of res.data ?? []) {
+    const m = row.metadata as { query?: string; resultCount?: number } | null
+    if (m?.query && m.resultCount === 0) {
+      const q = (m.query as string).trim().toLowerCase()
+      queryCounts[q] = (queryCounts[q] ?? 0) + 1
+    }
+  }
+
+  const top = Object.entries(queryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([query, count]) => ({ query, count }))
+
+  return { topZeroSearches: top }
+}
+
+// Public-safe (aggregate only, no PII): search demand vs real venue supply by geographic area.
+// Cross-references search_area (from search events) against real venues by city.
+// Sorts by biggest gap: high search volume, few/no real venues.
+async function getDemandVsSupply() {
+  // Fetch search events — get search_area + resultCount from metadata
+  const searchRes = await supabase
+    .from('events')
+    .select('metadata')
+    .eq('event_name', 'search')
+    .limit(10000)
+
+  // Fetch real venues grouped by city (case-insensitive for matching)
+  const venuesRes = await supabase
+    .from('venues')
+    .select('city')
     .neq('status', 'unverified')
     .limit(5000)
 
-  // Group by city+state, count total and HH-equipped
-  const cityStats: Record<string, { city: string; state: string; total: number; withHh: number }> = {}
-  ;(res.data ?? []).forEach((row: { city?: string; state?: string; hh_type?: string }) => {
-    const key = `${row.city ?? ''}|${row.state ?? ''}`
-    if (!key || key === '|') return
-    if (!cityStats[key]) cityStats[key] = { city: row.city ?? '', state: row.state ?? '', total: 0, withHh: 0 }
-    cityStats[key].total++
-    if (row.hh_type) cityStats[key].withHh++
-  })
+  // Count real venues per city (normalized lowercase key)
+  const venueCounts: Record<string, number> = {}
+  for (const v of venuesRes.data ?? []) {
+    const city = (v.city ?? '').toLowerCase().trim()
+    if (city) venueCounts[city] = (venueCounts[city] ?? 0) + 1
+  }
 
-  const gaps = Object.values(cityStats)
-    .filter(c => c.total > 0 && c.withHh === 0)
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 20)
-    .map(c => ({ city: c.city, state: c.state, emptyPins: c.total }))
+  // Aggregate searches by search_area
+  const areaSearches: Record<string, number> = {}
+  for (const row of searchRes.data ?? []) {
+    const m = row.metadata as { searchArea?: string; resultCount?: number } | null
+    if (m?.searchArea) {
+      const area = m.searchArea.toLowerCase().trim()
+      areaSearches[area] = (areaSearches[area] ?? 0) + 1
+    }
+  }
 
-  return { coverageGaps: gaps }
+  // For each search area, compare to venue count.
+  // Match search_area against city name (same normalization).
+  const gaps = Object.entries(areaSearches)
+    .map(([area, searches]) => {
+      const venues = venueCounts[area] ?? 0
+      return { area, searches, venues }
+    })
+    .filter(r => r.venues === 0) // only areas where we have NO real venues
+    .sort((a, b) => b.searches - a.searches)
+    .slice(0, 15)
+
+  return { demandVsSupply: gaps }
 }
 
 // Internal-only: parse quality metrics

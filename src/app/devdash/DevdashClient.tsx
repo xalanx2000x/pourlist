@@ -67,8 +67,6 @@ interface Stats {
     failedParseLog: { timestamp: string; rawText: string | null; error: string | null }[]
     failedParseLogNote: string
   }
-  // Public-safe: cities with map pins but no HH data — ranked by empty pin count
-  coverageGaps: { coverageGaps: { city: string; state: string; emptyPins: number }[] }
   // Public-safe: age distribution of venues with HH data
   dataAging: { fresh: number; aging: number; stale: number; old: number }
   // Public-safe: growth trends over last 8 weeks
@@ -90,6 +88,14 @@ interface Stats {
     searches: { day: string; count: number }[]
     venuesAdded: { day: string; count: number }[]
   }
+  // Internal-only: venues with HH data, oldest first — shows which need re-verification
+  staleVenues: {
+    staleVenues: { name: string; city: string; state: string; ageLabel: string; updatedAt: string | null }[]
+  }
+  // Public-safe (aggregate): searches that returned zero results — most wanted / most missing
+  topZeroSearches: { topZeroSearches: { query: string; count: number }[] }
+  // Public-safe (aggregate): geographic areas with high search demand but no real venues
+  demandVsSupply: { demandVsSupply: { area: string; searches: number; venues: number }[] }
 }
 
 function pct(n: number) {
@@ -350,29 +356,85 @@ export default function DevdashClient() {
         </SectionCard>
       </div>
 
-      {/* Row 2.5: Coverage Gaps (public-safe) */}
-      <SectionCard title="Coverage Gaps — Cities With Pins But No HH Data">
-        {stats.coverageGaps.coverageGaps.length > 0 ? (
+      {/* Row 2.5: Stale Venues — oldest HH data, most in need of re-verification */}
+      <SectionCard title="Stale Venues — HH Data Age">
+        {stats.staleVenues.staleVenues.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-400 uppercase tracking-wider">
-                  <th className="text-left pb-2">City</th>
-                  <th className="text-right pb-2">Empty Pins</th>
+                  <th className="text-left pb-2">Venue</th>
+                  <th className="text-left pb-2">Location</th>
+                  <th className="text-right pb-2">HH Data Age</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.coverageGaps.coverageGaps.map((g, i) => (
-                  <tr key={`${g.city}-${g.state}`} className="text-gray-700 dark:text-gray-300">
-                    <td className="py-2 font-medium">{g.city}{g.state ? `, ${g.state}` : ''}</td>
-                    <td className="py-2 text-right font-bold text-amber-600">{g.emptyPins}</td>
+                {stats.staleVenues.staleVenues.map((v, i) => (
+                  <tr key={i} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 font-medium">{v.name}</td>
+                    <td className="py-2 text-gray-500">{[v.city, v.state].filter(Boolean).join(', ')}</td>
+                    <td className="py-2 text-right font-bold text-amber-600">{v.ageLabel}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <p className="text-gray-400 text-sm">All mapped cities have HH data — no gaps found.</p>
+          <p className="text-gray-400 text-sm">No stale venues — all HH data is fresh.</p>
+        )}
+      </SectionCard>
+
+      {/* Row 2.5b: Top Zero-Result Searches — what people are looking for that we don't have */}
+      <SectionCard title="Top Zero-Result Searches">
+        {stats.topZeroSearches.topZeroSearches.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">Query</th>
+                  <th className="text-right pb-2">Times Searched</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.topZeroSearches.topZeroSearches.map((s, i) => (
+                  <tr key={i} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 font-medium">{s.query}</td>
+                    <td className="py-2 text-right font-bold text-amber-600">{s.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No zero-result searches yet — fills as people search.</p>
+        )}
+      </SectionCard>
+
+      {/* Row 2.5c: Demand vs Supply — high search volume areas with few/no real venues */}
+      <SectionCard title="Demand vs Supply — Areas People Search But We Don't Have Venues">
+        {stats.demandVsSupply.demandVsSupply.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">Area Searched</th>
+                  <th className="text-right pb-2">Searches</th>
+                  <th className="text-right pb-2">Venues Here</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.demandVsSupply.demandVsSupply.map((d, i) => (
+                  <tr key={i} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 font-medium">{d.area}</td>
+                    <td className="py-2 text-right font-bold text-amber-600">{d.searches}</td>
+                    <td className="py-2 text-right text-red-500">{d.venues}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No high-demand areas yet — fills as search data accumulates.</p>
         )}
       </SectionCard>
 

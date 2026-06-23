@@ -538,11 +538,16 @@ async function getGrowthTrends() {
 
 // Public-safe aggregate: daily usage metrics bucketed by PourList-day (2pm–1:59pm).
 // A PourList day runs from 2pm to 1:59pm the next calendar day.
-// Implementation: shift each timestamp back 14 hours before extracting the calendar date.
-// Spot-check: 1am June 2 → shifted to 11am June 1 → bucket = June 1 ✓
+//
+// Implementation: shift the timestamp +14h, then extract the date + hour in Pacific time.
+// The shifted hour tells us whether we crossed the 2pm boundary:
+//   - shifted hour < 14  → original was before 2pm Pacific → previous PourList day
+//
+// Implementation: read Pacific date + hour directly via Intl (IANA/America/Los_Angeles).
+// Handles PDT/PST automatically by date. The one-hour transition ambiguity at DST
+// spring-forward/fall-back is irrelevant at our volume — it would mis-bucket at most
+// one event per year.
 async function getUsageOverTime() {
-  const SHIFT_MS = 14 * 3_600_000 // shift back 14 hours so 2pm–midnight stays same-day, midnight–1:59am rolls back
-
   // 35-day window → up to 30 full PourList days
   const thirtyFiveDaysAgo = daysAgo(35)
 
@@ -568,10 +573,29 @@ async function getUsageOverTime() {
   const searches: Record<string, number> = {}
   const venuesAdded: Record<string, number> = {}
 
+  // DST-safe PourList-day bucketing.
+  // Extract the Pacific local hour directly from the UTC timestamp using Intl API.
+  // America/Los_Angeles auto-handles PDT (UTC-7) vs PST (UTC-8).
+  //   - Pacific hour 0–13 (midnight–1:59pm)  → before 2pm cutoff → previous calendar day
+  //   - Pacific hour 14–23 (2pm–11:59pm)     → at/after 2pm cutoff → current calendar day
+  // No shifting needed — we read the Pacific hour directly from the original timestamp.
   function pourDate(isoString: string): string {
-    const ms = new Date(isoString).getTime() - SHIFT_MS
-    const d = new Date(ms)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const pacificHour = Number(
+      new Date(isoString).toLocaleString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        hour: 'numeric',
+        hour12: false,
+      })
+    )
+    const pacificDateStr = new Date(isoString).toLocaleDateString('en-CA', {
+      timeZone: 'America/Los_Angeles',
+    })
+    if (pacificHour < 14) {
+      const prev = new Date(isoString)
+      prev.setDate(prev.getDate() - 1)
+      return prev.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+    }
+    return pacificDateStr
   }
 
   for (const row of events) {

@@ -171,7 +171,7 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
   // Also catches bare X-close and X - close patterns (no "to/until" needed)
   // Also: "after [number]" → late_night (e.g. "after 9" = 9pm-close)
   // Also: "to midnight" / "till midnight" / "after midnight" → midnight to close
-  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|to\s*midnight|till\s*midnight|after\s+\d+|after\s+midnight)\b/.test(lower)) {
+  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|to\s*midnight|till\s*midnight|after\s+\d+(?::\d{2})?\s*(?:am|pm|p\.?m\.?)?|after\s+midnight)\b/.test(lower)) {
     const adjusted = lower
       .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
       .replace(/\bto\s*midnight\b/gi, '')    // strip "to midnight" but keep nothing (it's end-of-day)
@@ -273,7 +273,8 @@ export function parseOneClause(text: string): HHWindow | null {
     // "after 12" or "after midnight" — adjustedText is empty but type is late_night
     // → midnight to close (startMin=0, endMin=null)
     if (type === 'late_night') {
-      return { type: 'late_night', days: [], excludeDays: [], startMin: 0, endMin: null }
+      // "after midnight" or bare "after [time]" — midnight to close
+      return { type: 'late_night', days: [], excludeDays: [], startMin: 1440, endMin: null }
     }
     return { type, days: [], excludeDays: [], startMin: null, endMin: null }
   }
@@ -447,6 +448,7 @@ export function parseOneClause(text: string): HHWindow | null {
         const suffix = hasExplicitPm ? 'pm' : (assumePm ? 'pm' : '')
         startMin = parseTimeToMin(afterMatch[1] + (afterMatch[2] ? ':' + afterMatch[2] : '') + suffix)
         endMin = null
+
       } else if (adjustedText === '12') {
         // "after 12" — "after" was stripped by classifyHHType, leaving just "12"
         // In late_night context, "12" means midnight (start of day), not noon

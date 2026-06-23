@@ -396,20 +396,6 @@ export default function Home() {
     setListBounds(null)
     setShowSearchThisArea(false)
 
-    // Fire-and-forget search analytics event with result attribution
-    if (meta) {
-      trackEvent('search', {
-        deviceHash: getDeviceHash(),
-        metadata: {
-          query: meta.query,
-          queryType: meta.queryType,
-          resultCount: meta.resultCount,
-          resultVenueIds: meta.resultVenueIds,
-          searchArea: meta.searchArea,
-        },
-      })
-    }
-
     // Trigger immediate fetch with approximate bounds at zoom 13
     // (the default for the search-bar flyTo). The map will fly in
     // parallel; a second fetch fires via the mapBounds useEffect

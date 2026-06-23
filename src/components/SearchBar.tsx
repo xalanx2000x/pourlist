@@ -65,6 +65,18 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
       searchArea: result.geo?.displayName ?? '',
     }
 
+    // Fire search event — results OR zero-result, debounced to committed search
+    trackEvent('search', {
+      deviceHash: getDeviceHash(),
+      metadata: {
+        query: q,
+        queryType: 'location',
+        resultCount: result.venues.length,
+        resultVenueIds: result.venues.map(v => v.id),
+        searchArea: result.geo?.displayName ?? '',
+      },
+    })
+
     // Both surfaces always come back — show a single dropdown with
     // two labeled sections (Venues / Places). Only fall back to the
     // "no matches" error when BOTH sides are empty.
@@ -144,16 +156,16 @@ export default function SearchBar({ onSearch, onVenueSelect, onClear }: SearchBa
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     onVenueSelect(venue)
 
-    // Fire search event with venue-selection metadata (after state clears are deferred)
-    // Use setTimeout so state clears complete first; fire-and-forget
+    // Fire venue_select event (click-through funnel — separate from the search event)
     setTimeout(() => {
-      trackEvent('search', {
+      trackEvent('venue_select', {
         deviceHash: getDeviceHash(),
         metadata: {
           query: meta.query,
           queryType: meta.queryType,
           resultCount: meta.resultCount,
           resultVenueIds: meta.resultVenueIds,
+          selectedVenueId: venue.id,
           searchArea: meta.searchArea,
         },
       })

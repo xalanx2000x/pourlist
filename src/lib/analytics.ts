@@ -21,7 +21,8 @@ export type EventName =
   | 'venue_detail_open'   // detail panel opened
   | 'onboarding_complete' // user finished the tour
   | 'onboarding_skip'    // user skipped the tour
-  | 'search'             // user performed a location search that moved the map
+  | 'search'             // user performed a location search — results or zero-result
+  | 'venue_select'       // user clicked a venue from the search dropdown
 
 interface TrackEventOptions {
   deviceHash: string

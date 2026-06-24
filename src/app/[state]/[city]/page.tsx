@@ -1,24 +1,152 @@
 /**
- * /[state]/[city] — Intermediate path for the new URL structure.
- * Redirects to the home map filtered to that location.
- * Example: /or/portland → /?city=portland&state=or
+ * /[state]/[city] — City landing page.
  *
- * Atlantis path: /atlantis is not a real geo — redirect to home.
+ * Server-rendered (ISR). Replaces the old redirect-to-map behavior.
+ *
+ * Sections:
+ *   - Live Now          → client-side (browser Pacific time, always fresh)
+ *   - Starting Soon     → client-side (same)
+ *   - Most Popular      → server-rendered, popularityScore-ranked, capped 15
+ *
+ * ISR: revalidate every 5 minutes (view counts change slowly).
+ * Client-side Live/Soon sections refresh every 60s via useEffect.
  */
-import { redirect } from 'next/navigation'
+import { Metadata } from 'next'
+import { supabaseServer } from '@/lib/supabase-server'
+import { popularityScore, fetchViewCounts } from '@/lib/popularity'
+import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
+import CityPageClient from '@/components/CityPageClient'
 
-export default async function CityPage({
-  params,
-}: {
+interface Props {
   params: Promise<{ state: string; city: string }>
-}) {
-  const { state, city } = await params
+}
 
-  // /atlantis is the geo-review holding pen, not a real location — send to home
-  if (state === 'atlantis') {
-    redirect('/')
+const STATE_NAMES: Record<string, string> = {
+  or: 'Oregon', pa: 'Pennsylvania', tx: 'Texas', ca: 'California',
+  wa: 'Washington', ny: 'New York', co: 'Colorado', az: 'Arizona',
+  nv: 'Nevada', fl: 'Florida', il: 'Illinois', ma: 'Massachusetts',
+}
+
+function capitalizeCity(city: string): string {
+  return city
+    .split(/[\s-]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { state, city } = await params
+  const stateName = STATE_NAMES[state.toLowerCase()] ?? state.toUpperCase()
+  const cityName = capitalizeCity(city)
+  const title = `${cityName}, ${stateName} Happy Hours`
+  const description = `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+    },
+  }
+}
+
+export default async function CityPage({ params }: Props) {
+  const { state, city } = await params
+  const stateLower = state.toLowerCase()
+  const cityLower = city.toLowerCase()
+  const cityName = capitalizeCity(cityLower)
+
+  // Fetch all verified Portland venues with HH data
+  // Supabase cannot infer a typed return from a dynamic column string,
+  // so we cast the result through a typed interface.
+  interface CityPageVenue {
+    id: string
+    name: string
+    slug: string | null
+    new_slug: string | null
+    neighborhood: string | null
+    lat: number | null
+    lng: number | null
+    city: string | null
+    state: string | null
+    address: string | null
+    hh_type: string | null
+    hh_time: string | null
+    hh_days: string | null
+    hh_exclude_days: string | null
+    hh_start: number | null
+    hh_end: number | null
+    hh_type_2: string | null
+    hh_days_2: string | null
+    hh_exclude_days_2: string | null
+    hh_start_2: number | null
+    hh_end_2: number | null
+    hh_type_3: string | null
+    hh_days_3: string | null
+    hh_exclude_days_3: string | null
+    hh_start_3: number | null
+    hh_end_3: number | null
+    opening_min: number | null
+    last_verified: string | null
+    created_at: string
   }
 
-  // Build a search-friendly redirect to the map view
-  redirect(`/?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`)
+  const raw = await supabaseServer
+    .from('venues')
+    .select('id, name, slug, new_slug, neighborhood, lat, lng, city, state, address, hh_type, hh_time, hh_days, hh_exclude_days, hh_start, hh_end, hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2, hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3, opening_min, last_verified, created_at')
+    .eq('state', stateLower.toUpperCase())
+    .eq('city', cityName)
+    .not('hh_type', 'is', null)
+    .eq('status', 'verified')
+  const venues = raw as unknown as CityPageVenue[] | null
+
+  const venueList = venues ?? []
+
+  // Fetch qualifying neighborhoods (for "Browse by neighborhood" section)
+  const qualifying = await getQualifyingNeighborhoods(cityName, stateLower.toUpperCase())
+
+  // Fetch view counts for popularity scoring
+  const viewCounts = await fetchViewCounts(
+    venueList.map(v => v.id),
+    supabaseServer
+  )
+
+  // Compute popularity and sort for Popular section
+  const venuesWithScore = venueList.map(v => ({
+    ...v,
+    viewCount: viewCounts[v.id] ?? 0,
+    score: popularityScore(
+      viewCounts[v.id] ?? 0,
+      v.last_verified,
+      v.created_at
+    ),
+  }))
+
+  const popular = venuesWithScore
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 15)
+
+  // City-level heading
+  const stateName = STATE_NAMES[stateLower] ?? state.toUpperCase()
+  const heading = `${cityName} Happy Hours`
+  const subheading = `${stateName}`
+
+  return (
+    <CityPageClient
+      heading={heading}
+      subheading={subheading}
+      state={stateLower}
+      citySlug={cityLower}
+      // Pass all HH venues for client-side Live/Soon filtering
+      allVenues={venueList}
+      popularVenues={popular}
+      qualifyingNeighborhoods={qualifying.map(n => ({
+        name: n.neighborhood,
+        slug: n.neighborhood.toLowerCase().replace(/\s+/g, '-'),
+        count: n.venueCount,
+      }))}
+    />
+  )
 }

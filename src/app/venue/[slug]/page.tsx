@@ -5,8 +5,7 @@
  * and falls back to rendering the old-style page when it doesn't
  * (OSM seed venues, or venues not yet re-slugged in Phase 3).
  */
-import { notFound, redirect } from 'next/navigation'
-import { NextResponse } from 'next/server'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { supabaseServer } from '@/lib/supabase-server'
 import { venueSlug } from '@/lib/slug'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
@@ -112,9 +111,8 @@ export default async function VenuePage({
   if (!venue) notFound()
 
   // If venue has a new_slug, redirect permanently (301) to the new URL.
-  // Uses NextResponse to force 301 — Next.js redirect() defaults to 307/308.
   if (venue.new_slug) {
-    return NextResponse.redirect(new URL(venue.new_slug, BASE_URL), 301)
+    permanentRedirect(venue.new_slug)
   }
 
   const indexable = hasHappyHourData(venue)

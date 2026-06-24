@@ -90,7 +90,7 @@ export async function resolveNewSlug(
     state: string | null
   },
   supabase: import('@supabase/supabase-js').SupabaseClient<any, any>
-): Promise<{ path: string; needsGeoReview: boolean; fallbackPath: string }> {
+): Promise<{ path: string | null; needsGeoReview: boolean; fallbackPath: string | null }> {
   const venueSlug = slugifyName(venue.name ?? '')
   const stateCode = (venue.state ?? '').toLowerCase().trim()
   const cityRaw = venue.city ?? ''

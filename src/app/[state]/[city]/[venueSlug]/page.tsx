@@ -6,8 +6,7 @@
  * Fetches by new_slug (/{state}/{city}/{venueSlug}), validates the state/city
  * segments match the venue's stored geo, falls back to old slug lookup on miss.
  *
- * Robots: noindex on /atlantis/* (geo-review holding pen — placeholder URLs).
- * All other paths are indexable (hasHappyHourData controls the rest).
+ * noindex: venues with no happy hour data (hasHappyHourData controls the rest).
  */
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
@@ -116,9 +115,6 @@ export async function generateMetadata({
 
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${venueSlug}`}`
 
-  // Atlantis paths: noindex — these are geo-review holding-pen URLs
-  const isAtlantis = venue.new_slug?.startsWith('/atlantis/') ?? false
-
   return {
     title: buildVenueTitle(venue),
     description: description.slice(0, 160),
@@ -132,11 +128,7 @@ export async function generateMetadata({
         height: 630,
       }],
     },
-    robots: isAtlantis
-      ? { index: false, follow: true }
-      : indexable
-        ? {}
-        : { index: false, follow: true },
+    robots: indexable ? {} : { index: false, follow: true },
   }
 }
 
@@ -189,7 +181,6 @@ export default async function NewVenuePage({
 
   const indexable = hasHappyHourData(venue)
   const schedule = getHhLabel(venue)
-  const isAtlantis = venue.new_slug?.startsWith('/atlantis/') ?? false
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${venueSlug}`}`
   const jsonLd = buildJsonLd(venue, state, city, venueSlug)
 
@@ -215,13 +206,6 @@ export default async function NewVenuePage({
 
           {formatAddress(venue) && (
             <p className="text-gray-500 text-sm mb-6">{formatAddress(venue)}</p>
-          )}
-
-          {/* Atlantis banner */}
-          {isAtlantis && (
-            <div className="bg-amber-100 border border-amber-300 text-amber-800 text-sm rounded-lg px-4 py-3 mb-6">
-              📍 This venue is pending geographic review. The URL will update once confirmed.
-            </div>
           )}
 
           {indexable ? (

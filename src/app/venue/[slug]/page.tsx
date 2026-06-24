@@ -6,6 +6,7 @@
  * (OSM seed venues, or venues not yet re-slugged in Phase 3).
  */
 import { notFound, redirect } from 'next/navigation'
+import { NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 import { venueSlug } from '@/lib/slug'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
@@ -48,6 +49,9 @@ export async function generateMetadata({
   const slugStr = venue.slug ?? venueSlug(venue)
   const canonical = `${BASE_URL}/venue/${slugStr}`
 
+  // noindex when: needs_geo_review (geo-incomplete/limbo) OR venue has no happy hour data
+  const noIndex = venue.needs_geo_review || !indexable
+
   return {
     title: buildVenueTitle(venue),
     description: description.slice(0, 160),
@@ -61,7 +65,7 @@ export async function generateMetadata({
         height: 630,
       }],
     },
-    ...(indexable ? {} : { robots: { index: false, follow: true } }),
+    ...(noIndex ? { robots: { index: false, follow: true } } : {}),
   }
 }
 
@@ -107,9 +111,10 @@ export default async function VenuePage({
   const venue = await getVenueBySlug(slug)
   if (!venue) notFound()
 
-  // If venue has a new_slug, redirect to the new URL
+  // If venue has a new_slug, redirect permanently (301) to the new URL.
+  // Uses NextResponse to force 301 — Next.js redirect() defaults to 307/308.
   if (venue.new_slug) {
-    redirect(venue.new_slug)
+    return NextResponse.redirect(new URL(venue.new_slug, BASE_URL), 301)
   }
 
   const indexable = hasHappyHourData(venue)

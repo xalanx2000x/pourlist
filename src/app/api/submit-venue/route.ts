@@ -384,20 +384,18 @@ export async function POST(req: NextRequest) {
       supabase
     )
 
-    // Persist slug + geo-review flag. Each update is independent: absence of
-    // a column silently no-ops rather than erroring.
-    const slugUpdate = await supabase
-      .from('venues')
-      .update({ new_slug: newSlug })
-      .eq('id', venueId)
-    if (!slugUpdate.error) {
-      // Only write needs_geo_review if the column exists and we need it
-      if (needsGeoReview) {
-        await supabase
-          .from('venues')
-          .update({ needs_geo_review: true })
-          .eq('id', venueId)
-      }
+    // Persist slug + geo-review flag.
+    // When geo is incomplete, newSlug is null and the venue stays on old /venue/{slug} URL.
+    if (newSlug !== null) {
+      await supabase
+        .from('venues')
+        .update({ new_slug: newSlug, needs_geo_review: needsGeoReview })
+        .eq('id', venueId)
+    } else if (needsGeoReview) {
+      await supabase
+        .from('venues')
+        .update({ needs_geo_review: true })
+        .eq('id', venueId)
     }
 
     // ── Upload photos (with rollback on failure) ───────────────────────────

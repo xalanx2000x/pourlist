@@ -74,9 +74,9 @@ function uniqueInCity(venueSlug: string, existingInCity: Set<string>): string {
  * Resolve a venue to its NEW-FORMAT SEO URL path.
  *
  * Returns { path, needsGeoReview, fallbackPath } where:
- * - path: the full /{state}/{city}/{slug} path (if geo data is complete)
+ * - path: the full /{state}/{city}/{slug} path (if geo data is complete), or null if incomplete
  * - needsGeoReview: true if state or city is missing/ambiguous
- * - fallbackPath: a usable URL path even if geo is incomplete (for the redirect chain)
+ * - fallbackPath: null when geo is incomplete (venue stays on old /venue/{slug} URL)
  *
  * Calls Supabase to check per-city slug uniqueness. Gracefully degrades:
  * if the `new_slug` / `needs_geo_review` columns don't exist yet, returns
@@ -127,13 +127,12 @@ export async function resolveNewSlug(
   const uniqueSlug = uniqueInCity(venueSlug, existingInCity)
 
   if (needsGeoReview) {
-    // Geo-incomplete: land in /atlantis/{slug} — the review holding pen.
-    // No uniqueness check needed (atlantis is a shared pen, slugs don't need
-    // to be unique there — the venue will get a real unique slug after review).
+    // Geo-incomplete: stay on old /venue/{slug} URL, flagged for review.
+    // No new_slug is assigned until geo is confirmed.
     return {
-      path: `/atlantis/${uniqueSlug}`,
+      path: null,
       needsGeoReview: true,
-      fallbackPath: `/atlantis/${uniqueSlug}`,
+      fallbackPath: null,
     }
   }
 

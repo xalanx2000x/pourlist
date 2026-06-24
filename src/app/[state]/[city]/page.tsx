@@ -93,25 +93,39 @@ export default async function CityPage({ params }: Props) {
     created_at: string
   }
 
-  const raw = await supabaseServer
-    .from('venues')
-    .select('id, name, slug, new_slug, neighborhood, lat, lng, city, state, address, hh_type, hh_time, hh_days, hh_exclude_days, hh_start, hh_end, hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2, hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3, opening_min, last_verified, created_at')
-    .eq('state', stateLower.toUpperCase())
-    .eq('city', cityName)
-    .not('hh_type', 'is', null)
-    .eq('status', 'verified')
-  const venues = raw as unknown as CityPageVenue[] | null
-
-  const venueList = venues ?? []
+  let raw
+  try {
+    raw = await supabaseServer
+      .from('venues')
+      .select('id, name, slug, new_slug, neighborhood, lat, lng, city, state, address, hh_type, hh_time, hh_days, hh_exclude_days, hh_start, hh_end, hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2, hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3, opening_min, last_verified, created_at')
+      .eq('state', stateLower.toUpperCase())
+      .eq('city', cityName)
+      .not('hh_type', 'is', null)
+      .eq('status', 'verified')
+  } catch (e) {
+    console.error('[cityPage] DB query failed:', e)
+    throw e
+  }
+  if (raw.error) {
+    console.error('[cityPage] DB error:', raw.error)
+  }
+  const venueList = (raw as unknown as CityPageVenue[] | null) ?? []
 
   // Fetch qualifying neighborhoods (for "Browse by neighborhood" section)
-  const qualifying = await getQualifyingNeighborhoods(cityName, stateLower.toUpperCase())
+  let qualifying: { neighborhood: string; venueCount: number; qualifies: boolean }[] = []
+  try {
+    qualifying = await getQualifyingNeighborhoods(cityName, stateLower.toUpperCase())
+  } catch (e) {
+    console.error('[cityPage] getQualifyingNeighborhoods failed:', e)
+  }
 
   // Fetch view counts for popularity scoring
-  const viewCounts = await fetchViewCounts(
-    venueList.map(v => v.id),
-    supabaseServer
-  )
+  let viewCounts: Record<string, number> = {}
+  try {
+    viewCounts = await fetchViewCounts(venueList.map(v => v.id), supabaseServer)
+  } catch (e) {
+    console.error('[cityPage] fetchViewCounts failed:', e)
+  }
 
   // Compute popularity and sort for Popular section
   const venuesWithScore = venueList.map(v => ({

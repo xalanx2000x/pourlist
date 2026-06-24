@@ -103,6 +103,22 @@ interface Stats {
   topZeroSearches: { topZeroSearches: { query: string; count: number }[] }
   // Public-safe (aggregate): geographic areas with high search demand but no real venues
   demandVsSupply: { demandVsSupply: { area: string; searches: number; venues: number }[] }
+  // Internal-only: venues needing geographic review (geo-incomplete)
+  geoReview: {
+    geoReviewVenues: {
+      id: string
+      name: string
+      slug: string
+      city: string
+      state: string
+      lat: number | null
+      lng: number | null
+      status: string
+      needsGeoReview: boolean
+      isSeedData: boolean
+      fallbackUrl: string
+    }[]
+  }
 }
 
 function pct(n: number) {
@@ -779,6 +795,65 @@ export default function DevdashClient() {
           </div>
         </SectionCard>
       </div>
+
+      {/* Geo-review queue */}
+      {stats.geoReview.geoReviewVenues.length > 0 && (
+        <SectionCard title={`Venues Needing Geographic Review (${stats.geoReview.geoReviewVenues.length})`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">Venue</th>
+                  <th className="text-left pb-2">Missing</th>
+                  <th className="text-left pb-2">Coords</th>
+                  <th className="text-right pb-2">URL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.geoReview.geoReviewVenues.map(v => {
+                  const missing: string[] = []
+                  if (!v.city) missing.push('city')
+                  if (!v.state) missing.push('state')
+                  if (missing.length === 0 && !v.lat && !v.lng) missing.push('GPS')
+                  return (
+                    <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                      <td className="py-2 pr-3">
+                        <span className="font-medium">{v.name}</span>
+                        <span className="ml-2 text-xs text-gray-400">({v.status})</span>
+                      </td>
+                      <td className="py-2">
+                        {missing.length > 0
+                          ? missing.map(m => (
+                              <span key={m} className="inline-block bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 text-xs rounded px-1.5 py-0.5 mr-1">{m}</span>
+                            ))
+                          : <span className="text-xs text-gray-400">unknown gap</span>}
+                      </td>
+                      <td className="py-2 text-gray-500 font-mono text-xs">
+                        {v.lat != null && v.lng != null
+                          ? `${v.lat.toFixed(4)}, ${v.lng.toFixed(4)}`
+                          : <span className="text-red-400">null</span>}
+                      </td>
+                      <td className="py-2 text-right">
+                        <a
+                          href={v.fallbackUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-amber-600 hover:text-amber-700 font-mono"
+                        >
+                          {v.fallbackUrl}
+                        </a>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {stats.geoReview.geoReviewVenues.length === 0 && (
+            <p className="text-sm text-gray-400 italic">No venues pending geo review.</p>
+          )}
+        </SectionCard>
+      )}
 
       {/* Row 4: Top Cities + Top Venues */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

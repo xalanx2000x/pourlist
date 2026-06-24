@@ -399,7 +399,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -419,9 +419,10 @@ export async function GET() {
       getStaleVenues(),
       getTopZeroResultSearches(),
       getDemandVsSupply(),
+      getGeoReviewVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -739,6 +740,32 @@ async function getStaleVenues() {
 
 // Public-safe (aggregate only, no PII): searches that returned zero results.
 // Counts search events where resultCount === 0, groups by query text.
+async function getGeoReviewVenues() {
+  // Venues flagged for geographic review: geo-incomplete (needs geo lookup or confirmation).
+  // These stay on old /venue/{slug} with noindex until resolved.
+  const res = await supabase
+    .from('venues')
+    .select('id, name, slug, city, state, lat, lng, status, needs_geo_review, is_seed_data, new_slug')
+    .eq('needs_geo_review', true)
+    .order('name')
+
+  const venues = (res.data ?? []).map(v => ({
+    id: v.id,
+    name: v.name,
+    slug: v.slug,
+    city: v.city ?? '',
+    state: v.state ?? '',
+    lat: v.lat ?? null,
+    lng: v.lng ?? null,
+    status: v.status,
+    needsGeoReview: v.needs_geo_review,
+    isSeedData: v.is_seed_data,
+    fallbackUrl: `/venue/${v.slug}`,
+  }))
+
+  return { geoReviewVenues: venues }
+}
+
 async function getTopZeroResultSearches() {
   const res = await supabase
     .from('events')

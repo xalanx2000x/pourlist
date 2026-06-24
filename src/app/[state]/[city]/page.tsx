@@ -13,11 +13,11 @@
  */
 import { Metadata } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-
-export const dynamic = 'force-dynamic'
 import { popularityScore, fetchViewCounts } from '@/lib/popularity'
 import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
+
+export const dynamic = 'force-dynamic'
 
 interface Props {
   params: Promise<{ state: string; city: string }>
@@ -30,90 +30,50 @@ const STATE_NAMES: Record<string, string> = {
 }
 
 function capitalizeCity(city: string): string {
-  return city
-    .split(/[\s-]+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(' ')
+  return city.split(/[\s-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { state, city } = await params
   const stateName = STATE_NAMES[state.toLowerCase()] ?? state.toUpperCase()
   const cityName = capitalizeCity(city)
-  const title = `${cityName}, ${stateName} Happy Hours`
-  const description = `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`
-
   return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      type: 'website',
-    },
+    title: `${cityName}, ${stateName} Happy Hours`,
+    description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`,
+    openGraph: { title: `${cityName}, ${stateName} Happy Hours`, description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`, type: 'website' },
   }
 }
 
 export default async function CityPage({ params }: Props) {
   const { state, city } = await params
   const stateLower = state.toLowerCase()
-  const cityLower = city.toLowerCase()
-  const cityName = capitalizeCity(cityLower)
+  const cityName = capitalizeCity(city)
+
+  // Full column set for city page (all HH windows + popularity data)
+  const COLS = [
+    'id', 'name', 'slug', 'new_slug', 'neighborhood', 'lat', 'lng', 'city', 'state', 'address',
+    'hh_type', 'hh_time', 'hh_days', 'hh_exclude_days', 'hh_start', 'hh_end',
+    'hh_type_2', 'hh_days_2', 'hh_exclude_days_2', 'hh_start_2', 'hh_end_2',
+    'hh_type_3', 'hh_days_3', 'hh_exclude_days_3', 'hh_start_3', 'hh_end_3',
+    'opening_min', 'last_verified', 'created_at',
+  ].join(', ')
 
   // Fetch all verified Portland venues with HH data
-  // Supabase cannot infer a typed return from a dynamic column string,
-  // so we cast the result through a typed interface.
-  interface CityPageVenue {
-    id: string
-    name: string
-    slug: string | null
-    new_slug: string | null
-    neighborhood: string | null
-    lat: number | null
-    lng: number | null
-    city: string | null
-    state: string | null
-    address: string | null
-    hh_type: string | null
-    hh_time: string | null
-    hh_days: string | null
-    hh_exclude_days: string | null
-    hh_start: number | null
-    hh_end: number | null
-    hh_type_2: string | null
-    hh_days_2: string | null
-    hh_exclude_days_2: string | null
-    hh_start_2: number | null
-    hh_end_2: number | null
-    hh_type_3: string | null
-    hh_days_3: string | null
-    hh_exclude_days_3: string | null
-    hh_start_3: number | null
-    hh_end_3: number | null
-    opening_min: number | null
-    last_verified: string | null
-    created_at: string
+  const venuesResult = await supabaseServer
+    .from('venues')
+    .select(COLS)
+    .eq('state', stateLower.toUpperCase())
+    .eq('city', cityName)
+    .not('hh_type', 'is', null)
+    .eq('status', 'verified')
+
+  if (venuesResult.error) {
+    console.error('[cityPage] venues error:', venuesResult.error)
   }
 
-  let raw
-  try {
-    raw = await supabaseServer
-      .from('venues')
-      .select('id, name, slug, new_slug, neighborhood, lat, lng, city, state, address, hh_type, hh_time, hh_days, hh_exclude_days, hh_start, hh_end, hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2, hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3, opening_min, last_verified, created_at')
-      .eq('state', stateLower.toUpperCase())
-      .eq('city', cityName)
-      .not('hh_type', 'is', null)
-      .eq('status', 'verified')
-  } catch (e) {
-    console.error('[cityPage] DB query failed:', e)
-    throw e
-  }
-  if (raw.error) {
-    console.error('[cityPage] DB error:', raw.error)
-  }
-  const venueList = (raw as unknown as CityPageVenue[] | null) ?? []
+  const venueList = (venuesResult.data ?? []) as unknown as Record<string, unknown>[]
 
-  // Fetch qualifying neighborhoods (for "Browse by neighborhood" section)
+  // Qualifying neighborhoods
   let qualifying: { neighborhood: string; venueCount: number; qualifies: boolean }[] = []
   try {
     qualifying = await getQualifyingNeighborhoods(cityName, stateLower.toUpperCase())
@@ -121,43 +81,39 @@ export default async function CityPage({ params }: Props) {
     console.error('[cityPage] getQualifyingNeighborhoods failed:', e)
   }
 
-  // Fetch view counts for popularity scoring
+  // View counts for popularity
   let viewCounts: Record<string, number> = {}
   try {
-    viewCounts = await fetchViewCounts(venueList.map(v => v.id), supabaseServer)
+    viewCounts = await fetchViewCounts(venueList.map(v => v.id as string), supabaseServer)
   } catch (e) {
     console.error('[cityPage] fetchViewCounts failed:', e)
   }
 
-  // Compute popularity and sort for Popular section
-  const venuesWithScore = venueList.map(v => ({
-    ...v,
-    viewCount: viewCounts[v.id] ?? 0,
-    score: popularityScore(
-      viewCounts[v.id] ?? 0,
-      v.last_verified,
-      v.created_at
-    ),
-  }))
-
-  const popular = venuesWithScore
+  // Build popular list (top 15)
+  const popular = [...venueList]
+    .map(v => {
+      const id = v.id as string
+      const vc = viewCounts[id] ?? 0
+      return {
+        ...v,
+        id,
+        viewCount: vc,
+        score: popularityScore(vc, v.last_verified as string | null, v.created_at as string),
+      }
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, 15)
 
-  // City-level heading
   const stateName = STATE_NAMES[stateLower] ?? state.toUpperCase()
-  const heading = `${cityName} Happy Hours`
-  const subheading = `${stateName}`
 
   return (
     <CityPageClient
-      heading={heading}
-      subheading={subheading}
+      heading={`${cityName} Happy Hours`}
+      subheading={stateName}
       state={stateLower}
-      citySlug={cityLower}
-      // Pass all HH venues for client-side Live/Soon filtering
-      allVenues={venueList}
-      popularVenues={popular}
+      citySlug={city}
+      allVenues={venueList as unknown as Parameters<typeof CityPageClient>[0]['allVenues']}
+      popularVenues={popular as unknown as Parameters<typeof CityPageClient>[0]['popularVenues']}
       qualifyingNeighborhoods={qualifying.map(n => ({
         name: n.neighborhood,
         slug: n.neighborhood.toLowerCase().replace(/\s+/g, '-'),

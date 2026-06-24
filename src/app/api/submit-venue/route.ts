@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       hh_end_3?: string
     }
 
-    // ── Job 6: Seed venue promotion ──────────────────────────────────────────
+    // ── Seed venue promotion ──────────────────────────────────────────────
     // When seedVenueId is present, we are promoting an existing seed venue
     // to live status (user confirmed "yes, that's the right venue").
     // This is NOT a new venue creation — reuse the venue, insert photos only.
@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       // Verify this is actually a seed venue before promoting
       const { data: seedVenue } = await supabase
         .from('venues')
-        .select('id, name, is_seed_data')
+        .select('id, name, is_seed_data, city, state')
         .eq('id', seedVenueId)
         .single()
 
@@ -140,6 +140,37 @@ export async function POST(req: NextRequest) {
       if (seedVenue.is_seed_data !== true) {
         // This is an already-promoted venue — treat as a normal duplicate/reject
         return NextResponse.json({ success: false, reason: 'not_a_seed_venue' }, { status: 400 })
+      }
+
+      // Reverse-geocode GPS → populate city/state before generating slug.
+      // This is the root-cause fix: seed venues previously promoted without
+      // geo data, landing in limbo with no new_slug.
+      // Graceful degradation: promotion still succeeds even if geocode fails.
+      // If geocode fails, city/state stay null → needs_geo_review = true, no slug.
+      let geoCity: string | null = seedVenue.city ?? null
+      let geoState: string | null = seedVenue.state ?? null
+      let geoAddress: string | null = null
+      let geoStreet: string | null = null
+      let geoNeighborhood: string | null = null
+      let geoCountry: string | null = null
+      let geoZip: string | null = null
+
+      if (!isNaN(venueLat) && !isNaN(venueLng)) {
+        try {
+          const geo = await reverseGeocodeStructured(venueLat, venueLng)
+          if (geo) {
+            geoCity = geo.city
+            geoState = geo.state
+            geoAddress = geo.place_name
+            geoStreet = geo.street
+            geoNeighborhood = geo.neighborhood
+            geoCountry = geo.country
+            geoZip = geo.zip
+          }
+        } catch (err) {
+          // Geocode failure: log and continue without geo data
+          console.warn('[submit-venue] seed promotion geocode failed:', err)
+        }
       }
 
       // Upload photos
@@ -176,6 +207,38 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, reason: 'photo_upload_failed' }, { status: 500 })
       }
 
+      // Build promotion update: is_seed_data=false + geo fields + slug
+      const promotionUpdate: Record<string, unknown> = {
+        is_seed_data: false,
+        city: geoCity,
+        state: geoState,
+        address: geoAddress ?? '',
+        street: geoStreet,
+        neighborhood: geoNeighborhood,
+        country: geoCountry,
+        zip: geoZip,
+        address_autofilled: geoAddress !== null,
+      }
+
+      if (uploadedUrls.length > 0) {
+        promotionUpdate.latest_menu_image_url = uploadedUrls[0]
+      }
+
+      // Generate new_slug — only assigned when geo is complete
+      const { path: newSlug, needsGeoReview } = await resolveNewSlug(
+        { id: seedVenueId, name: seedVenue.name, city: geoCity, state: geoState },
+        supabase
+      )
+      if (newSlug !== null) {
+        promotionUpdate.new_slug = newSlug
+        promotionUpdate.needs_geo_review = needsGeoReview
+      } else {
+        // Geo-incomplete: flag for manual review
+        promotionUpdate.needs_geo_review = true
+      }
+
+      await supabase.from('venues').update(promotionUpdate).eq('id', seedVenueId)
+
       // Insert photo set
       if (uploadedUrls.length > 0) {
         await supabase
@@ -200,18 +263,6 @@ export async function POST(req: NextRequest) {
             await supabase.storage.from('venue-photos').remove([...new Set(storagePaths)])
           }
         }
-
-        // Update venue: promote is_seed_data → false, update latest_menu_image_url
-        await supabase
-          .from('venues')
-          .update({ is_seed_data: false, latest_menu_image_url: uploadedUrls[0] })
-          .eq('id', seedVenueId)
-      } else {
-        // No photos — just promote
-        await supabase
-          .from('venues')
-          .update({ is_seed_data: false })
-          .eq('id', seedVenueId)
       }
 
       // Clear flags — venue has been verified by a user

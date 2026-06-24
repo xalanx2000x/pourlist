@@ -13,6 +13,8 @@
  */
 import { Metadata } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
+
+export const dynamic = 'force-dynamic'
 import { popularityScore, fetchViewCounts } from '@/lib/popularity'
 import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'

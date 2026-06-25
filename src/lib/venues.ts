@@ -395,6 +395,64 @@ export async function addPhotoSet(
 }
 
 /**
+ * ensureStructuredGeo — single chokepoint where coordinates become structured geo.
+ *
+ * Trigger: venue has lat+lng AND (city IS NULL OR state IS NULL).
+ *         This catches partial ghosts (one field missing) and full ghosts (both null).
+ *
+ * On success:  populates city/state/neighborhood/country/zip/street/address,
+ *              sets needs_geo_review=false, is_seed_data=false.
+ * On failure:  sets needs_geo_review=true (flagged for manual review, not a crash).
+ *              Graduation still completes.
+ *
+ * Call this at every graduation moment — when a venue first gets both HH data
+ * AND a photo (the two-piece bar), before returning success to the client.
+ */
+export async function ensureStructuredGeo(venueId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any
+
+  const { data, error } = await db
+    .from('venues')
+    .select('id, lat, lng, city, state')
+    .eq('id', venueId)
+    .single()
+
+  const venue = data as { id: string; lat: number | null; lng: number | null; city: string | null; state: string | null } | null
+  if (error || !venue) return
+
+  const hasCoords = venue.lat != null && venue.lng != null
+  const geoIncomplete = venue.city == null || venue.state == null
+
+  if (!hasCoords || !geoIncomplete) return
+
+  try {
+    const geo = await reverseGeocodeStructured(venue.lat!, venue.lng!)
+    if (!geo) throw new Error('geocode returned null')
+
+    await db
+      .from('venues')
+      .update({
+        city: geo.city,
+        state: geo.state,
+        neighborhood: geo.neighborhood,
+        country: geo.country,
+        street: geo.street,
+        zip: geo.zip ?? null,
+        address: geo.place_name,
+        address_autofilled: true,
+        needs_geo_review: false,
+        is_seed_data: false,
+      })
+      .eq('id', venueId)
+  } catch (err) {
+    // Geocode failed — flag for manual review, graduation still completes
+    console.warn('[ensureStructuredGeo] geocode failed for', venueId, err)
+    await db.from('venues').update({ needs_geo_review: true }).eq('id', venueId)
+  }
+}
+
+/**
  * Get the 4 most recent photo sets for a venue.
  */
 export async function getPhotoSets(venueId: string): Promise<PhotoSet[]> {

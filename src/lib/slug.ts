@@ -105,19 +105,38 @@ export async function resolveNewSlug(
   let existingInCity = new Set<string>()
   if (hasCity && hasState) {
     try {
-      const { data } = await supabase
-        .from('venues')
-        .select('new_slug')
-        .eq('state', venue.state)
-        .ilike('new_slug', `${stateCode}/${citySlug}/%`)
+      const [{ data: venueData }, { data: neighborhoodData }] = await Promise.all([
+        supabase
+          .from('venues')
+          .select('new_slug')
+          .eq('state', venue.state)
+          .ilike('new_slug', `${stateCode}/${citySlug}/%`),
+        supabase
+          .from('venues')
+          .select('neighborhood')
+          .eq('city', cityRaw)
+          .eq('state', venue.state?.toUpperCase())
+          .not('neighborhood', 'is', null),
+      ])
+
+      // Venue slug fragments (3rd segment of new_slug)
       existingInCity = new Set(
-        (data ?? [])
+        (venueData ?? [])
           .map((r: any) => {
             const parts = r.new_slug?.split('/')
-            return parts?.[2] ?? null // venue-slug is 3rd segment
+            return parts?.[2] ?? null
           })
           .filter(Boolean) as string[]
       )
+
+      // Neighborhood slug fragments — neighborhoods own their URL space.
+      // A venue cannot shadow a neighborhood URL (neighborhood wins).
+      const neighborhoodSlugs = new Set(
+        (neighborhoodData ?? [])
+          .map((r: any) => slugifyName(r.neighborhood ?? ''))
+          .filter(Boolean) as string[]
+      )
+      for (const ns of neighborhoodSlugs) existingInCity.add(ns)
     } catch {
       // Column doesn't exist yet (migration not applied) — skip uniqueness check
       existingInCity = new Set()
@@ -163,6 +182,46 @@ export function generateVenueSlug(
   }
   // Pathological case: full UUID already collides. Extremely unlikely.
   return `${base}-${venue.id}`
+}
+
+/**
+ * Build a neighborhood URL path: /{stateCode}/{citySlug}/{neighborhoodSlug}
+ * Neighborhood slugs are deterministic — same (state, city, neighborhood) → same URL.
+ */
+export function buildNeighborhoodSlug(
+  stateCode: string,
+  citySlug: string,
+  neighborhood: string
+): string {
+  const nSlug = slugifyName(neighborhood)
+  return `/${stateCode.toLowerCase()}/${citySlug.toLowerCase()}/${nSlug}`
+}
+
+/**
+ * Get all neighborhood slug fragments for a city/state (from venues.neighborhood column).
+ * Used for disambiguation in the [slug] route AND for collision detection in resolveNewSlug.
+ */
+export async function getNeighborhoodSlugs(
+  city: string,
+  state: string,
+  supabase: import('@supabase/supabase-js').SupabaseClient<any, any>
+): Promise<Set<string>> {
+  try {
+    const { data } = await supabase
+      .from('venues')
+      .select('neighborhood')
+      .eq('city', city)
+      .eq('state', state.toUpperCase())
+      .not('neighborhood', 'is', null)
+    const slugs = new Set(
+      (data ?? [])
+        .map((r: any) => slugifyName(r.neighborhood ?? ''))
+        .filter(Boolean) as string[]
+    )
+    return slugs
+  } catch {
+    return new Set()
+  }
 }
 
 /**

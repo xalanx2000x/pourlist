@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { hasActiveHappyHour } from '@/lib/activeHH'
 import type { Venue } from '@/lib/supabase'
 
-interface LeanVenueForHH {
+export interface LeanVenueForHH {
   id: string
   name: string
   neighborhood: string | null
@@ -31,7 +31,7 @@ interface LeanVenueForHH {
   lng: number | null
 }
 
-interface PopularVenue {
+export interface PopularVenue {
   id: string
   name: string
   new_slug: string | null

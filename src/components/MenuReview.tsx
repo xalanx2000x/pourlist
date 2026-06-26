@@ -14,6 +14,8 @@ interface MenuReviewProps {
   venueGps: { lat: number; lng: number } | null
   venue: Venue | null
   newVenueName?: string | null
+  /** When present, this is a seed promotion (user is adding HH to a confirmed seed venue) */
+  seedVenueName?: string | null
   menuText?: string | null
   onCommit: (data: {
     hhWindows: [HHWindow | null, HHWindow | null, HHWindow | null]
@@ -35,6 +37,7 @@ export default function MenuReview({
   venueGps,
   venue,
   newVenueName,
+  seedVenueName,
   menuText,
   onCommit,
   onDiscard,
@@ -50,21 +53,9 @@ export default function MenuReview({
   const [hhWindows, setHhWindows] = useState<[HHWindow | null, HHWindow | null, HHWindow | null]>([null, null, null])
   const [isCommitting, setIsCommitting] = useState(false)
   const [commitError, setCommitError] = useState('')
-  const [showHhWarning, setShowHhWarning] = useState(false)
 
-  // Called by HHScheduleInput when user clicks "Confirm Happy Hour"
-  function handleHhScheduleCommit(windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) {
-    hhWindowsRef.current = windows
-    hhSummaryRef.current = hhSummary
-    setHhWindows(windows)
-    setCommitError('')
-    setIsCommitting(true)
-    onCommit({ hhWindows: windows, hhTime: '', hhSummary })
-      .catch((err: unknown) => {
-        setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
-      })
-      .finally(() => setIsCommitting(false))
-  }
+  // Derive whether HH is currently valid (at least one window parsed)
+  const hhValid = hhWindows.some(w => w !== null)
 
   // Called when HHScheduleInput blocks a parse failure — store distinct failed input
   function handleParseFailureAttempt(rawText: string) {
@@ -72,24 +63,29 @@ export default function MenuReview({
     onParseFailureAttempt?.(rawText)
   }
 
-  // Called by the Save button in MenuReview
-  // "Save Happy Hour" is the ONE button that both confirms AND saves.
+  // Called by the Save button in MenuReview.
+  // ONE submission path only — no immediate submit from HHScheduleInput's "Confirm".
   async function handleSave() {
     const hasHh = hhWindowsRef.current.some(w => w !== null) || hhSummaryRef.current.trim()
-    if (!hasHh && !showHhWarning) {
-      setShowHhWarning(true)
+    if (!hasHh) {
+      // Hard block — cannot submit without HH. No "save anyway".
+      setCommitError('Add the happy hour times above before saving.')
       return
     }
-    setShowHhWarning(false)
     setCommitError('')
     setIsCommitting(true)
     try {
-      // Pass the blocked input so page.tsx can log it; then clear it
       const failedInput = failedHhInputRef.current
       failedHhInputRef.current = null
-      await onCommit({ hhWindows: hhWindowsRef.current, hhTime: '', hhSummary: hhSummaryRef.current, failedHhInput: failedInput })
+      await onCommit({
+        hhWindows: hhWindowsRef.current,
+        hhTime: '',
+        hhSummary: hhSummaryRef.current,
+        failedHhInput: failedInput,
+      })
     } catch (err) {
-      setCommitError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
+      // err.message is the mapped, user-facing message from page.tsx
+      setCommitError(err instanceof Error ? err.message : 'Something went wrong. Try again.')
     } finally {
       setIsCommitting(false)
     }
@@ -99,9 +95,13 @@ export default function MenuReview({
 
   const venueLabel = venue
     ? venue.name
+    : seedVenueName
+    ? seedVenueName
     : newVenueName
     ? `New: ${newVenueName}`
     : 'Unknown venue'
+
+  const labelPrefix = seedVenueName ? '🏠 ' : venue ? '' : newVenueName ? '✨ ' : ''
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col">
@@ -120,10 +120,20 @@ export default function MenuReview({
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {/* Venue label */}
         <div className="flex items-center gap-2">
-          <span className="text-sm">🏠</span>
-          <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
-          {venue && formatAddress(venue) && (
-            <span className="text-xs text-gray-400 truncate">{formatAddress(venue)}</span>
+          {seedVenueName ? (
+            <>
+              <span className="text-sm">🏠</span>
+              <span className="text-sm font-semibold text-gray-700">Adding HH for:</span>
+              <span className="text-sm font-bold text-gray-900">{seedVenueName}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm">🏠</span>
+              <span className="text-sm font-semibold text-gray-700">{venueLabel}</span>
+              {venue && formatAddress(venue) && (
+                <span className="text-xs text-gray-400 truncate">{formatAddress(venue)}</span>
+              )}
+            </>
           )}
         </div>
 
@@ -144,11 +154,8 @@ export default function MenuReview({
         {/* HH Schedule — two-box input */}
         <HHScheduleInput
           onParseFailureAttempt={handleParseFailureAttempt}
-          onChange={(windows) => {
+          onChange={(windows, hhSummary) => {
             setHhWindows(windows)
-            hhWindowsRef.current = windows
-          }}
-          onCommit={(windows, hhSummary) => {
             hhWindowsRef.current = windows
             hhSummaryRef.current = hhSummary
           }}
@@ -162,29 +169,11 @@ export default function MenuReview({
           </div>
         )}
 
-        {/* No HH warning */}
-        {showHhWarning && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-3">
-            <p className="text-sm font-medium text-amber-800">No happy hour data entered.</p>
-            <p className="text-xs text-amber-700 mt-1">
-              This venue won't show a schedule on the map. Photos will still be saved.
-            </p>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => setShowHhWarning(false)}
-                className="flex-1 text-sm border border-amber-300 text-amber-700 rounded-lg py-2 hover:bg-amber-100 transition-colors"
-              >
-                Go back
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={isCommitting}
-                className="flex-1 text-sm bg-amber-500 text-white rounded-lg py-2 hover:bg-amber-600 transition-colors disabled:opacity-50"
-              >
-                Save anyway
-              </button>
-            </div>
-          </div>
+        {/* Helper text shown under Save when HH is empty */}
+        {!hhValid && !commitError && (
+          <p className="text-xs text-gray-400 text-center">
+            Enter the happy hour times above to save.
+          </p>
         )}
       </div>
 
@@ -192,8 +181,8 @@ export default function MenuReview({
       <div className="shrink-0 p-4 border-t border-gray-100 bg-white">
         <button
           onClick={handleSave}
-          disabled={isCommitting}
-          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
+          disabled={isCommitting || !hhValid}
+          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
         >
           {isCommitting ? (
             <>

@@ -50,6 +50,7 @@ type ScanState = {
   menuText: string | null
   startedAt: number | null  // Date.now() when scan entered review step — used for funnel duration
   seedMatch: Venue | null   // seed venue detected within 100m — Job 5
+  seedVenueForPromotion: Venue | null  // seed venue to promote via MenuReview → submit-venue with HH
 }
 
 function emptyScanState(): ScanState {
@@ -62,6 +63,7 @@ function emptyScanState(): ScanState {
     menuText: null,
     startedAt: null,
     seedMatch: null,
+    seedVenueForPromotion: null,
   }
 }
 
@@ -745,55 +747,29 @@ export default function Home() {
    * Promotes seed → live, inserts photos, clears flags.
    */
   async function handleSeedMatchConfirm(seedVenue: Venue) {
-    const { files, exifGps, phoneGps, menuText } = scan
-    if (!exifGps) {
-      // Fall back to name_entry if no GPS
-      setScan(prev => ({ ...prev, seedMatch: null }))
-      setScanStep('name_entry')
-      return
-    }
+    // ── Route seed confirmation through MenuReview to collect HH ─────────────
+    // Rule (b): every submission requires photo AND HH. Seed promotion must go
+    // through MenuReview like new-venue and existing-venue paths do.
+    setScan(prev => ({
+      ...prev,
+      seedVenueForPromotion: seedVenue,
+      newVenueName: seedVenue.name,
+      confirmedVenue: null,
+      startedAt: Date.now(),
+    }))
+    setScanStep('review')
 
-    const formData = new FormData()
-    formData.append('seedVenueId', seedVenue.id)
-    formData.append('exifLat', String(exifGps.lat))
-    formData.append('exifLng', String(exifGps.lng))
-    if (phoneGps) {
-      formData.append('phoneLat', String(phoneGps.lat))
-      formData.append('phoneLng', String(phoneGps.lng))
-    }
-    formData.append('deviceHash', getDeviceHash())
-    for (const file of files) formData.append('photos', file)
-
-    const res = await fetch('/api/submit-venue', { method: 'POST', body: formData })
-    const data = await res.json()
-
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Failed to promote venue')
-    }
-
-    const savedVenueId = data.venueId
-    const updatedVenue = await getVenueById(savedVenueId)
-    if (updatedVenue) setSelectedVenue(updatedVenue)
-    // Reload the list with bounds around the new venue's location
-    // (zoom-16 approximation, refined by the map's moveend).
-    if (exifGps) {
-      const latDelta = 0.003
-      const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
-      await loadVenues({
-        north: exifGps.lat + latDelta,
-        south: exifGps.lat - latDelta,
-        east: exifGps.lng + lngDelta,
-        west: exifGps.lng - lngDelta
-      })
-    }
-
-    await trackEvent('menu_save_success', { deviceHash: getDeviceHash(), venueId: savedVenueId })
-    await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
-
-    setSaveSuccess(true)
-    setLastSavedVenue(`"${seedVenue.name}" verified`)
-    setTimeout(() => setSaveSuccess(false), 3000)
-    resetScan()
+    await trackEvent('scan_start', {
+      deviceHash: getDeviceHash(),
+      venueId: seedVenue.id,
+      metadata: {
+        isNewVenue: false,
+        isSeedPromotion: true,
+        photoCount: scan.files.length,
+        hasPhoneGps: !!scan.phoneGps,
+        hasExifGps: !!scan.exifGps,
+      },
+    })
   }
 
   /**
@@ -849,7 +825,107 @@ export default function Home() {
       throw new Error(`Slow down! Please wait ${s}s before submitting again.`)
     }
 
-    const { confirmedVenue, newVenueName, files, phoneGps, exifGps, menuText, startedAt } = scan
+    const { confirmedVenue, newVenueName, files, phoneGps, exifGps, menuText, startedAt, seedVenueForPromotion } = scan
+
+    // ── Reason → user message mapper ─────────────────────────────────────────
+    function messageForReason(reason: string | undefined, fallback: string): string {
+      switch (reason) {
+        case 'missing_photo':       return 'A menu photo is required to submit.'
+        case 'missing_hh':          return 'Add the happy hour times to submit this venue.'
+        case 'duplicate':           return 'This venue is already on PourList nearby.'
+        case 'photo_upload_failed': return 'Photo upload didn\'t go through — nothing was saved. Please try again.'
+        case 'venue_not_found':
+        case 'not_a_seed_venue':    return 'Something went wrong with this venue. Please try again.'
+        default:                    return fallback
+      }
+    }
+
+    // ── Seed-promotion path → submit-venue with HH (seed confirmed via MenuReview) ─
+    // Check FIRST so seed promotion doesn't fall through to new-venue or existing-venue path.
+    if (seedVenueForPromotion) {
+      if (!exifGps) {
+        throw new Error('No location found. Please take the photo at the venue.')
+      }
+
+      const formData = new FormData()
+      formData.append('seedVenueId', seedVenueForPromotion.id)
+      formData.append('exifLat', String(exifGps.lat))
+      formData.append('exifLng', String(exifGps.lng))
+      if (phoneGps) {
+        formData.append('phoneLat', String(phoneGps.lat))
+        formData.append('phoneLng', String(phoneGps.lng))
+      }
+      formData.append('deviceHash', deviceHash)
+      if (hhSummary) formData.append('hhSummary', hhSummary)
+
+      const w1 = hhWindows[0]; const w2 = hhWindows[1]; const w3 = hhWindows[2]
+      function appendWindow(w: import('@/lib/parse-hh').HHWindow, prefix: string, daysKey: string, exclKey: string) {
+        if (!w.type) return
+        formData.append(prefix, w.type)
+        formData.append(daysKey, String(w.days.join(',')))
+        formData.append(prefix.replace('type', 'start'), w.startMin != null ? String(w.startMin) : '')
+        formData.append(prefix.replace('type', 'end'), w.endMin != null ? String(w.endMin) : '')
+        if (w.excludeDays?.length) formData.append(exclKey, String(w.excludeDays.join(',')))
+      }
+      if (w1?.type) appendWindow(w1, 'hh_type', 'hh_days', 'hh_exclude_days')
+      if (w2?.type) appendWindow(w2, 'hh_type_2', 'hh_days_2', 'hh_exclude_days_2')
+      if (w3?.type) appendWindow(w3, 'hh_type_3', 'hh_days_3', 'hh_exclude_days_3')
+
+      for (const file of files) formData.append('photos', file)
+
+      const res = await fetch('/api/submit-venue', { method: 'POST', body: formData })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        throw new Error(messageForReason(result.reason, result.error || 'Failed to verify venue. Please try again.'))
+      }
+
+      const { venueId: savedVenueId } = result
+
+      const updatedVenue = await getVenueById(savedVenueId)
+      if (updatedVenue) setSelectedVenue(updatedVenue)
+      if (exifGps) {
+        const latDelta = 0.003
+        const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
+        await loadVenues({
+          north: exifGps.lat + latDelta,
+          south: exifGps.lat - latDelta,
+          east: exifGps.lng + lngDelta,
+          west: exifGps.lng - lngDelta
+        })
+      }
+
+      await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
+      await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
+      if (hhWindows.some(w => w !== null)) {
+        await trackVenueEvent(savedVenueId, 'hh_confirm', exifGps)
+      }
+
+      const durationSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : undefined
+      await trackEvent('scan_complete', {
+        deviceHash,
+        venueId: savedVenueId,
+        metadata: {
+          isNewVenue: false,
+          isSeedPromotion: true,
+          photoCount: files.length,
+          hasPhoneGps: !!phoneGps,
+          hasHhData: hhWindows.some(w => w !== null),
+          hhWasEdited: !!(hhSummary && menuText && hhSummary.trim() !== menuText.trim()),
+          durationSec,
+        },
+      })
+
+      if (failedHhInput) {
+        logParseFailure({ failureType: 'hh_recovery', rawText: failedHhInput, metadata: { hhSummary } })
+        lastLoggedFailedText.current = ''
+      }
+
+      setSaveSuccess(true)
+      setLastSavedVenue(`"${seedVenueForPromotion.name}" verified`)
+      setTimeout(() => setSaveSuccess(false), 3000)
+      resetScan()
+      return
+    }
 
     // ── Existing venue path → commit-menu ─────────────────────────────────
     if (confirmedVenue) {
@@ -887,7 +963,7 @@ export default function Home() {
       const commitRes = await fetch('/api/commit-menu', { method: 'POST', body: formData })
       if (!commitRes.ok) {
         const err = await commitRes.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to save menu')
+        throw new Error(messageForReason(err.reason, err.error || 'Failed to save. Please try again.'))
       }
 
       const { venueId: savedVenueId } = await commitRes.json()
@@ -977,7 +1053,7 @@ export default function Home() {
 
       if (!submitRes.ok) {
         const err = await submitRes.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to create venue')
+        throw new Error(messageForReason(err.reason, err.error || 'Failed to create venue. Please try again.'))
       }
 
       const result = await submitRes.json()
@@ -1421,6 +1497,7 @@ export default function Home() {
             : scan.exifGps}
           venue={venueToReview}
           newVenueName={newVenueNameToReview}
+          seedVenueName={scan.seedVenueForPromotion?.name ?? null}
           menuText={scan.menuText}
           onCommit={handleMenuCommit}
           onDiscard={handleMenuDiscard}

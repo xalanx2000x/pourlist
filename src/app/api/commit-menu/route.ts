@@ -52,7 +52,7 @@ function storagePathFromUrl(url: string): string {
  *   // Venue opening time (minutes since midnight; e.g. 840 = 2pm)
  *   opening_min?: string
  *
- *   photos?: File[]
+ *   photos?: File[] | base64 data URLs (compressed, preferred)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -113,15 +113,49 @@ export async function POST(req: NextRequest) {
     const numLng = typeof lng === 'string' ? parseFloat(lng) : lng
 
     if (!deviceHash) {
-      return NextResponse.json({ error: 'deviceHash is required' }, { status: 400 })
+      return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
     }
+
+    // ── Rule (b) completeness gate — validate BEFORE any write ─────────────
+    const rawPhotos = formData.getAll('photos').filter(f => f && typeof f !== 'string') as (string | File)[]
+
+    // A photo is ALWAYS required.
+    if (rawPhotos.length === 0) {
+      return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
+    }
+
+    // Does THIS submission carry HH data?
+    const hasHhInSubmission = !!(
+      hh_type || hh_days || hh_start || hh_end ||
+      hh_type_2 || hh_days_2 || hh_start_2 || hh_end_2 ||
+      hh_type_3 || hh_days_3 || hh_start_3 || hh_end_3 ||
+      hhTime || hhSummary
+    )
+
+    // Determine whether the venue ALREADY has HH (only relevant for existing venues).
+    let venueAlreadyHasHh = false
+    if (venueId) {
+      const { data: existing } = await supabase
+        .from('venues')
+        .select('hh_type, hh_time')
+        .eq('id', venueId)
+        .single()
+      venueAlreadyHasHh = !!(existing?.hh_type || existing?.hh_time)
+    }
+
+    // HH is required UNLESS the (existing) venue already has it.
+    // New venues (no venueId) always require HH via the new-venue path (submit-venue).
+    if (!hasHhInSubmission && !venueAlreadyHasHh) {
+      return NextResponse.json({ success: false, reason: 'missing_hh' }, { status: 400 })
+    }
+    // ── end gate ───────────────────────────────────────────────────────────
 
     let targetVenueId = venueId
 
     // ── Create venue if not existing ───────────────────────────────────────
     if (!targetVenueId) {
       if (!venueName?.trim()) {
-        return NextResponse.json({ error: 'venueName is required for new venues' }, { status: 400 })
+        return NextResponse.json({ success: false, reason: 'missing_venue_name' }, { status: 400 })
       }
 
       // Geo-dedup: check if a venue with same name exists within 50m
@@ -148,7 +182,6 @@ export async function POST(req: NextRequest) {
                       Math.sin(dLng / 2) ** 2
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
             if (R * c > 50) return false
-            // Normalize both names: strip leading "The", lowercase, trim
             const norm = (n: string) => n.replace(/^the\s+/i, '').toLowerCase().trim()
             return norm(v.name) === norm(venueName!)
           })
@@ -160,7 +193,8 @@ export async function POST(req: NextRequest) {
       }
 
       if (!targetVenueId) {
-        // Create new venue
+        // Create new venue (new-venue path uses submit-venue, but commit-menu
+        // can also handle the create-venue-on-confirm use case for geo-dedup hits)
         const { data: newVenue, error: venueError } = await supabase
           .from('venues')
           .insert({
@@ -195,52 +229,58 @@ export async function POST(req: NextRequest) {
 
         if (venueError) {
           console.error('commit-menu: venue insert error:', venueError)
-          return NextResponse.json({ error: 'Failed to create venue' }, { status: 500 })
+          return NextResponse.json({ success: false, reason: 'insert_failed' }, { status: 500 })
         }
         targetVenueId = newVenue.id
       }
     } else {
-      // ── Update existing venue's HH schedule ─────────────────────────────
-      const { error: updateError } = await supabase
-        .from('venues')
-        .update({
-          hh_time: hhTime?.trim() || null,
-          hh_summary: hhSummary?.trim() || null,
-          hh_type: hh_type || null,
-          hh_days: hh_days || null,
-          hh_exclude_days: hh_exclude_days || null,
-          hh_start: hh_start ? parseInt(hh_start) : null,
-          hh_end: hh_end ? parseInt(hh_end) : null,
-          hh_type_2: hh_type_2 || null,
-          hh_days_2: hh_days_2 || null,
-          hh_exclude_days_2: hh_exclude_days_2 || null,
-          hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
-          hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
-          hh_type_3: hh_type_3 || null,
-          hh_days_3: hh_days_3 || null,
-          hh_exclude_days_3: hh_exclude_days_3 || null,
-          hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
-          hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
-          opening_min: opening_min ? parseInt(opening_min) : null,
-        })
-        .eq('id', targetVenueId)
+      // ── Update existing venue's HH schedule — merge-safe, never nulls ─────
+      // Only write fields that are explicitly provided; leave others untouched.
+      if (hasHhInSubmission) {
+        const hhUpdate: Record<string, unknown> = {
+          hh_updated_at: new Date().toISOString()
+        }
+        if (hhTime !== undefined) hhUpdate.hh_time = hhTime?.trim() || null
+        if (hhSummary !== undefined) hhUpdate.hh_summary = hhSummary?.trim() || null
+        if (hh_type !== undefined) hhUpdate.hh_type = hh_type || null
+        if (hh_days !== undefined) hhUpdate.hh_days = hh_days || null
+        if (hh_exclude_days !== undefined) hhUpdate.hh_exclude_days = hh_exclude_days || null
+        if (hh_start !== undefined) hhUpdate.hh_start = hh_start ? parseInt(hh_start) : null
+        if (hh_end !== undefined) hhUpdate.hh_end = hh_end ? parseInt(hh_end) : null
+        if (hh_type_2 !== undefined) hhUpdate.hh_type_2 = hh_type_2 || null
+        if (hh_days_2 !== undefined) hhUpdate.hh_days_2 = hh_days_2 || null
+        if (hh_exclude_days_2 !== undefined) hhUpdate.hh_exclude_days_2 = hh_exclude_days_2 || null
+        if (hh_start_2 !== undefined) hhUpdate.hh_start_2 = hh_start_2 ? parseInt(hh_start_2) : null
+        if (hh_end_2 !== undefined) hhUpdate.hh_end_2 = hh_end_2 ? parseInt(hh_end_2) : null
+        if (hh_type_3 !== undefined) hhUpdate.hh_type_3 = hh_type_3 || null
+        if (hh_days_3 !== undefined) hhUpdate.hh_days_3 = hh_days_3 || null
+        if (hh_exclude_days_3 !== undefined) hhUpdate.hh_exclude_days_3 = hh_exclude_days_3 || null
+        if (hh_start_3 !== undefined) hhUpdate.hh_start_3 = hh_start_3 ? parseInt(hh_start_3) : null
+        if (hh_end_3 !== undefined) hhUpdate.hh_end_3 = hh_end_3 ? parseInt(hh_end_3) : null
+        if (opening_min !== undefined) hhUpdate.opening_min = opening_min ? parseInt(opening_min) : null
 
-      if (updateError) {
-        console.error('commit-menu: venue update error:', updateError)
-        return NextResponse.json({ error: 'Failed to update venue' }, { status: 500 })
+        const { error: updateError } = await supabase
+          .from('venues')
+          .update(hhUpdate)
+          .eq('id', targetVenueId)
+
+        if (updateError) {
+          console.error('commit-menu: venue update error:', updateError)
+          return NextResponse.json({ success: false, reason: 'update_failed' }, { status: 500 })
+        }
       }
+      // If !hasHhInSubmission but venue already had HH: no HH write needed (photo-only refresh)
     }
 
     // ── Upload photos ─────────────────────────────────────────────────────
     // photos may be File objects (backward compat) or base64 data URLs (compressed, preferred)
-    const rawPhotos = formData.getAll('photos')
     const uploadedUrls: string[] = []
 
     if (rawPhotos.length > 0 && targetVenueId) {
       const timestamp = Date.now()
 
       for (let i = 0; i < rawPhotos.length; i++) {
-        const raw = rawPhotos[i]
+        const raw: string | File = rawPhotos[i]
         // Decode: support both File objects and base64 data URLs
         let buffer: Buffer
         if (typeof raw === 'string') {
@@ -317,6 +357,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ venueId: targetVenueId, success: true })
   } catch (err) {
     console.error('commit-menu error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ success: false, reason: 'server_error' }, { status: 500 })
   }
 }

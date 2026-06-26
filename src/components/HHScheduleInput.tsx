@@ -1,15 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { HHWindow, parseHHSchedule, parseOneClause } from '@/lib/parse-hh'
 
 interface HHScheduleInputProps {
   /** Pre-populated value for box 1 (from AI-parsed menu text, can be blank) */
   initialBox1?: string | null
-  /** Called whenever the parsed result changes — use this to keep parent in sync */
-  onChange?: (windows: [HHWindow | null, HHWindow | null, HHWindow | null]) => void
-  /** Called when user clicks "Confirm Happy Hour" — passes both windows and the raw user input text */
-  onCommit: (windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) => void
+  /** Called whenever the parsed result changes — this is the ONE sync mechanism to parent.
+   *  No other callback triggers a submission. */
+  onChange?: (windows: [HHWindow | null, HHWindow | null, HHWindow | null], hhSummary: string) => void
   /** Called when a submission is BLOCKED because the parser returned no valid window.
    *  Deduplicated: only fires when the blocked text differs from the last failed attempt
    *  (one log per distinct failed input, not per keystroke or per retry). */
@@ -85,17 +84,13 @@ function WindowsPreview({ windows }: { windows: HHWindow[] }) {
   )
 }
 
-export default function HHScheduleInput({ initialBox1, onChange, onCommit, onParseFailureAttempt }: HHScheduleInputProps) {
+export default function HHScheduleInput({ initialBox1, onChange, onParseFailureAttempt }: HHScheduleInputProps) {
   // Box 1 starts blank — don't pre-populate from initialBox1 (AI text can be wrong)
   const [box1, setBox1] = useState('')
   const [box2, setBox2] = useState('')
   const [hasLateNight, setHasLateNight] = useState(false)
   const [box1Error, setBox1Error] = useState('')
   const [box2Error, setBox2Error] = useState('')
-
-  // Stable ref to parent's failure handler — never reregisters on re-render.
-  const onFailureRef = useRef(onParseFailureAttempt)
-  onFailureRef.current = onParseFailureAttempt
 
   // Live preview: parse box1 on every keystroke for immediate feedback
   const result1: ParseResult = (() => {
@@ -140,10 +135,10 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit, onPar
   const previewFinal = buildWindows()
   const previewWindows = previewFinal.filter(w => w !== null) as HHWindow[]
 
-  // Keep parent in sync with current parsed windows — this is what MenuReview's
-  // handleSave reads via hhWindowsRef.current. Every keystroke updates this.
+  // Keep parent in sync with current parsed windows and summary text — this is what
+  // MenuReview's handleSave reads via hhWindowsRef/hhSummaryRef. Every keystroke updates.
   useEffect(() => {
-    onChange?.(previewFinal)
+    onChange?.(previewFinal, buildHhSummary())
   }, [previewFinal])
 
   // Live error: fires on every keystroke when box1 has text but parser returns nothing
@@ -160,26 +155,6 @@ export default function HHScheduleInput({ initialBox1, onChange, onCommit, onPar
     if (box1.trim()) parts.push(box1.trim())
     if (hasLateNight && box2.trim()) parts.push(box2.trim())
     return parts.join(' · ')
-  }
-
-  // Manual commit trigger (used by parent Save button flow via hhWindows state)
-  function handleCommit() {
-    setBox1Error('')
-    setBox2Error('')
-
-    if (box1.trim() && !result1.windows.some(w => w !== null)) {
-      onFailureRef.current?.(box1.trim())
-      setBox1Error('No valid happy hour found in the text above.')
-      return
-    }
-
-    if (hasLateNight && box2.trim() && w2 === null) {
-      onFailureRef.current?.(box2.trim())
-      setBox2Error('Could not parse. Try "10pm-close" or "10-1am".')
-      return
-    }
-
-    onCommit(buildWindows(), buildHhSummary())
   }
 
   return (

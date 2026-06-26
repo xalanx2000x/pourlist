@@ -138,9 +138,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, reason: 'venue_not_found' }, { status: 404 })
       }
       if (seedVenue.is_seed_data !== true) {
-        // This is an already-promoted venue — treat as a normal duplicate/reject
         return NextResponse.json({ success: false, reason: 'not_a_seed_venue' }, { status: 400 })
       }
+
+      // ── Rule (b) gate — seed promotion requires photo AND HH ──────────────
+      const seedPhotoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+      if (seedPhotoFiles.length === 0) {
+        return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
+      }
+      const seedHasHh = !!(
+        hh_type || hh_days || hh_start || hh_end ||
+        hh_type_2 || hh_days_2 || hh_start_2 || hh_end_2 ||
+        hh_type_3 || hh_days_3 || hh_start_3 || hh_end_3 ||
+        hhSummary
+      )
+      if (!seedHasHh) {
+        return NextResponse.json({ success: false, reason: 'missing_hh' }, { status: 400 })
+      }
+      // ── end gate ─────────────────────────────────────────────────────────
 
       // Reverse-geocode GPS → populate city/state before generating slug.
       // This is the root-cause fix: seed venues previously promoted without
@@ -173,15 +188,14 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Upload photos
-      const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+      // Upload photos (reuse photo list from gate — no re-declare)
       const uploadedUrls: string[] = []
       let uploadFailed = false
 
-      if (photoFiles.length > 0) {
+      if (seedPhotoFiles.length > 0) {
         const timestamp = Date.now()
-        for (let i = 0; i < photoFiles.length; i++) {
-          const photo = photoFiles[i]
+        for (let i = 0; i < seedPhotoFiles.length; i++) {
+          const photo = seedPhotoFiles[i]
           const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
           const filePath = `${seedVenueId}/${timestamp}/${fileName}`
           const buffer = Buffer.from(await photo.arrayBuffer())
@@ -207,7 +221,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, reason: 'photo_upload_failed' }, { status: 500 })
       }
 
-      // Build promotion update: is_seed_data=false + geo fields + slug
+      // Build promotion update: is_seed_data=false + geo fields + slug + HH (rule b)
       const promotionUpdate: Record<string, unknown> = {
         is_seed_data: false,
         city: geoCity,
@@ -218,6 +232,24 @@ export async function POST(req: NextRequest) {
         country: geoCountry,
         zip: geoZip,
         address_autofilled: geoAddress !== null,
+        // HH data — rule (b): graduation captures HH
+        hh_updated_at: new Date().toISOString(),
+        hh_summary: hhSummary?.trim() || null,
+        hh_type: hh_type || null,
+        hh_days: hh_days || null,
+        hh_exclude_days: hh_exclude_days || null,
+        hh_start: hh_start ? parseInt(hh_start) : null,
+        hh_end: hh_end ? parseInt(hh_end) : null,
+        hh_type_2: hh_type_2 || null,
+        hh_days_2: hh_days_2 || null,
+        hh_exclude_days_2: hh_exclude_days_2 || null,
+        hh_start_2: hh_start_2 ? parseInt(hh_start_2) : null,
+        hh_end_2: hh_end_2 ? parseInt(hh_end_2) : null,
+        hh_type_3: hh_type_3 || null,
+        hh_days_3: hh_days_3 || null,
+        hh_exclude_days_3: hh_exclude_days_3 || null,
+        hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
+        hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
       }
 
       if (uploadedUrls.length > 0) {
@@ -309,6 +341,22 @@ export async function POST(req: NextRequest) {
     if (isNaN(venueLat) || isNaN(venueLng)) {
       return NextResponse.json({ error: 'Invalid coordinates' }, { status: 400 })
     }
+
+    // ── Rule (b) completeness gate — new venues require photo AND HH ───────
+    const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+    if (photoFiles.length === 0) {
+      return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
+    }
+    const hasHhInSubmission = !!(
+      hh_type || hh_days || hh_start || hh_end ||
+      hh_type_2 || hh_days_2 || hh_start_2 || hh_end_2 ||
+      hh_type_3 || hh_days_3 || hh_start_3 || hh_end_3 ||
+      hhSummary
+    )
+    if (!hasHhInSubmission) {
+      return NextResponse.json({ success: false, reason: 'missing_hh' }, { status: 400 })
+    }
+    // ── end gate ───────────────────────────────────────────────────────────
 
     // ── Dedup: find nearby venue with same/similar name ─────────────────────
     const dedupRadiusM = 50
@@ -450,8 +498,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Upload photos (with rollback on failure) ───────────────────────────
-    const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
-
     if (photoFiles.length > 0) {
       const timestamp = Date.now()
       const uploadedUrls: string[] = []

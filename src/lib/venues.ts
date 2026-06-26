@@ -78,9 +78,9 @@ export type VenueBounds = {
 
 export type VenuesInBoundsResult = {
   venues: LeanVenue[]
-  /** True when the SQL returned the full `limit` (or more) — i.e. there
-   *  are venues in the viewport that didn't make the cap. The caller
-   *  surfaces this as a "showing 150 of more — zoom in" hint. */
+  /** Always false — the RPC enforces the cap so all returned venues are
+   *  within the distance budget. The "zoom in" hint is no longer needed.
+   *  Kept for API compat. */
   capped: boolean
 }
 
@@ -102,34 +102,33 @@ export async function getVenuesInBounds(
   west: number,
   limit: number = 150
 ): Promise<VenuesInBoundsResult> {
-  // Bbox filter on lat/lng. No Haversine needed — the bounds are exact.
-  // .order('name') keeps dedup stable.
-  const { data, error } = await supabase
-    .from('venues')
-    .select(
-      `id, name, slug, lat, lng, address, city, state, neighborhood, country, zip, address_autofilled,
-       hh_type, hh_days, hh_exclude_days, hh_start, hh_end,
-       hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2,
-       hh_type_3, hh_days_3, hh_exclude_days_3, hh_start_3, hh_end_3,
-       hh_time, status, is_seed_data, type, latest_menu_image_url`
-    )
-    .neq('status', 'closed')
-    .not('lat', 'is', null)
-    .not('lng', 'is', null)
-    .gte('lat', south)
-    .lte('lat', north)
-    .gte('lng', west)
-    .lte('lng', east)
-    .order('name')
-    .limit(limit)
+  const centerLat = (north + south) / 2
+  const centerLng = (east + west) / 2
+
+  // RPC orders by weighted squared-distance from viewport center.
+  // Real venues (is_seed_data=false) have no cap — always returned in full.
+  // Seed pins fill remaining budget (p_limit - real_count), capped at p_limit total.
+  // Distance is weighted by cos(radians(center_lat)) so lng contribution is
+  // proportional to true ground distance — correct at any latitude.
+  const { data, error } = await supabase.rpc('get_venues_in_bounds', {
+    p_north: north,
+    p_south: south,
+    p_east: east,
+    p_west: west,
+    p_center_lat: centerLat,
+    p_center_lng: centerLng,
+    p_limit: limit,
+  })
 
   if (error) throw error
-  const rows = (data ?? []) as unknown as LeanVenue[]
+  const rows = (data ?? []) as (LeanVenue & { dist_sq: number })[]
 
   // Deduplicate by name (case-insensitive, strip leading "The"):
-  // Keep the venue with the best status (verified > stale > unverified > new)
+  // Keep the venue with the best status (verified > stale > unverified > new).
+  // The RPC already ordered by distance — first occurrence of each dedup
+  // key is the nearest venue, so ordering is preserved through dedup.
   const statusRank: Record<string, number> = { verified: 0, stale: 1, unverified: 2, new: 3 }
-  const seen = new Map<string, LeanVenue>()
+  const seen = new Map<string, LeanVenue & { dist_sq: number }>()
   for (const v of rows) {
     const key = v.name.replace(/^the\s+/i, '').toLowerCase().trim()
     const existing = seen.get(key)
@@ -139,24 +138,11 @@ export async function getVenuesInBounds(
   }
   const deduped = Array.from(seen.values())
 
-  // Sort by distance from the bounds' centroid, nearest first.
-  const centerLat = (north + south) / 2
-  const centerLng = (east + west) / 2
-  const sorted = deduped
-    .filter((v): v is LeanVenue & { lat: number; lng: number } =>
-      v.lat != null && v.lng != null
-    )
-    .sort((a, b) =>
-      haversineM(centerLat, centerLng, a.lat, a.lng) -
-      haversineM(centerLat, centerLng, b.lat, b.lng)
-    )
-
   return {
-    venues: sorted,
-    // If the SQL returned the full limit, there's likely more in this
-    // viewport that didn't make the cut. Report it so the caller can
-    // show a "zoom in" hint.
-    capped: rows.length >= limit
+    venues: deduped,
+    // Always false — the RPC guarantees total rows ≤ p_limit by giving real
+    // venues unlimited rows and seeds only the remaining budget.
+    capped: false
   }
 }
 

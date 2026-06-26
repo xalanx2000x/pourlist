@@ -293,8 +293,9 @@ export default function Home() {
     // For the user's exact viewport, the mapBounds-driven refinement
     // below produces a more accurate fetch.
     const computeBounds = (lat: number, lng: number): VenueBounds => {
-      const latDelta = 0.03
-      const lngDelta = 0.03 / Math.cos(lat * Math.PI / 180)
+      // 500m radius — genuinely local, not half the city
+      const latDelta = 0.0045
+      const lngDelta = latDelta / Math.cos(lat * Math.PI / 180)
       return {
         north: lat + latDelta,
         south: lat - latDelta,
@@ -401,8 +402,8 @@ export default function Home() {
     // parallel; a second fetch fires via the mapBounds useEffect
     // when the flyTo completes with the exact bounds. The second
     // fetch is a no-op or minor refinement.
-    const latDelta = 0.03
-    const lngDelta = 0.03 / Math.cos(coords.lat * Math.PI / 180)
+    const latDelta = 0.0045
+    const lngDelta = latDelta / Math.cos(coords.lat * Math.PI / 180)
     loadVenues({
       north: coords.lat + latDelta,
       south: coords.lat - latDelta,
@@ -428,8 +429,8 @@ export default function Home() {
       setFlyToCenter(center)
       // Approximate bounds at zoom 13 for the immediate fetch; the
       // mapBounds useEffect will refine when the flyTo completes.
-      const latDelta = 0.03
-      const lngDelta = 0.03 / Math.cos(center.lat * Math.PI / 180)
+      const latDelta = 0.0045
+      const lngDelta = latDelta / Math.cos(center.lat * Math.PI / 180)
       loadVenues({
         north: center.lat + latDelta,
         south: center.lat - latDelta,

@@ -343,9 +343,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Rule (b) completeness gate — new venues require photo AND HH ───────
-    const rawPhotos = formData.getAll('photos')
-    console.log('[GATE DEBUG] count:', rawPhotos.length, 'types:', JSON.stringify(rawPhotos.map((p: unknown) => typeof p)), 'ctors:', JSON.stringify(rawPhotos.map((p: unknown) => (p as {constructor?:{name?:string}})?.constructor?.name)))
-    const photoFiles = rawPhotos.filter(f => f && typeof f !== 'string') as File[]
+    const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
     if (photoFiles.length === 0) {
       return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
     }

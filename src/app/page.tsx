@@ -306,9 +306,13 @@ export default function Home() {
       }
     }
 
+    // Don't fire a fetch on mount until we have either a map viewport or a real user location.
+    // The Portland default (originalGpsLocation) was causing a spurious Portland-centered fetch
+    // that could race with and overwrite the correct GPS-centered fetch.
+    if (!mapBounds && !userLocation) return
+
     const bounds = mapBounds
-      ?? (userLocation ? computeBounds(userLocation.lat, userLocation.lng) : null)
-      ?? computeBounds(originalGpsLocation.lat, originalGpsLocation.lng)
+      ?? computeBounds(userLocation.lat, userLocation.lng)
 
     loadVenues(bounds)
   }, [mapBounds, userLocation, deepLinkActive, loadVenues])

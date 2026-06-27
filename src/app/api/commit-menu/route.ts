@@ -117,7 +117,9 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Rule (b) completeness gate — validate BEFORE any write ─────────────
-    const rawPhotos = formData.getAll('photos').filter(f => f && typeof f !== 'string') as (string | File)[]
+    // The client sends photos as base64 data URLs (compressed) for this route.
+    // Accept both string (base64) and File entries so the gate matches the upload path below.
+    const rawPhotos = formData.getAll('photos').filter(f => f && (typeof f === 'string' || f instanceof File)) as (string | File)[]
 
     // A photo is ALWAYS required.
     if (rawPhotos.length === 0) {

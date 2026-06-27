@@ -1,0 +1,236 @@
+[
+  {
+    "id": "3ad79671-b09e-487b-b434-76caa177cd1f",
+    "name": "Finns Fish House",
+    "newSlug": "/or/seaside/finns-fish-house-205945",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "bc304d6e-d905-4817-ab4e-36c5dac1671a",
+    "name": "Bar West",
+    "newSlug": "/or/portland/bar-west-6c0d56",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "56ee3715-7399-4689-a280-a50be0f117e9",
+    "name": "R & R",
+    "newSlug": "/or/portland/r-r-655964",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "18b8fb63-870d-4349-94f2-7c216b3caf9b",
+    "name": "Bar Diane",
+    "newSlug": "/or/portland/bar-diane-16a7a7",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "eadb9c8a-c76b-4e93-9456-8cc976c26f90",
+    "name": "Kells Brewery",
+    "newSlug": "/or/portland/kells-brewery-38a69f",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "873a9f08-6f85-4e7e-a344-9c48d35d9c18",
+    "name": "Marathon Taverna",
+    "newSlug": "/or/portland/marathon-taverna-46fc48",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "f7d275f4-7e50-4b9d-99f0-26349e73f849",
+    "name": "Rontoms",
+    "newSlug": "/or/portland/rontoms-5234d2",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "62454456-4835-494f-8d7f-b71b2b215e57",
+    "name": "Rum Club",
+    "newSlug": "/or/portland/rum-club-2b70e0",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "060fe156-9bf9-4aa5-8536-2fcce6156ea5",
+    "name": "Matador",
+    "newSlug": "/or/portland/matador-321d92",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "c76d4d4b-cace-4d8f-9c6b-83a6adda28dd",
+    "name": "Fulton Pub & Brewery",
+    "newSlug": "/or/portland/fulton-pub-brewery-28e3ba",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "eb78d9fc-5100-457e-8b9e-f2f0061e8829",
+    "name": "Buffalo Gap",
+    "newSlug": "/or/portland/buffalo-gap-1a32a1",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "903a9cac-89c1-4029-97dc-a317d71e0c94",
+    "name": "Kennedy School",
+    "newSlug": "/or/portland/kennedy-school-6a3555",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "c84a7d5e-02a3-488c-b63d-fda516eacfc0",
+    "name": "Gorges Beer Co.",
+    "newSlug": "/or/portland/gorges-beer-co-413ca4",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "d9a82d5f-e739-494d-a3c8-ecdddd60c124",
+    "name": "Holman's Bar and Grill",
+    "newSlug": "/or/portland/holmans-bar-and-grill-47d774",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "9e7e3002-dc6c-41c3-ae43-fac56b43db86",
+    "name": "Bull Run Pizza",
+    "newSlug": "/or/portland/bull-run-pizza-765430",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "8994094a-d50e-49ac-81c9-eedaa28ed104",
+    "name": "Stammtisch",
+    "newSlug": "/or/portland/stammtisch-71124e",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "cf2eee7a-b887-4d26-8ef0-cb51828a9cda",
+    "name": "Screen Door Restaurant Eastside",
+    "newSlug": "/or/portland/screen-door-restaurant-eastside-7ec2dd",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "733ce98a-304b-4b9c-8c0e-42235e6adfac",
+    "name": "Park City Pub",
+    "newSlug": "/or/portland/park-city-pub-201791",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "5330faf2-94ba-46b1-bf71-c6473f745e0c",
+    "name": "Sandy Jug",
+    "newSlug": "/or/portland/sandy-jug-635b36",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "d4c59b9b-d7b4-4801-88c2-78e0605f3c6f",
+    "name": "Clyde's",
+    "newSlug": "/or/portland/clydes-342c5e",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "fbcaa8a1-fb08-410c-801c-5b2fabca72d4",
+    "name": "Full Moon Thai Restaurant",
+    "newSlug": "/or/portland/full-moon-thai-restaurant-705921",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "85ec7613-eb42-45fd-a7ed-cc2400fb9502",
+    "name": "Triple Nickle Pub",
+    "newSlug": "/or/portland/triple-nickle-pub-413e52",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "8400299a-d137-43bd-aced-2c7fc3e7cc0e",
+    "name": "The Nest Lounge",
+    "newSlug": "/or/portland/the-nest-lounge-13293d",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "1941ae6d-d375-47f4-a41a-b451524933df",
+    "name": "Steeplejack Brewing Co SW",
+    "newSlug": "/or/portland/steeplejack-brewing-co-sw-441a09",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "65d8514b-0fe9-4303-8e25-231582a248eb",
+    "name": "Urban German Wursthaus",
+    "newSlug": "/or/portland/urban-german-wursthaus-3eb4ce",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "25d0950d-d721-46e7-b981-d67ee071c3bc",
+    "name": "TEST_DELETE_ME",
+    "newSlug": "/or/portland/testdeleteme-f8146c",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "64abacd0-db80-4fd4-97de-aa6171ac959f",
+    "name": "Occidental Brewery",
+    "newSlug": "/or/portland/occidental-brewery-4111fc",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "8bbf5085-bc69-411d-b9d5-5b172be40610",
+    "name": "Pope House",
+    "newSlug": "/or/portland/pope-house-485083",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "c3f2f0aa-2490-4ed7-a610-64f131c25683",
+    "name": "Sugar Hill",
+    "newSlug": "/or/portland/sugar-hill-1b9652",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "2ae9789a-04d3-4990-bc28-05089c580563",
+    "name": "McMenamins Blue Moon Tavern & Grill",
+    "newSlug": "/or/portland/mcmenamins-blue-moon-tavern-grill-21b203",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "af78b920-b435-4f53-818d-11bab80d513b",
+    "name": "Paymaster Lounge",
+    "newSlug": "/or/portland/paymaster-lounge-596ec6",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "c8e5f4c7-a72c-47c6-980f-ec0f7fb311f3",
+    "name": "The Outskirts Brewing Co",
+    "newSlug": "/wa/selah/the-outskirts-brewing-co-6a8a14",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "d903d1a3-5b34-4c0d-be65-8954b87a6954",
+    "name": "Jolly Rodger at John’s Landing",
+    "newSlug": "/or/portland/jolly-rodger-at-johns-landing-6bb8cb",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "63636f9f-34ce-4132-b5cc-3ed3533efab2",
+    "name": "Bantam Tavern",
+    "newSlug": "/or/portland/bantam-tavern-4ae5f9",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "d73599e4-250b-4b9a-bb09-e8a88e005dd4",
+    "name": "Joe's Cellar Bar",
+    "newSlug": "/or/portland/joes-cellar-bar-5839d8",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "e61bec4d-7b88-40b9-a937-481cd16eb1d8",
+    "name": "Silver Dollar Pizza",
+    "newSlug": "/or/portland/silver-dollar-pizza-313316",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "4eda6780-4414-4653-ba36-4cf369852544",
+    "name": "QD’s",
+    "newSlug": "/or/portland/qds-38b8cd",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "961dfc59-2e64-41cd-bf11-952670066492",
+    "name": "The Pharmacy",
+    "newSlug": "/or/portland/the-pharmacy-7efa53",
+    "kind": "CLEAN"
+  },
+  {
+    "id": "bc87dab3-96cc-458d-9bda-e1e1b4b8ee62",
+    "name": "Twenty First (21st) Kitchen and Bar",
+    "newSlug": "/or/portland/twenty-first-21st-kitchen-and-bar-445783",
+    "kind": "CLEAN"
+  }
+]

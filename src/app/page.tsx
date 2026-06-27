@@ -306,13 +306,17 @@ export default function Home() {
       }
     }
 
-    // Don't fire a fetch on mount until we have either a map viewport or a real user location.
-    // The Portland default (originalGpsLocation) was causing a spurious Portland-centered fetch
-    // that could race with and overwrite the correct GPS-centered fetch.
+    // Intentionally NO venue fetch on mount. Firing one here (before GPS
+    // resolves) used the Portland default center and could RACE the GPS
+    // fetch — if the default fetch's response landed after the GPS fetch,
+    // last-write-wins put the wrong (Portland) venues on the map. Instead
+    // we wait: the GPS effect sets userLocation (real location on success,
+    // fallback on failure/timeout) which triggers this effect with the
+    // correct center. Do not add an initial fetch here.
     if (!mapBounds && !userLocation) return
 
     const bounds = mapBounds
-      ?? computeBounds(userLocation.lat, userLocation.lng)
+      ?? computeBounds(userLocation!.lat, userLocation!.lng)
 
     loadVenues(bounds)
   }, [mapBounds, userLocation, deepLinkActive, loadVenues])
@@ -332,16 +336,26 @@ export default function Home() {
   // no-IP user still sees the app's home area. The mapBounds
   // useEffect will then load Portland venues via the initial map
   // bounds.
+  //
+  // HARD OUTER TIMEOUT (5s): getBrowserLocation() has an internal 10s GPS
+  // timeout + IP fallback, but a user-ignored permission prompt or a slow
+  // GPS fix can hang indefinitely. Race with a 5s timeout so ANY rejection
+  // (GPS denied, IP failed, timeout, ignored prompt) falls back to
+  // originalGpsLocation and triggers the venue fetch — guaranteeing the
+  // map is never left empty.
   useEffect(() => {
     if (isDeepLinkActive()) return
     if (deepLinkActive) return
-    getBrowserLocation()
+    Promise.race([
+      getBrowserLocation(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new LocationUnavailableError('GPS timeout')), 5_000)
+      )
+    ])
       .then(loc => setUserLocation(loc))
       .catch((err) => {
-        if (err instanceof LocationUnavailableError) {
-          showLocationToastOnce()
-          setUserLocation(originalGpsLocation)
-        }
+        showLocationToastOnce()
+        setUserLocation(originalGpsLocation)
       })
   }, [deepLinkActive, showLocationToastOnce])
 

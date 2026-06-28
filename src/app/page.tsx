@@ -542,7 +542,7 @@ export default function Home() {
    * Step 1: Photos captured → decide next step based on GPS + pre-selected venue.
    *
    * If a venue was pre-selected in scan_start:
-   *   - GPS available → verify within 50m → proceed to review
+   *   - GPS available → verify within 15m → proceed to review
    *   - No GPS → name_entry (confirm or create venue)
    *
    * If no venue pre-selected (user tapped "Add Venue"):
@@ -675,12 +675,17 @@ export default function Home() {
     const menuText = await parseMenuPhotos(files)
 
     if (confirmedVenue) {
-      // Existing venue path — verify user GPS is near the venue before proceeding.
-      // (phoneGps is the fraud check signal, compared against venue's known coordinates)
-      if (phoneGps && confirmedVenue.lat != null && confirmedVenue.lng != null) {
-        const withinRange = isWithinRadius(phoneGps.lat, phoneGps.lng, confirmedVenue.lat, confirmedVenue.lng, 100)
+      // Existing venue path — HARD BLOCK if user is not within presence radius (15m).
+      // No GPS = cannot verify presence = blocked.
+      if (!phoneGps) {
+        setGpsWarning('PourList needs your location to confirm you\'re at the venue. Please enable location and try again.')
+        return
+      }
+      if (confirmedVenue.lat != null && confirmedVenue.lng != null) {
+        const withinRange = isWithinRadius(phoneGps.lat, phoneGps.lng, confirmedVenue.lat, confirmedVenue.lng, 15)
         if (!withinRange) {
-          setGpsWarning('Your location seems far from this venue. Are you sure you\'re here?')
+          setGpsWarning('It appears you are not at the venue. Please get closer to the venue to submit a happy hour menu.')
+          return
         }
       }
       setScan(prev => ({ ...prev, files, phoneGps, exifGps, menuText }))
@@ -852,6 +857,9 @@ export default function Home() {
         case 'missing_hh':          return 'Add the happy hour times to submit this venue.'
         case 'duplicate':           return 'This venue is already on PourList nearby.'
         case 'photo_upload_failed': return 'Photo upload didn\'t go through — nothing was saved. Please try again.'
+        case 'too_far':             return 'It appears you are not at the venue. Please get closer to the venue to submit a happy hour menu.'
+        case 'no_gps':              return 'PourList needs your location to confirm you\'re at the venue. Please enable location and try again.'
+        case 'venue_no_location':   return 'This venue is missing location data and can\'t be updated right now.'
         case 'venue_not_found':
         case 'not_a_seed_venue':    return 'Something went wrong with this venue. Please try again.'
         default:                    return fallback
@@ -1404,6 +1412,26 @@ export default function Home() {
           >
             ← Back to Map
           </button>
+
+          {/* GPS presence warning — blocks scan progression */}
+          {gpsWarning && (
+            <div
+              role="alert"
+              className="fixed top-0 left-0 right-0 z-[200] bg-red-600 text-white px-4 py-4 flex items-start gap-3"
+            >
+              <span className="text-lg leading-none shrink-0 mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold leading-snug">{gpsWarning}</p>
+              </div>
+              <button
+                onClick={() => { setGpsWarning(null); resetScan() }}
+                className="text-white/70 hover:text-white text-xl leading-none shrink-0"
+                aria-label="Dismiss and go back"
+              >
+                ×
+              </button>
+            </div>
+          )}
 
           {/* Location-unavailable toast — fixed, doesn't push layout */}
           {locationToast && (

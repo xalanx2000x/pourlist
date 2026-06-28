@@ -56,7 +56,7 @@ export default function VenuePicker({
     setLoading(true)
     setError('')
 
-    getVenuesByProximity(searchGps.lat, searchGps.lng, 50)
+    getVenuesByProximity(searchGps.lat, searchGps.lng, 100)
       .then((results) => {
         // Sort by distance to user
         const sorted = results.sort((a, b) => {

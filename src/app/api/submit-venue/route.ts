@@ -304,20 +304,17 @@ export async function POST(req: NextRequest) {
       if (deviceHash) {
         await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
       }
-      if (phoneLat != null && phoneLng != null && !isNaN(venueLat) && !isNaN(venueLng)) {
-        const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number)
-        const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number)
-        if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
-          const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
-          if (distance > 500) {
-            await supabase.from('venue_events').insert({
-              venue_id: seedVenueId,
-              event_type: 'gps_mismatch',
-              device_hash: deviceHash,
-              lat: phoneLatNum,
-              lng: phoneLngNum
-            })
-          }
+      // No GPS = cannot verify presence = blocked
+      if (phoneLat == null || phoneLng == null) {
+        return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
+      }
+      const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number)
+      const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number)
+      if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
+        const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
+        // Hard block if not within presence radius (15m)
+        if (distance > 15) {
+          return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
         }
       }
 
@@ -359,7 +356,7 @@ export async function POST(req: NextRequest) {
     // ── end gate ───────────────────────────────────────────────────────────
 
     // ── Dedup: find nearby venue with same/similar name ─────────────────────
-    const dedupRadiusM = 50
+    const dedupRadiusM = 15
     const latDelta = dedupRadiusM / 111320
     const cosLat = Math.cos((venueLat * Math.PI) / 180)
     const lngDelta = dedupRadiusM / (111320 * (cosLat < 0.01 ? 0.01 : cosLat))
@@ -577,21 +574,17 @@ export async function POST(req: NextRequest) {
 
     // ── Fraud signal logging ───────────────────────────────────────────────
     // Log the phone GPS vs EXIF GPS distance to venue_events for fraud analysis
-    if (phoneLat != null && phoneLng != null) {
-      const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : phoneLat
-      const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : phoneLng
-      if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
-        const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
-        // Only log if phone is far from venue (>500m) — indicates possible fraud
-        if (distance > 500) {
-          await supabase.from('venue_events').insert({
-            venue_id: venueId,
-            event_type: 'gps_mismatch',
-            device_hash: deviceHash,
-            lat: phoneLatNum,
-            lng: phoneLngNum
-          })
-        }
+    // No GPS = cannot verify presence = blocked
+    if (phoneLat == null || phoneLng == null) {
+      return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
+    }
+    const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : phoneLat
+    const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : phoneLng
+    if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
+      const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
+      // Hard block if not within presence radius (15m)
+      if (distance > 15) {
+        return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
       }
     }
 

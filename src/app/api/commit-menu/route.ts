@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, reason: 'missing_venue_name' }, { status: 400 })
       }
 
-      // Geo-dedup: check if a venue with same name exists within 50m
+      // Geo-dedup: check if a venue with same name exists within 15m
       if (numLat != null && numLng != null) {
         const R = 6371000
         const latRad = numLat * Math.PI / 180
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
                       Math.cos(latRad) * Math.cos(v.lat * Math.PI / 180) *
                       Math.sin(dLng / 2) ** 2
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-            if (R * c > 50) return false
+            if (R * c > 15) return false
             const norm = (n: string) => n.replace(/^the\s+/i, '').toLowerCase().trim()
             return norm(v.name) === norm(venueName!)
           })
@@ -235,44 +235,70 @@ export async function POST(req: NextRequest) {
         }
         targetVenueId = newVenue.id
       }
-    } else {
-      // ── Update existing venue's HH schedule — merge-safe, never nulls ─────
-      // Only write fields that are explicitly provided; leave others untouched.
-      if (hasHhInSubmission) {
-        const hhUpdate: Record<string, unknown> = {
-          hh_updated_at: new Date().toISOString()
-        }
-        if (hhTime !== undefined) hhUpdate.hh_time = hhTime?.trim() || null
-        if (hhSummary !== undefined) hhUpdate.hh_summary = hhSummary?.trim() || null
-        if (hh_type !== undefined) hhUpdate.hh_type = hh_type || null
-        if (hh_days !== undefined) hhUpdate.hh_days = hh_days || null
-        if (hh_exclude_days !== undefined) hhUpdate.hh_exclude_days = hh_exclude_days || null
-        if (hh_start !== undefined) hhUpdate.hh_start = hh_start ? parseInt(hh_start) : null
-        if (hh_end !== undefined) hhUpdate.hh_end = hh_end ? parseInt(hh_end) : null
-        if (hh_type_2 !== undefined) hhUpdate.hh_type_2 = hh_type_2 || null
-        if (hh_days_2 !== undefined) hhUpdate.hh_days_2 = hh_days_2 || null
-        if (hh_exclude_days_2 !== undefined) hhUpdate.hh_exclude_days_2 = hh_exclude_days_2 || null
-        if (hh_start_2 !== undefined) hhUpdate.hh_start_2 = hh_start_2 ? parseInt(hh_start_2) : null
-        if (hh_end_2 !== undefined) hhUpdate.hh_end_2 = hh_end_2 ? parseInt(hh_end_2) : null
-        if (hh_type_3 !== undefined) hhUpdate.hh_type_3 = hh_type_3 || null
-        if (hh_days_3 !== undefined) hhUpdate.hh_days_3 = hh_days_3 || null
-        if (hh_exclude_days_3 !== undefined) hhUpdate.hh_exclude_days_3 = hh_exclude_days_3 || null
-        if (hh_start_3 !== undefined) hhUpdate.hh_start_3 = hh_start_3 ? parseInt(hh_start_3) : null
-        if (hh_end_3 !== undefined) hhUpdate.hh_end_3 = hh_end_3 ? parseInt(hh_end_3) : null
-        if (opening_min !== undefined) hhUpdate.opening_min = opening_min ? parseInt(opening_min) : null
-
-        const { error: updateError } = await supabase
-          .from('venues')
-          .update(hhUpdate)
-          .eq('id', targetVenueId)
-
-        if (updateError) {
-          console.error('commit-menu: venue update error:', updateError)
-          return NextResponse.json({ success: false, reason: 'update_failed' }, { status: 500 })
-        }
-      }
-      // If !hasHhInSubmission but venue already had HH: no HH write needed (photo-only refresh)
     }
+
+    // ── Presence gate (15m) — submitter must be at the venue ───────────────
+    // No GPS = cannot verify presence = blocked.
+    if (numLat == null || numLng == null || isNaN(numLat) || isNaN(numLng)) {
+      return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
+    }
+    {
+      const { data: venueLoc } = await supabase
+        .from('venues')
+        .select('lat, lng')
+        .eq('id', targetVenueId)
+        .single()
+      if (venueLoc?.lat == null || venueLoc?.lng == null) {
+        return NextResponse.json({ success: false, reason: 'venue_no_location' }, { status: 400 })
+      }
+      const R = 6371000
+      const dLat = (numLat - venueLoc.lat) * Math.PI / 180
+      const dLng = (numLng - venueLoc.lng) * Math.PI / 180
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(venueLoc.lat * Math.PI / 180) * Math.cos(numLat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+      const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      if (distance > 15) {
+        return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
+      }
+    }
+    // ── end presence gate ──────────────────────────────────────────────────
+
+    // ── Update existing venue's HH schedule — merge-safe, never nulls ─────
+    // Only write fields that are explicitly provided; leave others untouched.
+    if (hasHhInSubmission) {
+      const hhUpdate: Record<string, unknown> = {
+        hh_updated_at: new Date().toISOString()
+      }
+      if (hhTime !== undefined) hhUpdate.hh_time = hhTime?.trim() || null
+      if (hhSummary !== undefined) hhUpdate.hh_summary = hhSummary?.trim() || null
+      if (hh_type !== undefined) hhUpdate.hh_type = hh_type || null
+      if (hh_days !== undefined) hhUpdate.hh_days = hh_days || null
+      if (hh_exclude_days !== undefined) hhUpdate.hh_exclude_days = hh_exclude_days || null
+      if (hh_start !== undefined) hhUpdate.hh_start = hh_start ? parseInt(hh_start) : null
+      if (hh_end !== undefined) hhUpdate.hh_end = hh_end ? parseInt(hh_end) : null
+      if (hh_type_2 !== undefined) hhUpdate.hh_type_2 = hh_type_2 || null
+      if (hh_days_2 !== undefined) hhUpdate.hh_days_2 = hh_days_2 || null
+      if (hh_exclude_days_2 !== undefined) hhUpdate.hh_exclude_days_2 = hh_exclude_days_2 || null
+      if (hh_start_2 !== undefined) hhUpdate.hh_start_2 = hh_start_2 ? parseInt(hh_start_2) : null
+      if (hh_end_2 !== undefined) hhUpdate.hh_end_2 = hh_end_2 ? parseInt(hh_end_2) : null
+      if (hh_type_3 !== undefined) hhUpdate.hh_type_3 = hh_type_3 || null
+      if (hh_days_3 !== undefined) hhUpdate.hh_days_3 = hh_days_3 || null
+      if (hh_exclude_days_3 !== undefined) hhUpdate.hh_exclude_days_3 = hh_exclude_days_3 || null
+      if (hh_start_3 !== undefined) hhUpdate.hh_start_3 = hh_start_3 ? parseInt(hh_start_3) : null
+      if (hh_end_3 !== undefined) hhUpdate.hh_end_3 = hh_end_3 ? parseInt(hh_end_3) : null
+      if (opening_min !== undefined) hhUpdate.opening_min = opening_min ? parseInt(opening_min) : null
+
+      const { error: updateError } = await supabase
+        .from('venues')
+        .update(hhUpdate)
+        .eq('id', targetVenueId)
+
+      if (updateError) {
+        console.error('commit-menu: venue update error:', updateError)
+        return NextResponse.json({ success: false, reason: 'update_failed' }, { status: 500 })
+      }
+    }
+    // If !hasHhInSubmission but venue already had HH: no HH write needed (photo-only refresh)
 
     // ── Upload photos ─────────────────────────────────────────────────────
     // photos may be File objects (backward compat) or base64 data URLs (compressed, preferred)

@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { extractGpsFromPhoto, getBrowserLocation } from '@/lib/gps'
+import { extractGpsFromPhoto, getBrowserLocation, type GpsCoords } from '@/lib/gps'
 
 interface MenuCaptureProps {
-  onCapture: (files: File[], phoneGps: { lat: number; lng: number } | null, exifGps: { lat: number; lng: number } | null) => void
+  onCapture: (files: File[], phoneGps: GpsCoords | null, exifGps: { lat: number; lng: number } | null) => void
   onClose: () => void
 }
 
@@ -94,7 +94,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
       // Used as the venue location signal when photo has no EXIF GPS.
       // This handles the case where the photo was taken inside Safari's camera
       // (which doesn't embed GPS) rather than the native camera app.
-      let browserGps: { lat: number; lng: number } | null = null
+      let browserGps: GpsCoords | null = null
       try {
         browserGps = await getBrowserLocation()
       } catch {

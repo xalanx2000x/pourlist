@@ -29,7 +29,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
   const [flagError, setFlagError] = useState<string | null>(null)
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -134,7 +134,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
       () => setLocationError('Location unavailable')
     )
   }, [])
@@ -156,7 +156,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           deviceHash: getDeviceHash(),
           reason: 'no_hh',
           lat: userLocation.lat,
-          lng: userLocation.lng
+          lng: userLocation.lng,
+          ...(userLocation.accuracy != null && { accuracy: userLocation.accuracy })
         })
       })
       const data = await res.json()

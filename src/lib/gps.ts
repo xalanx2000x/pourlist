@@ -21,6 +21,8 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 export interface GpsCoords {
   lat: number
   lng: number
+  /** Meters — from position.coords.accuracy (browser GPS) or 75 (IP fallback). Omitted for EXIF GPS. */
+  accuracy?: number
 }
 
 /**
@@ -91,7 +93,7 @@ export function getBrowserLocation(): Promise<GpsCoords> {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         clearTimeout(timer)
-        settle({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        settle({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
       },
       () => {
         clearTimeout(timer)
@@ -107,12 +109,15 @@ export function getBrowserLocation(): Promise<GpsCoords> {
  * Used as fallback when browser GPS is unavailable.
  */
 async function fetchIpLocation(): Promise<GpsCoords> {
+  // IP geolocation accuracy is ~500m in Portland — use the CEILING (75m) so the
+  // presence gate is maximally forgiving for this fallback path without being open.
+  const IP_ACCURACY = 75
   // Try ipapi.co (free tier, 1000 req/day, no key needed)
   const res = await fetch('https://ipapi.co/json/', { cache: 'no-cache' })
   if (res.ok) {
     const data = await res.json()
     if (data.latitude && data.longitude) {
-      return { lat: data.latitude, lng: data.longitude }
+      return { lat: data.latitude, lng: data.longitude, accuracy: IP_ACCURACY }
     }
   }
   // Fallback: ip-api.com (free, 45 req/min)
@@ -120,7 +125,7 @@ async function fetchIpLocation(): Promise<GpsCoords> {
   if (res2.ok) {
     const data = await res2.json()
     if (data.lat != null && data.lon != null) {
-      return { lat: data.lat, lng: data.lon }
+      return { lat: data.lat, lng: data.lon, accuracy: IP_ACCURACY }
     }
   }
   throw new LocationUnavailableError('IP geolocation failed')

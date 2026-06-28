@@ -8,7 +8,7 @@ import { formatAddress } from '@/lib/format-address'
 interface VenuePickerProps {
   files: File[]
   /** User's current location — used to find nearby venues and verify proximity */
-  phoneGps: { lat: number; lng: number } | null
+  phoneGps: { lat: number; lng: number; accuracy?: number } | null
   /** Authoritative venue location from photo EXIF — used to verify user is at venue */
   exifGps: { lat: number; lng: number } | null
   onVenueConfirmed: (venue: Venue) => void
@@ -56,7 +56,7 @@ export default function VenuePicker({
     setLoading(true)
     setError('')
 
-    getVenuesByProximity(searchGps.lat, searchGps.lng, 100)
+    getVenuesByProximity(searchGps.lat, searchGps.lng, 150)
       .then((results) => {
         // Sort by distance to user
         const sorted = results.sort((a, b) => {

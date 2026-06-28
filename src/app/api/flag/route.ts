@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { isWithinRadius } from '@/lib/gpsCheck'
+import { isWithinPresence, PRESENCE_BASE_M, PRESENCE_CEILING_M } from '@/lib/gpsCheck'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const GPS_MAX_METERS = 15
+
 
 /**
  * POST /api/flag
@@ -26,12 +26,13 @@ const GPS_MAX_METERS = 15
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { venueId, deviceHash, reason, lat, lng } = body as {
+    const { venueId, deviceHash, reason, lat, lng, accuracy } = body as {
       venueId?: string
       deviceHash?: string
       reason?: string
       lat?: number
       lng?: number
+      accuracy?: number
     }
 
     // ── Input validation ────────────────────────────────────────
@@ -68,9 +69,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!isWithinRadius(lat, lng, venue.lat, venue.lng, GPS_MAX_METERS)) {
+    const allowed = Math.min(
+      PRESENCE_CEILING_M,
+      Math.max(PRESENCE_BASE_M, accuracy != null && !isNaN(accuracy) ? accuracy : PRESENCE_BASE_M)
+    )
+    if (!isWithinPresence(lat, lng, venue.lat, venue.lng, accuracy ?? PRESENCE_BASE_M)) {
       return NextResponse.json(
-        { error: 'You must be within 15 meters of the venue to flag it' },
+        { error: 'You must be at the venue to flag it' },
         { status: 400 }
       )
     }

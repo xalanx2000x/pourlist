@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
 import { getVenuesInBounds, getVenuesByProximity, getVenueById, getVenueBySlugClient, type LeanVenue, type VenueBounds } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
-import { isWithinRadius } from '@/lib/gpsCheck'
+import { isWithinRadius, isWithinPresence } from '@/lib/gpsCheck'
 import VenueList from '@/components/VenueList'
 import VenueDetail from '@/components/VenueDetail'
 
@@ -43,7 +43,7 @@ type ScanStep =
 
 type ScanState = {
   files: File[]
-  phoneGps: { lat: number; lng: number } | null   // phone's current GPS — fraud signal, not venue location
+  phoneGps: { lat: number; lng: number; accuracy?: number } | null   // phone's current GPS + accuracy (accuracy undefined if unavailable)
   exifGps: { lat: number; lng: number } | null    // EXIF GPS from first photo — authoritative venue location
   confirmedVenue: Venue | null
   newVenueName: string | null
@@ -668,7 +668,7 @@ export default function Home() {
     })
   }
 
-  async function handleCapture(files: File[], phoneGps: { lat: number; lng: number } | null, exifGps: { lat: number; lng: number } | null) {
+  async function handleCapture(files: File[], phoneGps: { lat: number; lng: number; accuracy?: number } | null, exifGps: { lat: number; lng: number } | null) {
     const confirmedVenue = scan.confirmedVenue
 
     // Parse menu photos immediately so text is ready for MenuReview
@@ -682,7 +682,11 @@ export default function Home() {
         return
       }
       if (confirmedVenue.lat != null && confirmedVenue.lng != null) {
-        const withinRange = isWithinRadius(phoneGps.lat, phoneGps.lng, confirmedVenue.lat, confirmedVenue.lng, 15)
+        const withinRange = isWithinPresence(
+          phoneGps.lat, phoneGps.lng,
+          confirmedVenue.lat, confirmedVenue.lng,
+          phoneGps.accuracy
+        )
         if (!withinRange) {
           setGpsWarning('It appears you are not at the venue. Please get closer to the venue to submit a happy hour menu.')
           return
@@ -705,7 +709,7 @@ export default function Home() {
     // If found, show "Did you mean this venue?" instead of the normal venue_picker.
     if (venueProposedCoords != null) {
       try {
-        const seedVenues = await getVenuesByProximity(venueProposedCoords.lat, venueProposedCoords.lng, 100)
+        const seedVenues = await getVenuesByProximity(venueProposedCoords.lat, venueProposedCoords.lng, 150)
           .then(venues => venues.filter(v => v.is_seed_data === true))
         if (seedVenues.length > 0) {
           // Pick the closest seed venue by GPS distance
@@ -880,6 +884,7 @@ export default function Home() {
       if (phoneGps) {
         formData.append('phoneLat', String(phoneGps.lat))
         formData.append('phoneLng', String(phoneGps.lng))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy))
       }
       formData.append('deviceHash', deviceHash)
       if (hhSummary) formData.append('hhSummary', hhSummary)
@@ -966,6 +971,7 @@ export default function Home() {
       if (phoneGps) {
         formData.append('lat', String(phoneGps.lat))
         formData.append('lng', String(phoneGps.lng))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy))
       }
       formData.append('deviceHash', deviceHash)
       if (hhTime) formData.append('hhTime', hhTime)
@@ -1056,6 +1062,7 @@ export default function Home() {
       if (phoneGps) {
         formData.append('phoneLat', String(phoneGps.lat))
         formData.append('phoneLng', String(phoneGps.lng))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy))
       }
       formData.append('deviceHash', deviceHash)
       if (hhSummary) formData.append('hhSummary', hhSummary)

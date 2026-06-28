@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
       exifLng,
       phoneLat,
       phoneLng,
+      phoneAccuracy,
       deviceHash,
       hhSummary,
       hh_type,
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
       exifLng?: string | number
       phoneLat?: string | number
       phoneLng?: string | number
+      phoneAccuracy?: string | number
       deviceHash?: string
       hhSummary?: string
       hh_type?: string
@@ -310,10 +312,15 @@ export async function POST(req: NextRequest) {
       }
       const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number)
       const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number)
+      const phoneAccuracyNum = phoneAccuracy != null
+        ? (typeof phoneAccuracy === 'string' ? parseFloat(phoneAccuracy) : (phoneAccuracy as number))
+        : null
+
       if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
         const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
-        // Hard block if not within presence radius (15m)
-        if (distance > 15) {
+        // Accuracy-aware presence gate: clamp accuracy to [25, 75]
+        const allowed = Math.min(75, Math.max(25, (phoneAccuracyNum != null && !isNaN(phoneAccuracyNum)) ? phoneAccuracyNum : 25))
+        if (distance > allowed) {
           return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
         }
       }
@@ -580,10 +587,15 @@ export async function POST(req: NextRequest) {
     }
     const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : phoneLat
     const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : phoneLng
+    const phoneAccuracyNum = phoneAccuracy != null
+      ? (typeof phoneAccuracy === 'string' ? parseFloat(phoneAccuracy) : (phoneAccuracy as number))
+      : null
+
     if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
       const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
-      // Hard block if not within presence radius (15m)
-      if (distance > 15) {
+      // Accuracy-aware presence gate: clamp accuracy to [25, 75]
+      const allowed = Math.min(75, Math.max(25, (phoneAccuracyNum != null && !isNaN(phoneAccuracyNum)) ? phoneAccuracyNum : 25))
+      if (distance > allowed) {
         return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
       }
     }

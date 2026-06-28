@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
       venueName,
       lat,
       lng,
+      phoneAccuracy,
       deviceHash,
       hhTime,
       hhSummary,
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       venueName?: string
       lat?: string | number
       lng?: string | number
+      phoneAccuracy?: string | number
       deviceHash: string
       hhTime?: string
       hhSummary?: string
@@ -111,6 +113,14 @@ export async function POST(req: NextRequest) {
 
     const numLat = typeof lat === 'string' ? parseFloat(lat) : lat
     const numLng = typeof lng === 'string' ? parseFloat(lng) : lng
+    const numAccuracy = phoneAccuracy != null
+      ? (typeof phoneAccuracy === 'string' ? parseFloat(phoneAccuracy) : phoneAccuracy)
+      : null
+
+    // Log accuracy so we can verify the value is flowing (VERIFICATION case #7)
+    if (numAccuracy != null && !isNaN(numAccuracy)) {
+      console.log(`[commit-menu] phoneAccuracy=${numAccuracy.toFixed(1)}m`)
+    }
 
     if (!deviceHash) {
       return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
@@ -257,7 +267,9 @@ export async function POST(req: NextRequest) {
       const a = Math.sin(dLat / 2) ** 2 +
                 Math.cos(venueLoc.lat * Math.PI / 180) * Math.cos(numLat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
       const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-      if (distance > 15) {
+      // Accuracy-aware presence gate: clamp accuracy to [25, 75] before comparing
+      const allowed = Math.min(75, Math.max(25, (numAccuracy != null && !isNaN(numAccuracy)) ? numAccuracy : 25))
+      if (distance > allowed) {
         return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
       }
     }

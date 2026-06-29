@@ -550,20 +550,16 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           }}
           disabled={scanBtnState !== 'in_range'}
           className={`w-full py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-2 ${
-            scanBtnState === 'locating' ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
-            scanBtnState === 'out_of_range' ? 'bg-gray-300 text-gray-500 cursor-not-allowed' :
-            scanBtnState === 'no_gps'     ? 'bg-red-400 text-white cursor-not-allowed' :
+            scanBtnState === 'locating'    ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
+            (scanBtnState === 'out_of_range' || scanBtnState === 'no_gps')
+                                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed' :
             'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white'
           }`}
         >
-          <span className="text-xl">{
-            scanBtnState === 'locating' ? '📍' :
-            scanBtnState === 'out_of_range' ? '📍' :
-            scanBtnState === 'no_gps' ? '📍' : '📷'
-          }</span>
+          <span className="text-xl">{scanBtnState === 'in_range' ? '📷' : '📍'}</span>
           {scanBtnState === 'locating'    ? 'Checking location…' :
            scanBtnState === 'out_of_range' ? 'Too far to scan' :
-           scanBtnState === 'no_gps'     ? 'Too far to scan' :
+           scanBtnState === 'no_gps'     ? 'Enable location to scan' :
            'Scan Menu'}
         </button>
         {scanBtnState === 'out_of_range' && (
@@ -572,8 +568,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           </p>
         )}
         {scanBtnState === 'no_gps' && (
-          <p className="text-xs text-red-500 px-1 mb-3">
-            PourList needs your location to confirm you&apos;re at the venue. Please enable location and try again.
+          <p className="text-xs text-gray-500 px-1 mb-3">
+            Location access is needed to scan a venue&apos;s menu — please enable it in your browser settings.
           </p>
         )}
 

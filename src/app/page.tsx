@@ -1515,6 +1515,7 @@ export default function Home() {
         <SeedMatchConfirm
           seedVenue={scan.seedMatch}
           files={scan.files}
+          phoneGps={scan.phoneGps}
           onConfirm={handleSeedMatchConfirm}
           onDeny={handleSeedMatchDeny}
           onClose={handleScanClose}

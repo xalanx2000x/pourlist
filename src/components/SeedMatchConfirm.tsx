@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import type { Venue } from '@/lib/supabase'
+import { isWithinPresence } from '@/lib/gpsCheck'
 
 interface SeedMatchConfirmProps {
   seedVenue: Venue
   files: File[]
+  phoneGps: { lat: number; lng: number; accuracy?: number } | null
   onConfirm: (venue: Venue) => Promise<void>
   onDeny: () => void
   onClose: () => void
@@ -14,16 +16,27 @@ interface SeedMatchConfirmProps {
 export default function SeedMatchConfirm({
   seedVenue,
   files,
+  phoneGps,
   onConfirm,
   onDeny,
   onClose,
 }: SeedMatchConfirmProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [tooFar, setTooFar] = useState(false)
 
   const previewUrls = files.map(f => URL.createObjectURL(f))
 
   async function handleConfirm() {
+    if (
+      phoneGps &&
+      seedVenue.lat != null && seedVenue.lng != null &&
+      !isWithinPresence(phoneGps.lat, phoneGps.lng, seedVenue.lat, seedVenue.lng, phoneGps.accuracy)
+    ) {
+      setTooFar(true)
+      return
+    }
+    setTooFar(false)
     setLoading(true)
     setError('')
     try {
@@ -74,6 +87,15 @@ export default function SeedMatchConfirm({
           </p>
         </div>
 
+        {tooFar && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+            <p className="text-sm font-medium text-red-700">Too far from the venue</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              You appear to be too far from &ldquo;{seedVenue.name}&rdquo; to add its happy hour. Please get closer to the venue.
+            </p>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
             <p className="text-sm font-medium text-red-700">Failed</p>
@@ -97,9 +119,15 @@ export default function SeedMatchConfirm({
         <button
           onClick={handleConfirm}
           disabled={loading}
-          className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2"
+          className={`w-full py-3.5 rounded-xl font-semibold text-base transition-colors flex items-center justify-center gap-2 ${
+            tooFar
+              ? 'bg-red-500 hover:bg-red-600 text-white'
+              : 'bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white'
+          }`}
         >
-          {loading ? (
+          {tooFar ? (
+            <>Too far from &ldquo;{seedVenue.name}&rdquo; — get closer</>
+          ) : loading ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Saving...

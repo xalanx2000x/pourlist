@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { getVenuesByProximity } from '@/lib/venues'
 import type { Venue } from '@/lib/supabase'
 import { formatAddress } from '@/lib/format-address'
+import { isWithinPresence } from '@/lib/gpsCheck'
 
 interface VenuePickerProps {
   files: File[]
@@ -44,6 +45,7 @@ export default function VenuePicker({
   const [venues, setVenues] = useState<Venue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tooFarVenue, setTooFarVenue] = useState<Venue | null>(null)
 
   useEffect(() => {
     // Use phone GPS to find nearby venues
@@ -148,11 +150,14 @@ export default function VenuePicker({
               venue.lat != null && venue.lng != null && phoneGps
                 ? haversineDistance(phoneGps.lat, phoneGps.lng, venue.lat, venue.lng)
                 : null
+            const isTooFar = tooFarVenue?.id === venue.id
 
             return (
               <div
                 key={venue.id}
-                className="border border-gray-200 rounded-xl p-4 hover:border-amber-400 transition-colors"
+                className={`border rounded-xl p-4 transition-colors ${
+                  isTooFar ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-amber-400'
+                }`}
               >
                 <div className="flex items-start gap-3">
                   <span className="text-xl shrink-0">🏠</span>
@@ -171,13 +176,29 @@ export default function VenuePicker({
 
                 <div className="mt-3 flex gap-2">
                   <button
-                    onClick={() => onVenueConfirmed(venue)}
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
+                    onClick={() => {
+                      if (
+                        phoneGps && venue.lat != null && venue.lng != null &&
+                        !isWithinPresence(phoneGps.lat, phoneGps.lng, venue.lat, venue.lng, phoneGps.accuracy)
+                      ) {
+                        setTooFarVenue(venue)
+                        return
+                      }
+                      setTooFarVenue(null)
+                      onVenueConfirmed(venue)
+                    }}
+                    className={`flex-1 py-2.5 rounded-lg font-semibold text-sm transition-colors ${
+                      isTooFar
+                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                        : 'bg-amber-500 hover:bg-amber-600 text-white'
+                    }`}
                   >
-                    ✓ Yes, that&apos;s me
+                    {isTooFar
+                      ? `Too far from ${venue.name} — get closer`
+                      : "✓ Yes, that's me"}
                   </button>
                   <button
-                    onClick={onVenueNotListed}
+                    onClick={() => { setTooFarVenue(null); onVenueNotListed() }}
                     className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium text-sm transition-colors"
                   >
                     ✗ No, I&apos;m not here
@@ -190,7 +211,7 @@ export default function VenuePicker({
           {/* "None of these" option — only shown when multiple venues */}
           {venues.length > 1 && (
             <button
-              onClick={onVenueNotListed}
+              onClick={() => { setTooFarVenue(null); onVenueNotListed() }}
               className="w-full border border-gray-300 border-dashed rounded-xl py-3 text-sm text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors"
             >
               None of these

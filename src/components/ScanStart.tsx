@@ -5,6 +5,7 @@ import { getVenuesByProximity } from '@/lib/venues'
 import { getBrowserLocation } from '@/lib/gps'
 import type { Venue } from '@/lib/supabase'
 import { formatAddress } from '@/lib/format-address'
+import { isWithinPresence } from '@/lib/gpsCheck'
 
 interface ScanStartProps {
   onVenueSelected: (venue: Venue) => void
@@ -35,7 +36,8 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('loading')
   const [locationError, setLocationError] = useState('')
   const [venues, setVenues] = useState<Venue[]>([])
-  const [userGps, setUserGps] = useState<{ lat: number; lng: number } | null>(null)
+  const [userGps, setUserGps] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
+  const [tooFarVenue, setTooFarVenue] = useState<Venue | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -160,8 +162,22 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
                 return (
                   <div
                     key={venue.id}
-                    className="border border-gray-200 rounded-xl p-4 hover:border-amber-400 transition-colors cursor-pointer"
-                    onClick={() => onVenueSelected(venue)}
+                    className={`border rounded-xl p-4 transition-colors cursor-pointer ${
+                      tooFarVenue?.id === venue.id
+                        ? 'border-red-400 bg-red-50'
+                        : 'border-gray-200 hover:border-amber-400'
+                    }`}
+                    onClick={() => {
+                      if (
+                        venue.lat != null && venue.lng != null &&
+                        !isWithinPresence(userGps.lat, userGps.lng, venue.lat, venue.lng, userGps.accuracy)
+                      ) {
+                        setTooFarVenue(venue)
+                        return
+                      }
+                      setTooFarVenue(null)
+                      onVenueSelected(venue)
+                    }}
                   >
                     <div className="flex items-start gap-3">
                       <span className="text-xl shrink-0">🏠</span>
@@ -179,10 +195,27 @@ export default function ScanStart({ onVenueSelected, onAddVenue, onClose }: Scan
                     </div>
                     <div className="mt-3">
                       <button
-                        onClick={() => onVenueSelected(venue)}
-                        className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (
+                            venue.lat != null && venue.lng != null &&
+                            !isWithinPresence(userGps.lat, userGps.lng, venue.lat, venue.lng, userGps.accuracy)
+                          ) {
+                            setTooFarVenue(venue)
+                            return
+                          }
+                          setTooFarVenue(null)
+                          onVenueSelected(venue)
+                        }}
+                        className={`w-full py-2.5 rounded-lg font-semibold text-sm transition-colors ${
+                          tooFarVenue?.id === venue.id
+                            ? 'bg-red-500 hover:bg-red-600 text-white'
+                            : 'bg-amber-500 hover:bg-amber-600 text-white'
+                        }`}
                       >
-                        ✓ Yes, scan menu here
+                        {tooFarVenue?.id === venue.id
+                          ? `Too far from ${venue.name} — get closer`
+                          : '✓ Yes, scan menu here'}
                       </button>
                     </div>
                   </div>

@@ -33,30 +33,42 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  // Proximity gate state — derived each render so it stays correct across
-  // GPS-driven re-renders. A successful scan attempt clears this so the
-  // user can try again if they move closer. Once blocked, they stay blocked
-  // (no silent GPS-update auto-unblock).
+  // True while the geolocation request is in flight. Cleared when resolved OR denied.
+  // Drives the 'Checking location…' neutral button state.
+  const [locating, setLocating] = useState(true)
+  // True when the user has attempted and been blocked — holds the block across
+  // GPS-driven re-renders so a background GPS fix doesn't silently unblock them.
   const [blocked, setBlocked] = useState(false)
+  // The block message shown when the user attempts and is refused.
   const [blockMsg, setBlockMsg] = useState('')
 
   // Derived gate values — always current with the latest userLocation.
-  // noGps: userLocation hasn't resolved yet (null) → block.
-  // outOfRange: GPS resolved but venue is beyond the accuracy-clamped radius → block.
-  // blocked: either condition is true AND the user has already attempted → hold the block.
-  const noGps = !userLocation
+  const noGpsOrDenied = !userLocation  // null GPS (still loading or permanently denied)
   const outOfRange = !!(
     userLocation &&
     venue.lat != null && venue.lng != null &&
     !isWithinPresence(userLocation.lat, userLocation.lng, venue.lat, venue.lng, userLocation.accuracy)
   )
-  const isBlocked = blocked || noGps || outOfRange
+  // isBlocked: user attempted + was blocked (held), OR GPS permanently denied.
+  // Note: 'still loading' (locating=true) does NOT count as blocked here — that
+  // is the 'locating' scan state handled separately in the button below.
+  const isBlocked = blocked || !!locationError  // blocked by user action, or GPS permanently denied
 
-  const blockMessage = noGps
-    ? 'PourList needs your location to confirm you\'re at the venue. Please enable location and try again.'
-    : blockMsg || (userLocation && venue.lat != null
-        ? `You appear to be too far from ${venue.name} to add its happy hour. Please get closer to the venue.`
-        : blockMsg)
+  // The scan button has four mutually-exclusive states:
+  //   locating:  GPS request in flight → neutral 'Checking location…'
+  //   in_range:  GPS resolved + in range → active 'Scan Menu'
+  //   out_range: GPS resolved + out of range → grey 'Too far to scan'
+  //   no_gps:    GPS permanently denied → red 'Too far to scan'
+  type ScanButtonState = 'locating' | 'in_range' | 'out_of_range' | 'no_gps'
+  const scanBtnState: ScanButtonState =
+    locating ? 'locating' :
+    !userLocation ? 'no_gps' :     // GPS denied, not just still loading
+    outOfRange  ? 'out_of_range' :
+    'in_range'
+
+  const blockMessage = blockMsg || (userLocation
+    ? `You appear to be too far from ${venue.name} to add its happy hour. Please get closer to the venue.`
+    : 'PourList needs your location to confirm you\'re at the venue. Please enable location and try again.')
 
   // Photo viewer state
   const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
@@ -152,15 +164,22 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
     setAllPhotos(photos)
   }, [photoSets])
 
-  // Request geolocation on mount (for flag button)
+  // Request geolocation on mount (for proximity gate + flag button)
   useEffect(() => {
     if (!('geolocation' in navigator)) {
       setLocationError('Location not available')
+      setLocating(false)
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      () => setLocationError('Location unavailable')
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+        setLocating(false)
+      },
+      () => {
+        setLocationError('Location unavailable')
+        setLocating(false)
+      }
     )
   }, [])
 
@@ -513,31 +532,49 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         {/* Scan Menu button — always visible when viewing a venue */}
         <button
           onClick={() => {
-            if (isBlocked) {
-              // Already blocked (no-GPS, out-of-range, or previously blocked).
-              // Re-confirm the block state to prevent GPS auto-unblock flicker.
+            // Gate: only fire if in range. The scanBtnState derivation handles
+            // the four states; here we guard the fire action.
+            if (scanBtnState === 'in_range') {
+              setBlocked(false)
+              setBlockMsg('')
+              onScanMenu(venue)
+            } else if (scanBtnState === 'out_of_range') {
+              // User attempted but is out of range — hold the block.
               setBlocked(true)
               setBlockMsg(blockMessage)
-              return
+            } else if (scanBtnState === 'no_gps') {
+              setBlocked(true)
+              setBlockMsg('PourList needs your location to confirm you\'re at the venue. Please enable location and try again.')
             }
-            // Attempt the scan. Reset any prior block — if GPS is stale and
-            // the server later rejects, the user sees the server error.
-            setBlocked(false)
-            setBlockMsg('')
-            onScanMenu(venue)
+            // 'locating' state: button is not clickable, no action.
           }}
-          disabled={isBlocked}
+          disabled={scanBtnState !== 'in_range'}
           className={`w-full py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-2 ${
-            isBlocked
-              ? 'bg-red-500 hover:bg-red-600 text-white'
-              : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white'
+            scanBtnState === 'locating' ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
+            scanBtnState === 'out_of_range' ? 'bg-gray-300 text-gray-500 cursor-not-allowed' :
+            scanBtnState === 'no_gps'     ? 'bg-red-400 text-white cursor-not-allowed' :
+            'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white'
           }`}
         >
-          <span className="text-xl">{isBlocked ? '📍' : '📷'}</span>
-          {isBlocked ? 'Too far — get closer' : 'Scan Menu'}
+          <span className="text-xl">{
+            scanBtnState === 'locating' ? '📍' :
+            scanBtnState === 'out_of_range' ? '📍' :
+            scanBtnState === 'no_gps' ? '📍' : '📷'
+          }</span>
+          {scanBtnState === 'locating'    ? 'Checking location…' :
+           scanBtnState === 'out_of_range' ? 'Too far to scan' :
+           scanBtnState === 'no_gps'     ? 'Too far to scan' :
+           'Scan Menu'}
         </button>
-        {isBlocked && blockMessage && (
-          <p className="text-xs text-red-600 px-1 mb-3">{blockMessage}</p>
+        {scanBtnState === 'out_of_range' && (
+          <p className="text-xs text-gray-500 px-1 mb-3">
+            You appear to be too far from {venue.name} to add its happy hour. Please get closer to the venue.
+          </p>
+        )}
+        {scanBtnState === 'no_gps' && (
+          <p className="text-xs text-red-500 px-1 mb-3">
+            PourList needs your location to confirm you&apos;re at the venue. Please enable location and try again.
+          </p>
         )}
 
         {/* Google/Yelp links */}

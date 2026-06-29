@@ -43,8 +43,7 @@ type ScanStep =
 
 type ScanState = {
   files: File[]
-  phoneGps: { lat: number; lng: number; accuracy?: number } | null   // phone's current GPS + accuracy (accuracy undefined if unavailable)
-  exifGps: { lat: number; lng: number } | null    // EXIF GPS from first photo — authoritative venue location
+  phoneGps: { lat: number; lng: number; accuracy?: number; source?: 'gps' | 'ip' } | null   // phone's current GPS + accuracy + source (accuracy/source undefined if unavailable)
   confirmedVenue: Venue | null
   newVenueName: string | null
   menuText: string | null
@@ -57,7 +56,6 @@ function emptyScanState(): ScanState {
   return {
     files: [],
     phoneGps: null,
-    exifGps: null,
     confirmedVenue: null,
     newVenueName: null,
     menuText: null,
@@ -668,17 +666,21 @@ export default function Home() {
     })
   }
 
-  async function handleCapture(files: File[], phoneGps: { lat: number; lng: number; accuracy?: number } | null, exifGps: { lat: number; lng: number } | null) {
+  async function handleCapture(files: File[], phoneGps: { lat: number; lng: number; accuracy?: number; source?: 'gps' | 'ip' }) {
     const confirmedVenue = scan.confirmedVenue
 
     // Parse menu photos immediately so text is ready for MenuReview
     const menuText = await parseMenuPhotos(files)
 
     if (confirmedVenue) {
-      // Existing venue path — HARD BLOCK if user is not within presence radius (15m).
+      // Existing venue path — HARD BLOCK if user is not within presence radius.
       // No GPS = cannot verify presence = blocked.
       if (!phoneGps) {
         setGpsWarning('PourList needs your location to confirm you\'re at the venue. Please enable location and try again.')
+        return
+      }
+      if (phoneGps.source === 'ip') {
+        setGpsWarning('Your precise location isn\'t available. Please enable GPS/Location Services (not just network location) and try again from the venue.')
         return
       }
       if (confirmedVenue.lat != null && confirmedVenue.lng != null) {
@@ -692,17 +694,14 @@ export default function Home() {
           return
         }
       }
-      setScan(prev => ({ ...prev, files, phoneGps, exifGps, menuText }))
+      setScan(prev => ({ ...prev, files, phoneGps, menuText }))
       await transitionToReview(confirmedVenue, null)
       return
     }
 
-    // No venue pre-selected:
-    // - exifGps = authoritative venue location (from first photo's EXIF)
-    // - phoneGps = fraud check signal (phone's current location)
-    // Use EXIF GPS as venueProposedCoords; if absent, fall back to phone GPS
-    const venueProposedCoords = exifGps ?? phoneGps
-    setScan(prev => ({ ...prev, files, phoneGps, exifGps: venueProposedCoords, menuText }))
+    // No venue pre-selected: phone GPS is the sole location source.
+    const venueProposedCoords = phoneGps
+    setScan(prev => ({ ...prev, files, phoneGps, menuText }))
 
     // ── Job 5: Seed venue proximity check ────────────────────────────────
     // Before showing the venue_picker, check if there's a seed venue within 100m.
@@ -794,7 +793,6 @@ export default function Home() {
         isSeedPromotion: true,
         photoCount: scan.files.length,
         hasPhoneGps: !!scan.phoneGps,
-        hasExifGps: !!scan.exifGps,
       },
     })
   }
@@ -830,7 +828,6 @@ export default function Home() {
         isNewVenue: !!newVenueName,
         photoCount: scan.files.length,
         hasPhoneGps: !!scan.phoneGps,
-        hasExifGps: !!scan.exifGps,
       },
     })
   }
@@ -852,7 +849,7 @@ export default function Home() {
       throw new Error(`Slow down! Please wait ${s}s before submitting again.`)
     }
 
-    const { confirmedVenue, newVenueName, files, phoneGps, exifGps, menuText, startedAt, seedVenueForPromotion } = scan
+    const { confirmedVenue, newVenueName, files, phoneGps, menuText, startedAt, seedVenueForPromotion } = scan
 
     // ── Reason → user message mapper ─────────────────────────────────────────
     function messageForReason(reason: string | undefined, fallback: string): string {
@@ -863,6 +860,7 @@ export default function Home() {
         case 'photo_upload_failed': return 'Photo upload didn\'t go through — nothing was saved. Please try again.'
         case 'too_far':             return 'It appears you are not at the venue. Please get closer to the venue to submit a happy hour menu.'
         case 'no_gps':              return 'PourList needs your location to confirm you\'re at the venue. Please enable location and try again.'
+        case 'no_precise_gps':      return 'Your precise location isn\'t available. Please enable GPS/Location Services (not just network location) and try again from the venue.'
         case 'venue_no_location':   return 'This venue is missing location data and can\'t be updated right now.'
         case 'venue_not_found':
         case 'not_a_seed_venue':    return 'Something went wrong with this venue. Please try again.'
@@ -873,18 +871,20 @@ export default function Home() {
     // ── Seed-promotion path → submit-venue with HH (seed confirmed via MenuReview) ─
     // Check FIRST so seed promotion doesn't fall through to new-venue or existing-venue path.
     if (seedVenueForPromotion) {
-      if (!exifGps) {
+      if (!phoneGps) {
         throw new Error('No location found. Please take the photo at the venue.')
+      }
+      if (phoneGps.source === 'ip') {
+        throw new Error('Your precise location isn\'t available. Please enable GPS/Location Services (not just network location) and try again from the venue.')
       }
 
       const formData = new FormData()
       formData.append('seedVenueId', seedVenueForPromotion.id)
-      formData.append('exifLat', String(exifGps.lat))
-      formData.append('exifLng', String(exifGps.lng))
       if (phoneGps) {
         formData.append('phoneLat', String(phoneGps.lat))
         formData.append('phoneLng', String(phoneGps.lng))
-        formData.append('phoneAccuracy', String(phoneGps.accuracy))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy ?? ''))
+        formData.append('phoneSource', phoneGps.source ?? 'gps')
       }
       formData.append('deviceHash', deviceHash)
       if (hhSummary) formData.append('hhSummary', hhSummary)
@@ -914,21 +914,21 @@ export default function Home() {
 
       const updatedVenue = await getVenueById(savedVenueId)
       if (updatedVenue) setSelectedVenue(updatedVenue)
-      if (exifGps) {
+      if (phoneGps) {
         const latDelta = 0.003
-        const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
+        const lngDelta = 0.003 / Math.cos(phoneGps.lat * Math.PI / 180)
         await loadVenues({
-          north: exifGps.lat + latDelta,
-          south: exifGps.lat - latDelta,
-          east: exifGps.lng + lngDelta,
-          west: exifGps.lng - lngDelta
+          north: phoneGps.lat + latDelta,
+          south: phoneGps.lat - latDelta,
+          east: phoneGps.lng + lngDelta,
+          west: phoneGps.lng - lngDelta
         })
       }
 
       await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
-      await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
+      await trackVenueEvent(savedVenueId, 'photo_upload', phoneGps)
       if (hhWindows.some(w => w !== null)) {
-        await trackVenueEvent(savedVenueId, 'hh_confirm', exifGps)
+        await trackVenueEvent(savedVenueId, 'hh_confirm', phoneGps)
       }
 
       const durationSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : undefined
@@ -971,7 +971,8 @@ export default function Home() {
       if (phoneGps) {
         formData.append('lat', String(phoneGps.lat))
         formData.append('lng', String(phoneGps.lng))
-        formData.append('phoneAccuracy', String(phoneGps.accuracy))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy ?? ''))
+        formData.append('phoneSource', phoneGps.source ?? 'gps')
       }
       formData.append('deviceHash', deviceHash)
       if (hhTime) formData.append('hhTime', hhTime)
@@ -1051,18 +1052,20 @@ export default function Home() {
 
     // ── New venue path → submit-venue (single endpoint) ───────────────────
     if (newVenueName) {
-      if (!exifGps) {
+      if (!phoneGps) {
         throw new Error('No location found. Please take the photo at the venue.')
+      }
+      if (phoneGps.source === 'ip') {
+        throw new Error('Your precise location isn\'t available. Please enable GPS/Location Services (not just network location) and try again from the venue.')
       }
 
       const formData = new FormData()
       formData.append('venueName', newVenueName)
-      formData.append('exifLat', String(exifGps.lat))
-      formData.append('exifLng', String(exifGps.lng))
       if (phoneGps) {
         formData.append('phoneLat', String(phoneGps.lat))
         formData.append('phoneLng', String(phoneGps.lng))
-        formData.append('phoneAccuracy', String(phoneGps.accuracy))
+        formData.append('phoneAccuracy', String(phoneGps.accuracy ?? ''))
+        formData.append('phoneSource', phoneGps.source ?? 'gps')
       }
       formData.append('deviceHash', deviceHash)
       if (hhSummary) formData.append('hhSummary', hhSummary)
@@ -1101,21 +1104,21 @@ export default function Home() {
       const updatedVenue = await getVenueById(savedVenueId)
       if (updatedVenue) setSelectedVenue(updatedVenue)
       // Reload the list with bounds around the new venue's location
-      if (exifGps) {
+      if (phoneGps) {
         const latDelta = 0.003
-        const lngDelta = 0.003 / Math.cos(exifGps.lat * Math.PI / 180)
+        const lngDelta = 0.003 / Math.cos(phoneGps.lat * Math.PI / 180)
         await loadVenues({
-          north: exifGps.lat + latDelta,
-          south: exifGps.lat - latDelta,
-          east: exifGps.lng + lngDelta,
-          west: exifGps.lng - lngDelta
+          north: phoneGps.lat + latDelta,
+          south: phoneGps.lat - latDelta,
+          east: phoneGps.lng + lngDelta,
+          west: phoneGps.lng - lngDelta
         })
       }
 
       await trackEvent('menu_save_success', { deviceHash, venueId: savedVenueId })
-      await trackVenueEvent(savedVenueId, 'photo_upload', exifGps)
+      await trackVenueEvent(savedVenueId, 'photo_upload', phoneGps)
       if (hhWindows.some(w => w !== null)) {
-        await trackVenueEvent(savedVenueId, 'hh_confirm', exifGps)
+        await trackVenueEvent(savedVenueId, 'hh_confirm', phoneGps)
       }
 
       // Scan funnel completion (new venue path)
@@ -1191,7 +1194,6 @@ export default function Home() {
           isNewVenue: !!scan.newVenueName,
           photoCount: scan.files.length,
           hasPhoneGps: !!scan.phoneGps,
-          hasExifGps: !!scan.exifGps,
           attemptNumber: 2,  // retry = second attempt
         },
       })
@@ -1519,7 +1521,6 @@ export default function Home() {
         <VenuePicker
           files={scan.files}
           phoneGps={scan.phoneGps}
-          exifGps={scan.exifGps}
           onVenueConfirmed={handleVenueConfirmed}
           onVenueNotListed={handleVenueNotListed}
           onClose={handleScanClose}
@@ -1541,7 +1542,7 @@ export default function Home() {
           phoneGps={scan.phoneGps}
           venueGps={venueToReview && venueToReview.lat != null && venueToReview.lng != null
             ? { lat: venueToReview.lat, lng: venueToReview.lng }
-            : scan.exifGps}
+            : scan.phoneGps}
           venue={venueToReview}
           newVenueName={newVenueNameToReview}
           seedVenueName={scan.seedVenueForPromotion?.name ?? null}

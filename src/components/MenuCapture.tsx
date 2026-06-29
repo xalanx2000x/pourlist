@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { extractGpsFromPhoto, getBrowserLocation, type GpsCoords } from '@/lib/gps'
+import { getBrowserLocation, type GpsCoords } from '@/lib/gps'
 
 interface MenuCaptureProps {
-  onCapture: (files: File[], phoneGps: GpsCoords | null, exifGps: { lat: number; lng: number } | null) => void
+  onCapture: (files: File[], phoneGps: GpsCoords) => void
   onClose: () => void
 }
 
@@ -81,39 +81,33 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
     setError('')
 
     try {
-      // EXIF GPS from first photo — present if photo was taken with a camera app
-      // that embeds GPS in EXIF (native iOS Camera app, not web app camera).
-      let exifGps: { lat: number; lng: number } | null = null
+      // Phone GPS is the sole location source. The user must be physically
+      // present (enforced by the presence gate in handleCapture), so their
+      // phone GPS IS the venue location.
+      let phoneGps: GpsCoords | null = null
       try {
-        exifGps = await extractGpsFromPhoto(files[0])
+        phoneGps = await getBrowserLocation()
       } catch {
-        // No EXIF GPS
+        phoneGps = null
       }
 
-      // Browser GPS — user granted location permission to this web app.
-      // Used as the venue location signal when photo has no EXIF GPS.
-      // This handles the case where the photo was taken inside Safari's camera
-      // (which doesn't embed GPS) rather than the native camera app.
-      let browserGps: GpsCoords | null = null
-      try {
-        browserGps = await getBrowserLocation()
-      } catch {
-        // Location unavailable
-      }
-
-      // Determine authoritative venue location:
-      // - EXIF GPS from photo = preferred (camera app GPS, most precise)
-      // - Browser GPS = fallback (user granted permission to web app)
-      // - Neither = blocked (cannot determine venue location)
-      const venueGps = exifGps ?? browserGps
-      if (!venueGps) {
-        setError('No location data. Please enable Location Services for this website in your browser, then try again.')
+      // No location at all → blocked.
+      if (!phoneGps) {
+        setError('PourList needs your location to confirm you\'re at the venue. Please enable location in your browser settings, then try again.')
         setLoading(false)
         return
       }
 
-      // browserGps as fraud check signal — compared against venue's known coordinates
-      onCapture(files, browserGps, venueGps)
+      // IP-fallback location is too coarse to submit (it can be ~500m off).
+      // Real GPS is required to pin a venue. (IP is fine for browsing nearby
+      // venues, just not for creating or updating a venue.)
+      if (phoneGps.source === 'ip') {
+        setError('Your precise location isn\'t available. Please enable GPS/Location Services (not just network location) and try again from the venue.')
+        setLoading(false)
+        return
+      }
+
+      onCapture(files, phoneGps)
     } catch {
       setError('Could not read photos. Please try again.')
     } finally {
@@ -156,6 +150,7 @@ export default function MenuCapture({ onCapture, onClose }: MenuCaptureProps) {
           ref={photoInputRef}
           type="file"
           accept="image/*,image/heic,image/heif,image/heif-compressed"
+          capture="environment"
           onChange={onFileInput}
           className="hidden"
         />

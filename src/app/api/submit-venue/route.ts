@@ -45,10 +45,10 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
  *
  * Body (multipart/form-data):
  *   venueName: string (required)
- *   exifLat: number (authoritative venue GPS from first photo's EXIF)
- *   exifLng: number
- *   phoneLat?: number (phone's current GPS — used for fraud signal logging only)
- *   phoneLng?: number
+ *   phoneLat: number (phone GPS — the venue location for new venues)
+ *   phoneLng: number
+ *   phoneAccuracy?: number
+ *   phoneSource?: 'gps' | 'ip' (required — IP-source is rejected for submission)
  *   deviceHash: string
  *
  *   // Structured HH windows (up to 3)
@@ -72,11 +72,10 @@ export async function POST(req: NextRequest) {
     const {
       venueName,
       seedVenueId,
-      exifLat,
-      exifLng,
       phoneLat,
       phoneLng,
       phoneAccuracy,
+      phoneSource,
       deviceHash,
       hhSummary,
       hh_type,
@@ -97,11 +96,10 @@ export async function POST(req: NextRequest) {
     } = body as {
       venueName?: string
       seedVenueId?: string
-      exifLat?: string | number
-      exifLng?: string | number
       phoneLat?: string | number
       phoneLng?: string | number
       phoneAccuracy?: string | number
+      phoneSource?: string
       deviceHash?: string
       hhSummary?: string
       hh_type?: string
@@ -126,13 +124,27 @@ export async function POST(req: NextRequest) {
     // to live status (user confirmed "yes, that's the right venue").
     // This is NOT a new venue creation — reuse the venue, insert photos only.
     if (seedVenueId) {
-      const venueLat = typeof exifLat === 'string' ? parseFloat(exifLat) : (exifLat as number)
-      const venueLng = typeof exifLng === 'string' ? parseFloat(exifLng) : (exifLng as number)
+      // Venue location for presence check: user's phone GPS vs seed venue's stored coords.
+      // The seed venue already has lat/lng in the DB; we verify presence here.
+      const phoneLatNum = phoneLat != null
+        ? (typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number))
+        : NaN
+      const phoneLngNum = phoneLng != null
+        ? (typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number))
+        : NaN
+      const phoneAccuracyNum = phoneAccuracy != null
+        ? (typeof phoneAccuracy === 'string' ? parseFloat(phoneAccuracy) : (phoneAccuracy as number))
+        : null
+
+      // IP-source rejected: real GPS required for submission.
+      if (phoneSource === 'ip') {
+        return NextResponse.json({ success: false, reason: 'no_precise_gps' }, { status: 400 })
+      }
 
       // Verify this is actually a seed venue before promoting
       const { data: seedVenue } = await supabase
         .from('venues')
-        .select('id, name, is_seed_data, city, state')
+        .select('id, name, is_seed_data, lat, lng, city, state')
         .eq('id', seedVenueId)
         .single()
 
@@ -172,9 +184,12 @@ export async function POST(req: NextRequest) {
       let geoCountry: string | null = null
       let geoZip: string | null = null
 
-      if (!isNaN(venueLat) && !isNaN(venueLng)) {
+      // Geocode the seed venue's stored coords (not the user's phone GPS)
+      const seedLat = (seedVenue as { lat?: number }).lat
+      const seedLng = (seedVenue as { lng?: number }).lng
+      if (seedLat != null && seedLng != null && !isNaN(seedLat) && !isNaN(seedLng)) {
         try {
-          const geo = await reverseGeocodeStructured(venueLat, venueLng)
+          const geo = await reverseGeocodeStructured(seedLat, seedLng)
           if (geo) {
             geoCity = geo.city
             geoState = geo.state
@@ -306,19 +321,15 @@ export async function POST(req: NextRequest) {
       if (deviceHash) {
         await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
       }
-      // No GPS = cannot verify presence = blocked
-      if (phoneLat == null || phoneLng == null) {
-        return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
-      }
-      const phoneLatNum = typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number)
-      const phoneLngNum = typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number)
-      const phoneAccuracyNum = phoneAccuracy != null
-        ? (typeof phoneAccuracy === 'string' ? parseFloat(phoneAccuracy) : (phoneAccuracy as number))
-        : null
-
-      if (!isNaN(phoneLatNum) && !isNaN(phoneLngNum)) {
-        const distance = haversineM(venueLat, venueLng, phoneLatNum, phoneLngNum)
-        // Accuracy-aware presence gate: clamp accuracy to [25, 75]
+      // Presence gate: compare user's phone GPS against seed venue's stored coords.
+      // (phoneLatNum/lngNum/accuracyNum were declared at the top of this seed block.)
+      const sLat = (seedVenue as { lat?: number }).lat
+      const sLng = (seedVenue as { lng?: number }).lng
+      if (
+        !isNaN(phoneLatNum) && !isNaN(phoneLngNum) &&
+        sLat != null && sLng != null && !isNaN(sLat) && !isNaN(sLng)
+      ) {
+        const distance = haversineM(sLat, sLng, phoneLatNum, phoneLngNum)
         const allowed = Math.min(75, Math.max(25, (phoneAccuracyNum != null && !isNaN(phoneAccuracyNum)) ? phoneAccuracyNum : 25))
         if (distance > allowed) {
           return NextResponse.json({ success: false, reason: 'too_far' }, { status: 400 })
@@ -335,15 +346,23 @@ export async function POST(req: NextRequest) {
     if (!deviceHash) {
       return NextResponse.json({ error: 'deviceHash is required' }, { status: 400 })
     }
-    if (exifLat == null || exifLng == null) {
-      return NextResponse.json({ error: 'exifLat and exifLng are required' }, { status: 400 })
-    }
 
-    const venueLat = typeof exifLat === 'string' ? parseFloat(exifLat) : exifLat
-    const venueLng = typeof exifLng === 'string' ? parseFloat(exifLng) : exifLng
+    // Venue location = phone GPS (the user is physically present, enforced by the gate).
+    // IP-source is too coarse — reject it.
+    const venueLat = phoneLat != null
+      ? (typeof phoneLat === 'string' ? parseFloat(phoneLat) : (phoneLat as number))
+      : NaN
+    const venueLng = phoneLng != null
+      ? (typeof phoneLng === 'string' ? parseFloat(phoneLng) : (phoneLng as number))
+      : NaN
 
     if (isNaN(venueLat) || isNaN(venueLng)) {
-      return NextResponse.json({ error: 'Invalid coordinates' }, { status: 400 })
+      return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
+    }
+
+    // Real GPS required — IP geolocation is ~500m off, can't pin a venue.
+    if (phoneSource === 'ip') {
+      return NextResponse.json({ success: false, reason: 'no_precise_gps' }, { status: 400 })
     }
 
     // ── Rule (b) completeness gate — new venues require photo AND HH ───────

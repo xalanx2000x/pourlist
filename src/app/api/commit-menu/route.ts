@@ -23,8 +23,10 @@ function storagePathFromUrl(url: string): string {
  * Body (multipart/form-data):
  *   venueId?: string
  *   venueName?: string              // required if venueId not provided
- *   lat?: number
+ *   lat?: number                     // phone GPS — venue location for new venues
  *   lng?: number
+ *   phoneAccuracy?: number           // accuracy of the phone GPS
+ *   phoneSource?: 'gps' | 'ip'     // required — IP-source rejected for submission
  *   deviceHash: string
  *   hhTime?: string                 // legacy: stored in venues.hh_time
  *
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest) {
       lat,
       lng,
       phoneAccuracy,
+      phoneSource,
       deviceHash,
       hhTime,
       hhSummary,
@@ -90,6 +93,7 @@ export async function POST(req: NextRequest) {
       lat?: string | number
       lng?: string | number
       phoneAccuracy?: string | number
+      phoneSource?: string
       deviceHash: string
       hhTime?: string
       hhSummary?: string
@@ -251,6 +255,10 @@ export async function POST(req: NextRequest) {
     // No GPS = cannot verify presence = blocked.
     if (numLat == null || numLng == null || isNaN(numLat) || isNaN(numLng)) {
       return NextResponse.json({ success: false, reason: 'no_gps' }, { status: 400 })
+    }
+    // Real GPS required — IP geolocation is too coarse for submission.
+    if (phoneSource === 'ip') {
+      return NextResponse.json({ success: false, reason: 'no_precise_gps' }, { status: 400 })
     }
     {
       const { data: venueLoc } = await supabase

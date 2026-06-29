@@ -16,7 +16,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.101.1",
     "buffer": "^6.0.3",
-    "exifreader": "^4.37.1",
     "heic2any": "^0.0.4",
     "image-hash": "^7.0.1",
     "mapbox-gl": "^3.21.0",

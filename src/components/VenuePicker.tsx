@@ -10,8 +10,6 @@ interface VenuePickerProps {
   files: File[]
   /** User's current location — used to find nearby venues and verify proximity */
   phoneGps: { lat: number; lng: number; accuracy?: number } | null
-  /** Authoritative venue location from photo EXIF — used to verify user is at venue */
-  exifGps: { lat: number; lng: number } | null
   onVenueConfirmed: (venue: Venue) => void
   onVenueNotListed: () => void
   onClose: () => void
@@ -37,7 +35,6 @@ function formatDistance(meters: number): string {
 export default function VenuePicker({
   files,
   phoneGps,
-  exifGps,
   onVenueConfirmed,
   onVenueNotListed,
   onClose
@@ -49,7 +46,7 @@ export default function VenuePicker({
 
   useEffect(() => {
     // Use phone GPS to find nearby venues
-    const searchGps = phoneGps ?? exifGps
+    const searchGps = phoneGps
     if (!searchGps) {
       setLoading(false)
       return
@@ -84,7 +81,7 @@ export default function VenuePicker({
       .finally(() => {
         setLoading(false)
       })
-  }, [phoneGps, exifGps, onVenueNotListed])
+  }, [phoneGps, onVenueNotListed])
 
   // If loading, show spinner
   if (loading) {

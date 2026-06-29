@@ -1,4 +1,3 @@
-import ExifReader from 'exifreader'
 import { isDeepLinkActive } from './deep-link'
 
 /**
@@ -21,30 +20,10 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 export interface GpsCoords {
   lat: number
   lng: number
-  /** Meters — from position.coords.accuracy (browser GPS) or 75 (IP fallback). Omitted for EXIF GPS. */
+  /** Meters — from position.coords.accuracy (browser GPS) or 75 (IP fallback). */
   accuracy?: number
-}
-
-/**
- * Extract GPS coordinates from a photo's EXIF data.
- * Returns null if no GPS data is embedded.
- */
-export async function extractGpsFromPhoto(file: File): Promise<GpsCoords | null> {
-  try {
-    const tags = await ExifReader.load(file, { expanded: true })
-
-    if (!tags.gps) return null
-
-    const lat = tags.gps.Latitude
-    const lng = tags.gps.Longitude
-
-    if (lat == null || lng == null) return null
-
-    // EXIF stores lat/lng as decimal degrees already
-    return { lat, lng }
-  } catch {
-    return null
-  }
+  /** 'gps' = real device GPS (submission-eligible). 'ip' = IP geolocation fallback (discovery only, NOT submission-eligible). */
+  source?: 'gps' | 'ip'
 }
 
 /**
@@ -93,7 +72,7 @@ export function getBrowserLocation(): Promise<GpsCoords> {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         clearTimeout(timer)
-        settle({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+        settle({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, source: 'gps' })
       },
       () => {
         clearTimeout(timer)
@@ -117,7 +96,7 @@ async function fetchIpLocation(): Promise<GpsCoords> {
   if (res.ok) {
     const data = await res.json()
     if (data.latitude && data.longitude) {
-      return { lat: data.latitude, lng: data.longitude, accuracy: IP_ACCURACY }
+      return { lat: data.latitude, lng: data.longitude, accuracy: IP_ACCURACY, source: 'ip' }
     }
   }
   // Fallback: ip-api.com (free, 45 req/min)
@@ -125,7 +104,7 @@ async function fetchIpLocation(): Promise<GpsCoords> {
   if (res2.ok) {
     const data = await res2.json()
     if (data.lat != null && data.lon != null) {
-      return { lat: data.lat, lng: data.lon, accuracy: IP_ACCURACY }
+      return { lat: data.lat, lng: data.lon, accuracy: IP_ACCURACY, source: 'ip' }
     }
   }
   throw new LocationUnavailableError('IP geolocation failed')

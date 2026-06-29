@@ -993,12 +993,12 @@ export default function Home() {
       formData.append('venueId', confirmedVenue.id)
 
       const commitRes = await fetch('/api/commit-menu', { method: 'POST', body: formData })
-      if (!commitRes.ok) {
-        const err = await commitRes.json().catch(() => ({}))
-        throw new Error(messageForReason(err.reason, err.error || 'Failed to save. Please try again.'))
+      const commitResult = await commitRes.json().catch(() => ({}))
+      if (!commitRes.ok || !commitResult.success) {
+        throw new Error(messageForReason(commitResult.reason, commitResult.error || 'Failed to save. Please try again.'))
       }
 
-      const { venueId: savedVenueId } = await commitRes.json()
+      const { venueId: savedVenueId } = commitResult
       const updatedVenue = await getVenueById(savedVenueId)
       if (updatedVenue) setSelectedVenue(updatedVenue)
       // Reload with bounds around the new venue's location
@@ -1083,15 +1083,8 @@ export default function Home() {
       for (const file of files) formData.append('photos', file)
 
       const submitRes = await fetch('/api/submit-venue', { method: 'POST', body: formData })
-
-      if (!submitRes.ok) {
-        const err = await submitRes.json().catch(() => ({}))
-        throw new Error(messageForReason(err.reason, err.error || 'Failed to create venue. Please try again.'))
-      }
-
-      const result = await submitRes.json()
-
-      if (!result.success) {
+      const result = await submitRes.json().catch(() => ({}))
+      if (!submitRes.ok || !result.success) {
         if (result.reason === 'duplicate' && result.existingVenue) {
           // Dedup: suggest updating existing venue instead
           const existing = result.existingVenue
@@ -1099,7 +1092,7 @@ export default function Home() {
         }
         throw new Error(result.reason === 'photo_upload_failed'
           ? 'Photos failed to upload. Please try again.'
-          : 'Failed to create venue. Please try again.')
+          : messageForReason(result.reason, result.error || 'Failed to create venue. Please try again.'))
       }
 
       const { venueId: savedVenueId } = result

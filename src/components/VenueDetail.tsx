@@ -8,6 +8,7 @@ import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
 import ShareButton from './ShareButton'
 import { formatAddress, normalizeAddress } from '@/lib/format-address'
+import { isWithinPresence } from '@/lib/gpsCheck'
 
 type ActionState = 'idle' | 'loading' | 'success' | 'error'
 
@@ -32,6 +33,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [tooFar, setTooFar] = useState(false)
+  const [tooFarMsg, setTooFarMsg] = useState('')
 
   // Photo viewer state
   const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
@@ -487,12 +490,32 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
 
         {/* Scan Menu button — always visible when viewing a venue */}
         <button
-          onClick={() => onScanMenu(venue)}
-          className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-4"
+          onClick={() => {
+            if (
+              userLocation &&
+              venue.lat != null && venue.lng != null &&
+              !isWithinPresence(userLocation.lat, userLocation.lng, venue.lat, venue.lng, userLocation.accuracy)
+            ) {
+              setTooFar(true)
+              setTooFarMsg(`You appear to be too far from ${venue.name} to add its happy hour. Please get closer to the venue.`)
+              return
+            }
+            setTooFar(false)
+            setTooFarMsg('')
+            onScanMenu(venue)
+          }}
+          className={`w-full py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-2 ${
+            tooFar
+              ? 'bg-red-500 hover:bg-red-600 text-white'
+              : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white'
+          }`}
         >
-          <span className="text-xl">📷</span>
-          Scan Menu
+          <span className="text-xl">{tooFar ? '📍' : '📷'}</span>
+          {tooFar ? 'Too far — get closer' : 'Scan Menu'}
         </button>
+        {tooFar && tooFarMsg && (
+          <p className="text-xs text-red-600 px-1 mb-3">{tooFarMsg}</p>
+        )}
 
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">

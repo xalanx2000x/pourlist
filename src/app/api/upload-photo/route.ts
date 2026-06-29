@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
 
     // Insert photo record (hash stored separately when we add pHash support)
     // lat/lng used for verification only — NOT stored
-    // location_verified will be set by /api/submit-menu after geo-check
+    // location_verified is set by /api/commit-menu after geo-check
     if (venueId) {
       const { error: insertError } = await supabase.from('photos').insert({
         venue_id: venueId,

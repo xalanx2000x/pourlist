@@ -33,8 +33,30 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [tooFar, setTooFar] = useState(false)
-  const [tooFarMsg, setTooFarMsg] = useState('')
+  // Proximity gate state — derived each render so it stays correct across
+  // GPS-driven re-renders. A successful scan attempt clears this so the
+  // user can try again if they move closer. Once blocked, they stay blocked
+  // (no silent GPS-update auto-unblock).
+  const [blocked, setBlocked] = useState(false)
+  const [blockMsg, setBlockMsg] = useState('')
+
+  // Derived gate values — always current with the latest userLocation.
+  // noGps: userLocation hasn't resolved yet (null) → block.
+  // outOfRange: GPS resolved but venue is beyond the accuracy-clamped radius → block.
+  // blocked: either condition is true AND the user has already attempted → hold the block.
+  const noGps = !userLocation
+  const outOfRange = !!(
+    userLocation &&
+    venue.lat != null && venue.lng != null &&
+    !isWithinPresence(userLocation.lat, userLocation.lng, venue.lat, venue.lng, userLocation.accuracy)
+  )
+  const isBlocked = blocked || noGps || outOfRange
+
+  const blockMessage = noGps
+    ? 'PourList needs your location to confirm you\'re at the venue. Please enable location and try again.'
+    : blockMsg || (userLocation && venue.lat != null
+        ? `You appear to be too far from ${venue.name} to add its happy hour. Please get closer to the venue.`
+        : blockMsg)
 
   // Photo viewer state
   const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
@@ -491,30 +513,31 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         {/* Scan Menu button — always visible when viewing a venue */}
         <button
           onClick={() => {
-            if (
-              userLocation &&
-              venue.lat != null && venue.lng != null &&
-              !isWithinPresence(userLocation.lat, userLocation.lng, venue.lat, venue.lng, userLocation.accuracy)
-            ) {
-              setTooFar(true)
-              setTooFarMsg(`You appear to be too far from ${venue.name} to add its happy hour. Please get closer to the venue.`)
+            if (isBlocked) {
+              // Already blocked (no-GPS, out-of-range, or previously blocked).
+              // Re-confirm the block state to prevent GPS auto-unblock flicker.
+              setBlocked(true)
+              setBlockMsg(blockMessage)
               return
             }
-            setTooFar(false)
-            setTooFarMsg('')
+            // Attempt the scan. Reset any prior block — if GPS is stale and
+            // the server later rejects, the user sees the server error.
+            setBlocked(false)
+            setBlockMsg('')
             onScanMenu(venue)
           }}
+          disabled={isBlocked}
           className={`w-full py-3.5 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors mb-2 ${
-            tooFar
+            isBlocked
               ? 'bg-red-500 hover:bg-red-600 text-white'
               : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white'
           }`}
         >
-          <span className="text-xl">{tooFar ? '📍' : '📷'}</span>
-          {tooFar ? 'Too far — get closer' : 'Scan Menu'}
+          <span className="text-xl">{isBlocked ? '📍' : '📷'}</span>
+          {isBlocked ? 'Too far — get closer' : 'Scan Menu'}
         </button>
-        {tooFar && tooFarMsg && (
-          <p className="text-xs text-red-600 px-1 mb-3">{tooFarMsg}</p>
+        {isBlocked && blockMessage && (
+          <p className="text-xs text-red-600 px-1 mb-3">{blockMessage}</p>
         )}
 
         {/* Google/Yelp links */}

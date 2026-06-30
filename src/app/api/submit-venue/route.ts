@@ -156,7 +156,8 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Rule (b) gate — seed promotion requires photo AND HH ──────────────
-      const seedPhotoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+      // Accept both File objects (legacy) and base64 data URLs (current client output).
+      const seedPhotoFiles = formData.getAll('photos').filter(f => f && (typeof f === 'string' || f instanceof File)) as (string | File)[]
       if (seedPhotoFiles.length === 0) {
         return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
       }
@@ -212,10 +213,13 @@ export async function POST(req: NextRequest) {
       if (seedPhotoFiles.length > 0) {
         const timestamp = Date.now()
         for (let i = 0; i < seedPhotoFiles.length; i++) {
-          const photo = seedPhotoFiles[i]
+          const raw = seedPhotoFiles[i]
           const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
           const filePath = `${seedVenueId}/${timestamp}/${fileName}`
-          const buffer = Buffer.from(await photo.arrayBuffer())
+          // Decode: support both base64 data URLs (current client) and File objects (legacy).
+          const buffer = typeof raw === 'string'
+            ? Buffer.from(raw.replace(/^data:[^;]+;base64,/, ''), 'base64')
+            : Buffer.from(await (raw as File).arrayBuffer())
 
           const { error: uploadError } = await supabase.storage
             .from('venue-photos')
@@ -366,7 +370,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Rule (b) completeness gate — new venues require photo AND HH ───────
-    const photoFiles = formData.getAll('photos').filter(f => f && typeof f !== 'string') as File[]
+    // Accept both File objects (legacy) and base64 data URLs (current client output).
+    const photoFiles = formData.getAll('photos').filter(f => f && (typeof f === 'string' || f instanceof File)) as (string | File)[]
     if (photoFiles.length === 0) {
       return NextResponse.json({ success: false, reason: 'missing_photo' }, { status: 400 })
     }
@@ -526,11 +531,14 @@ export async function POST(req: NextRequest) {
       const uploadedUrls: string[] = []
 
       for (let i = 0; i < photoFiles.length; i++) {
-        const photo = photoFiles[i]
+        const raw = photoFiles[i]
         const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
         const filePath = `${venueId}/${timestamp}/${fileName}`
 
-        const buffer = Buffer.from(await photo.arrayBuffer())
+        // Decode: support both base64 data URLs (current client) and File objects (legacy).
+        const buffer = typeof raw === 'string'
+          ? Buffer.from(raw.replace(/^data:[^;]+;base64,/, ''), 'base64')
+          : Buffer.from(await (raw as File).arrayBuffer())
 
         const { error: uploadError } = await supabase.storage
           .from('venue-photos')

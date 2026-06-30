@@ -801,7 +801,10 @@ export default function Home() {
    * Job 6: User denied the seed venue match — proceed to name_entry.
    */
   function handleSeedMatchDeny() {
-    setScan(prev => ({ ...prev, seedMatch: null }))
+    // A denied seed must NOT be graduated with new data the user explicitly rejected.
+    // Clear seedVenueForPromotion so the deny path cannot accidentally promote a
+    // rejected seed — the user chose to create a new venue or none.
+    setScan(prev => ({ ...prev, seedMatch: null, seedVenueForPromotion: null }))
     setScanStep('name_entry')
   }
 
@@ -899,9 +902,25 @@ export default function Home() {
       if (hhSummary) fd.append('hhSummary', hhSummary)
     }
 
-    // ── Route ──────────────────────────────────────────────────────────────────
+    // ── Routing — centralized, venue-state-driven ────────────────────────────────
+    //
+    // Precedence (each branch uses `else if`, only one fires):
+    //
+    //  1. seedVenueForPromotion  — explicit seed CONFIRM from seed_match UI.
+    //     The user consciously chose to promote this specific OSM seed.
+    //     Post-deny-clear: this and newVenueName are mutually exclusive.
+    //
+    //  2. existingVenue?.is_seed_data === true  — an OSM seed reached via
+    //     confirmedVenue (map pin, ScanStart list, venue_picker).
+    //     Graduation is determined by the venue's state, not the entry point.
+    //
+    //  3. existingVenue  — confirmed user-created venue → HH update path.
+    //
+    //  4. newVenueName  — user typed a name with no confirmed venue.
+    //     submit-venue runs name+proximity dedup against all venues (incl. seeds).
+
     if (seedVenueForPromotion) {
-      // ── OSM/seed graduation ─────────────────────────────────────────────────
+      // ── 1. Explicit seed promotion (seed_match CONFIRM) ────────────────────
       const fd = new FormData()
       fd.append('seedVenueId', seedVenueForPromotion.id)
       fd.append('phoneLat', String(phoneGps.lat))
@@ -910,13 +929,11 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      // Photos: compressed base64 (standardized — was File[] before consolidation)
       const { fileToBase64 } = await import('@/lib/fileToBase64')
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
       }
-
       const res = await fetch('/api/submit-venue', { method: 'POST', body: fd })
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) {
@@ -927,8 +944,37 @@ export default function Home() {
       return { venueId: result.venueId, venueName: seedVenueForPromotion.name }
     }
 
+    if (existingVenue?.is_seed_data === true) {
+      // ── 2. OSM seed reached via confirmedVenue — graduate it ────────────────
+      // Any entry that sets confirmedVenue to an OSM seed (map pin, list pick,
+      // venue_picker) ends up here. The routing decision is made from the
+      // venue's state, not the entry point — so all entry paths that reach a
+      // seed via confirmedVenue correctly graduate it.
+      const fd = new FormData()
+      fd.append('seedVenueId', existingVenue.id)
+      fd.append('phoneLat', String(phoneGps.lat))
+      fd.append('phoneLng', String(phoneGps.lng))
+      fd.append('phoneAccuracy', String(phoneGps.accuracy ?? ''))
+      fd.append('phoneSource', phoneGps.source ?? 'gps')
+      fd.append('deviceHash', deviceHash)
+      appendHhWindows(fd)
+      const { fileToBase64 } = await import('@/lib/fileToBase64')
+      for (const file of files) {
+        const base64 = await fileToBase64(file, 1.5)
+        fd.append('photos', base64)
+      }
+      const res = await fetch('/api/submit-venue', { method: 'POST', body: fd })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        throw new Error(result.reason === 'photo_upload_failed'
+          ? 'Photo upload didn\'t go through — nothing was saved. Please try again.'
+          : result.error || 'Failed to verify venue. Please try again.')
+      }
+      return { venueId: result.venueId, venueName: existingVenue.name }
+    }
+
     if (existingVenue) {
-      // ── Existing user venue ─────────────────────────────────────────────────
+      // ── 3. Confirmed user-created venue — HH update ─────────────────────────
       const fd = new FormData()
       fd.append('venueId', existingVenue.id)
       fd.append('lat', String(phoneGps.lat))
@@ -937,13 +983,11 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      // Compressed base64
       const { fileToBase64 } = await import('@/lib/fileToBase64')
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
       }
-
       const res = await fetch('/api/commit-menu', { method: 'POST', body: fd })
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) {
@@ -955,7 +999,7 @@ export default function Home() {
     }
 
     if (newVenueName) {
-      // ── New venue ───────────────────────────────────────────────────────────
+      // ── 4. New venue — submit-venue runs name+proximity dedup ───────────────
       const fd = new FormData()
       fd.append('venueName', newVenueName)
       fd.append('phoneLat', String(phoneGps.lat))
@@ -964,13 +1008,11 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      // Compressed base64 (standardized)
       const { fileToBase64 } = await import('@/lib/fileToBase64')
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
       }
-
       const res = await fetch('/api/submit-venue', { method: 'POST', body: fd })
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) {

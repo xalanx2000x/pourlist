@@ -387,7 +387,10 @@ export async function POST(req: NextRequest) {
     // ── end gate ───────────────────────────────────────────────────────────
 
     // ── Dedup: find nearby venue with same/similar name ─────────────────────
-    const dedupRadiusM = 15
+    // 50m handles OSM seed coordinate drift (seeds are OSM points, not address-
+    // snapped). Name-similarity check ensures we never block a distinct venue
+    // that happens to be nearby. Radius applies only to name-matched candidates.
+    const dedupRadiusM = 50
     const latDelta = dedupRadiusM / 111320
     const cosLat = Math.cos((venueLat * Math.PI) / 180)
     const lngDelta = dedupRadiusM / (111320 * (cosLat < 0.01 ? 0.01 : cosLat))

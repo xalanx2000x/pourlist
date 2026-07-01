@@ -919,6 +919,14 @@ export default function Home() {
     //  4. newVenueName  — user typed a name with no confirmed venue.
     //     submit-venue runs name+proximity dedup against all venues (incl. seeds).
 
+    // console.log: which branch fired —观察 deployed behavior
+    console.log('[saveSubmissionCore] routing branch:', {
+      has_seedVenueForPromotion: !!seedVenueForPromotion,
+      has_existingVenue: !!existingVenue,
+      existingIsSeed: existingVenue?.is_seed_data === true,
+      has_newVenueName: !!newVenueName,
+    })
+
     if (seedVenueForPromotion) {
       // ── 1. Explicit seed promotion (seed_match CONFIRM) ────────────────────
       const fd = new FormData()

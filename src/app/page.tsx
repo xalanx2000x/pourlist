@@ -920,11 +920,15 @@ export default function Home() {
     //     submit-venue runs name+proximity dedup against all venues (incl. seeds).
 
     // console.log: which branch fired —观察 deployed behavior
+    // console.log: which branch fired + is_seed_data diagnostics
     console.log('[saveSubmissionCore] routing branch:', {
       has_seedVenueForPromotion: !!seedVenueForPromotion,
       has_existingVenue: !!existingVenue,
       existingIsSeed: existingVenue?.is_seed_data === true,
       has_newVenueName: !!newVenueName,
+      // THE key diagnostic — suspected string 'true' or undefined:
+      existingVenue_is_seed_data: existingVenue?.is_seed_data,
+      existingVenue_is_seed_data_typeof: typeof existingVenue?.is_seed_data,
     })
 
     if (seedVenueForPromotion) {

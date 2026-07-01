@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const body = Object.fromEntries(formData.entries())
 
+    // DEBUG: which endpoint received this submission
+    console.log('[commit-menu] HIT', { venueId: body.venueId })
+
     const {
       venueId,
       venueName,

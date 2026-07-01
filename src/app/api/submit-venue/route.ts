@@ -69,6 +69,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const body = Object.fromEntries(formData.entries())
 
+    // DEBUG: which endpoint received this submission
+    console.log('[submit-venue] HIT', { seedVenueId: body.seedVenueId, venueName: body.venueName })
+
     const {
       venueName,
       seedVenueId,

@@ -66,12 +66,6 @@ export function formatWindow(
   const dayLabel = formatDays(days, excludeDays)
 
   if (type === 'all_day') return dayLabel ? `${dayLabel} all day` : 'All day'
-  if (type === 'open_through') {
-    // null end means "to close" — "midnight" is clearer than "close" for the HH context
-    // endMin=0 is the DB's midnight sentinel; display it as "midnight" too
-    const end = (endMin != null && endMin !== 0) ? formatMin(endMin) : 'midnight'
-    return dayLabel ? `${dayLabel} until ${end}` : `Until ${end}`
-  }
   if (type === 'late_night') {
     // endMin=null means "to close"; startMin=null means no start specified
     if (startMin == null) {

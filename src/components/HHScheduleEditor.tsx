@@ -11,7 +11,6 @@ interface HHScheduleEditorProps {
 
 const TYPE_LABELS: Record<string, string> = {
   all_day: '💍 All Day',
-  open_through: '🕐 Open Through',
   typical: '⏰ Typical',
   late_night: '🌙 Late Night',
 }
@@ -19,7 +18,6 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_OPTIONS: { value: HHType; label: string }[] = [
   { value: 'typical', label: TYPE_LABELS.typical },
   { value: 'all_day', label: TYPE_LABELS.all_day },
-  { value: 'open_through', label: TYPE_LABELS.open_through },
   { value: 'late_night', label: TYPE_LABELS.late_night },
 ]
 
@@ -109,7 +107,7 @@ function WindowEditor({
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {w.type === 'open_through' ? 'Opens at' : w.type === 'late_night' ? 'Starts at' : 'Start'}
+              {w.type === 'late_night' ? 'Starts at' : 'Start'}
             </label>
             <select
               value={w.startMin ?? ''}
@@ -127,7 +125,7 @@ function WindowEditor({
 
           <div className="flex-1">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {w.type === 'open_through' ? 'Until' : w.type === 'late_night' ? 'Closes at' : 'End'}
+              {w.type === 'late_night' ? 'Closes at' : 'End'}
             </label>
             <select
               value={w.endMin ?? ''}

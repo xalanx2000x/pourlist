@@ -5,7 +5,7 @@
  * - Comma-separated ISO weekday lists (e.g. "1,2,3,4,5" = Mon-Fri)
  * - Day exclusions (e.g. "daily except Tue" = hh_days="1,2,3,4,5,6,7", hh_exclude_days="3")
  * - all_day: constrained by venue's opening_min + city's closeMin from bar-close-times.ts
- * - open_through: endMin defaults to city's closeMin
+
  * - late_night: endMin defaults to city's closeMin (bar close)
  * - typical: explicit start/end times required
  *
@@ -114,7 +114,7 @@ function isDayActive(days: number[], excludeDays: number[]): boolean {
 /**
  * Get the effective end minute for a window.
  * - If endMin is set → use it
- * - If null and type is open_through or late_night → use city closeMin
+ * - If null and type is late_night or all_day → use city closeMin
  * - If null and type is all_day → use city closeMin
  * - Otherwise → null (open-ended)
  */
@@ -124,7 +124,7 @@ function getEffectiveEndMin(
   venueState: string | null | undefined
 ): number | null {
   if (endMin !== null && endMin !== undefined) return endMin
-  if (type === 'open_through' || type === 'late_night' || type === 'all_day') {
+  if (type === 'late_night' || type === 'all_day') {
     const cityClose = getCityCloseMin('', venueState ?? '')
     return cityClose ?? CLOSE_DEFAULT
   }
@@ -160,11 +160,6 @@ function isWindowActive(
       const start = openingMin ?? (14 * 60)  // default 2pm if opening_min not set
       return currentMin >= start && currentMin < (effectiveEndMin ?? CLOSE_DEFAULT)
     }
-
-    case 'open_through':
-      // No explicit start (venue open), ends at effectiveEndMin
-      if (effectiveEndMin === null) return false
-      return currentMin < effectiveEndMin
 
     case 'late_night':
       // Starts at startMin, ends at effectiveEndMin

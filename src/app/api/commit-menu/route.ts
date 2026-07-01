@@ -30,7 +30,7 @@ function storagePathFromUrl(url: string): string {
  *   deviceHash: string
  *   hhTime?: string                 // legacy: stored in venues.hh_time
  *
- *   // Window 1 (all_day | open_through | typical | late_night)
+ *   // Window 1 (all_day | typical | late_night)
  *   hh_type?: string
  *   hh_days?: string               // comma-separated ISO weekdays, e.g. "1,2,3,4,5"
  *   hh_exclude_days?: string        // comma-separated ISO weekdays to exclude

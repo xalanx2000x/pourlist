@@ -50,7 +50,7 @@ export type Venue = {
   menu_text_updated_at: string | null
   latest_menu_image_url: string | null
   hh_time: string | null
-  hh_type: string | null        // 'all_day' | 'open_through' | 'typical' | 'late_night'
+  hh_type: string | null        // 'all_day' | 'typical' | 'late_night'
   hh_days: string | null        // comma-separated ISO weekdays, e.g. "1,2,3,4,5" (Window 1)
   hh_exclude_days: string | null // comma-separated ISO weekdays to exclude from Window 1
   hh_start: number | null       // minutes since midnight; null = "open"

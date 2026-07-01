@@ -57,7 +57,7 @@ type WindowDesc = {
 /** Effective endMin for a window (or null if open-ended / not applicable). */
 function effectiveEndMin(w: WindowDesc): number | null {
   if (w.endMin !== null && w.endMin !== undefined) return w.endMin
-  if (w.type === 'open_through' || w.type === 'late_night' || w.type === 'all_day') {
+  if (w.type === 'late_night' || w.type === 'all_day') {
     return w.endDefault
   }
   return null

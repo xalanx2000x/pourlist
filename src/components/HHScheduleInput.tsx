@@ -61,7 +61,6 @@ function WindowsPreview({ windows }: { windows: HHWindow[] }) {
 
   function typeLabel(type: string | null): string {
     if (type === 'all_day') return '💍 All day'
-    if (type === 'open_through') return '🕐 Open through'
     if (type === 'late_night') return '🌙 Late night'
     if (type === 'typical') return '⏰ Happy hour'
     return '—'

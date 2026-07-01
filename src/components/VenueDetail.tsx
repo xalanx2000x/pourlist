@@ -389,15 +389,13 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
                     {/* Window type icon */}
                     <span className="mt-0.5 text-sm">
                       {w.type === 'all_day' ? '💍' :
-                       w.type === 'late_night' ? '🌙' :
-                       w.type === 'open_through' ? '🕐' : '⏰'}
+                       w.type === 'late_night' ? '🌙' : '⏰'}
                     </span>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-amber-900">{label}</p>
                       <p className="text-xs text-amber-600 capitalize">
-                        {w.type === 'all_day' ? 'All day (open to close)' :
-                         w.type === 'late_night' ? 'Late night' :
-                         w.type === 'open_through' ? 'Open through' : 'Happy hour'}
+                        {w.type === 'all_day' ? 'All day' :
+                         w.type === 'late_night' ? 'Late night' : 'Happy hour'}
                       </p>
                     </div>
                   </div>

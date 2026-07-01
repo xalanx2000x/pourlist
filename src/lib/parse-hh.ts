@@ -4,16 +4,15 @@
  * Wraps `opening_hours.js` (OpenStreetMap standard) for time/day parsing,
  * then adds happy-hour-specific type classification on top.
  *
- * The four HH types:
+ * The three HH types:
  *   all_day     — "Monday all day", "Happy hour all day"
- *   open_through — "Open through 6pm", "Until 6pm", "Open to 6"
- *   typical     — "4-7pm", "Mon-Fri 3-6pm"
+ *   typical     — "4-7pm", "Mon-Fri 3-6pm", "open 2-6pm"
  *   late_night  — "10 to close", "10pm to close"
  */
 
 import openingHoursLib from 'opening_hours'
 
-export type HHType = 'all_day' | 'open_through' | 'typical' | 'late_night' | null
+export type HHType = 'all_day' | 'typical' | 'late_night' | null
 
 export interface HHWindow {
   type: HHType          // null = not a HH window
@@ -90,21 +89,105 @@ function parseTimeToMin(timeStr: string): number | null {
 }
 
 /**
- * Convert day abbreviation/name → ISO weekday (1=Mon ... 7=Sun).
- * Returns null if unrecognised.
+ * Classify a HH type from a text string using keyword detection.
+ *
+ * Returns { type, adjustedText } where adjustedText has type keywords removed.
+ */
+function classifyHHType(text: string): { type: HHType; adjustedText: string } {
+  const lower = normalizeText(text)
+
+  // ALL DAY: any mention of "all day" or "24/7" or "around the clock"
+  if (/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/.test(lower)) {
+    const adjusted = lower.replace(/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/gi, '').trim()
+    return { type: 'all_day', adjustedText: adjusted }
+  }
+
+  // LATE NIGHT: "to close", "until close", "till close", "close"
+  // Also catches bare X-close and X - close patterns (no "to/until" needed)
+  // Also: "after [number]" → late_night (e.g. "after 9" = 9pm-close)
+  // Also: "to midnight" / "till midnight" / "after midnight" → midnight to close
+  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|to\s*midnight|till\s*midnight|after\s+\d+(?::\d{2})?\s*(?:am|pm|p\.?m\.?)?|after\s+midnight)\b/.test(lower)) {
+    const adjusted = lower
+      .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
+      .replace(/\bto\s*midnight\b/gi, '')    // strip "to midnight" but keep nothing (it's end-of-day)
+      .replace(/\btill\s*midnight\b/gi, '')  // strip "till midnight" but keep nothing
+      .replace(/\bafter\s+\d+\b/gi, '')      // strip "after 12" etc, keep nothing (time already handled)
+      .replace(/\bafter\s+midnight\b/gi, '')  // strip "after midnight" but keep nothing
+      .replace(/-midnight/, 'midnight')        // clean up residual from normalizeText
+      .trim()
+    return { type: 'late_night', adjustedText: adjusted }
+  }
+
+  // MIDNIGHT TO CLOSE: "midnight to close" / "midnight-close" → start=midnight, end=close (late_night)
+  if (/\bmidnight\s+to\s+close\b/.test(lower) || /\bmidnight\s*-\s*close\b/.test(lower)) {
+    return { type: 'late_night', adjustedText: 'midnight' }  // startMin=0, endMin=null
+  }
+
+  // MIDNIGHT AS STANDALONE: bare "midnight" → midnight to close (late_night)
+  // Already normalized to just "midnight" by normalizeText's midnight-close collapse
+  if (lower === 'midnight') {
+    return { type: 'late_night', adjustedText: 'midnight' }  // startMin=0, endMin=null
+  }
+
+  // MIDNIGHT TO TIME: "midnight-2am", "midnight-6am" → late_night start at midnight, end at given time
+  if (/\bmidnight\s*-\s*(\d)/.test(lower)) {
+    return { type: 'late_night', adjustedText: lower }  // e.g. "midnight-2am" → parse in late_night block
+  }
+
+  // TYPICAL: anything with a time window (e.g. "4-7pm", "3pm to 6pm", "10-2")
+  // Note: "open-6pm"/"open-6" is normalized to "2pm-6pm"/"2pm-6" by normalizeText
+  // before this function runs, so no special "open" handling needed here.
+  return { type: 'typical', adjustedText: lower }
+}
+
+/**
+ * Progressive day-prefix resolver.
+ * Given a token (already lowercased, trimmed), returns the ISO weekday if it matches
+ * a day-name prefix, applying tie-breaking rules:
+ *   t  → Tuesday (default), th/thu/thur/thurs → Thursday
+ *   s  → Saturday (default), su/sun            → Sunday
+ *   m  → Monday,  w → Wednesday,  f → Friday
+ *
+ * Standalone use for single-day parsing; also called from parseDayRange.
+ */
+function resolveDayPrefix(token: string): number | null {
+  if (token.length === 0) return null
+
+  // Unambiguous single letters
+  if (token === 'm') return 1   // Monday
+  if (token === 'w') return 3   // Wednesday
+  if (token === 'f') return 5   // Friday
+
+  // T-family tie-break: t → Tue, th+ → Thu
+  if (token.startsWith('t')) {
+    if (token === 't' || token === 'tu') return 2   // Tuesday
+    return 4                                      // th / thu / thur / thurs → Thursday
+  }
+
+  // S-family tie-break: s → Sat, su+ → Sun
+  if (token.startsWith('s')) {
+    if (token === 's' || token === 'sa') return 6  // Saturday
+    return 7                                      // su / sun → Sunday
+  }
+
+  // Full names and standard abbreviations
+  const map: Record<string, number> = {
+    monday: 1, mond: 1, mon: 1,
+    tuesday: 2, tue: 2,
+    wednesday: 3, wed: 3,
+    thursday: 4, thu: 4, thur: 4, thurs: 4,
+    friday: 5, fri: 5,
+    saturday: 6, sat: 6,
+    sunday: 7, sun: 7,
+  }
+  return map[token] ?? null
+}
+
+/**
+ * Convert day abbreviation/name (including progressive prefixes) → ISO weekday (1=Mon ... 7=Sun).
  */
 function parseDay(dayStr: string): number | null {
-  const d = dayStr.toLowerCase().trim()
-  const map: Record<string, number> = {
-    monday: 1, mon: 1, m: 1,
-    tuesday: 2, tue: 2, tu: 2, t: 2,
-    wednesday: 3, wed: 3, w: 3,
-    thursday: 4, thu: 4, th: 4,
-    friday: 5, fri: 5, f: 5,
-    saturday: 6, sat: 6, s: 6,
-    sunday: 7, sun: 7, su: 7, u: 7,
-  }
-  return map[d] ?? null
+  return resolveDayPrefix(dayStr.toLowerCase().trim())
 }
 
 /**
@@ -146,109 +229,113 @@ function parseDayRange(rangeStr: string): number[] {
 }
 
 /**
- * Classify a HH type from a text string using keyword detection.
- *
- * Returns { type, adjustedText } where adjustedText has type keywords removed.
- */
-function classifyHHType(text: string): { type: HHType; adjustedText: string } {
-  const lower = normalizeText(text)
-
-  // ALL DAY: any mention of "all day" or "24/7" or "around the clock"
-  if (/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/.test(lower)) {
-    const adjusted = lower.replace(/\b(all\s?day|24\s*[\/\\]?\s*7|24\s*hours?|around\s*the\s*clock)\b/gi, '').trim()
-    return { type: 'all_day', adjustedText: adjusted }
-  }
-
-  // OPEN THROUGH: "open through", "open til", "open to", "until", "til", "thru", "before"
-  if (/\b(open\s*(through|til|till|to|t'\s*t|thru)|until|til|till|thru|before)\b/.test(lower)) {
-    const adjusted = lower
-      .replace(/\b(open\s*(through|til|till|to|t'\s*t|thru))\b/gi, '')
-      .replace(/\b(until|til|till|thru|before)\b/gi, '')
-      .trim()
-    return { type: 'open_through', adjustedText: adjusted }
-  }
-
-  // OPEN THROUGH (bare "open-X" form — no connector, e.g. "open-6pm")
-  if (/open\s*-\s*(\d)/.test(lower)) {
-    const adjusted = lower.replace(/open\s*-\s*/gi, '').trim()
-    return { type: 'open_through', adjustedText: adjusted }
-  }
-
-  // LATE NIGHT: "to close", "until close", "till close", "close"
-  // Also catches bare X-close and X - close patterns (no "to/until" needed)
-  // Also: "after [number]" → late_night (e.g. "after 9" = 9pm-close)
-  // Also: "to midnight" / "till midnight" / "after midnight" → midnight to close
-  if (/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close|to\s*midnight|till\s*midnight|after\s+\d+(?::\d{2})?\s*(?:am|pm|p\.?m\.?)?|after\s+midnight)\b/.test(lower)) {
-    const adjusted = lower
-      .replace(/\b(to\s*close|until\s*close|til\s*close|till\s*close|close\s*only|close)\b/gi, '')
-      .replace(/\bto\s*midnight\b/gi, '')    // strip "to midnight" but keep nothing (it's end-of-day)
-      .replace(/\btill\s*midnight\b/gi, '')  // strip "till midnight" but keep nothing
-      .replace(/\bafter\s+\d+\b/gi, '')      // strip "after 12" etc, keep nothing (time already handled)
-      .replace(/\bafter\s+midnight\b/gi, '')  // strip "after midnight" but keep nothing
-      .replace(/-midnight/, 'midnight')        // clean up residual from normalizeText
-      .trim()
-    return { type: 'late_night', adjustedText: adjusted }
-  }
-
-  // MIDNIGHT TO CLOSE: "midnight to close" / "midnight-close" → start=midnight, end=close (late_night)
-  if (/\bmidnight\s+to\s+close\b/.test(lower) || /\bmidnight\s*-\s*close\b/.test(lower)) {
-    return { type: 'late_night', adjustedText: 'midnight' }  // startMin=0, endMin=null
-  }
-
-  // MIDNIGHT AS STANDALONE: bare "midnight" → midnight to close (late_night)
-  // Already normalized to just "midnight" by normalizeText's midnight-close collapse
-  if (lower === 'midnight') {
-    return { type: 'late_night', adjustedText: 'midnight' }  // startMin=0, endMin=null
-  }
-
-  // MIDNIGHT TO TIME: "midnight-2am", "midnight-6am" → late_night start at midnight, end at given time
-  if (/\bmidnight\s*-\s*(\d)/.test(lower)) {
-    return { type: 'late_night', adjustedText: lower }  // e.g. "midnight-2am" → parse in late_night block
-  }
-
-  // TYPICAL: anything with a time window (e.g. "4-7pm", "3pm to 6pm")
-  return { type: 'typical', adjustedText: lower }
-}
-
-/**
  * Normalize common typos and variants in HH text.
  * Runs before classifyHHType to maximize match rates.
+ *
+ * ORDER MATTERS — most-specific rules first, least-specific last.
+ * All rules are anchored (word boundaries, correct position) to avoid clobbering
+ * unrelated tokens.
  */
 function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    // Normalize dashes/hyphens to a consistent separator
-    .replace(/\s*-\s*/g, '-')              // "4 - 6" → "4-6"
-    .replace(/\s*–\s*/g, '-')              // en-dash
-    .replace(/\s*—\s*/g, '-')              // em-dash
-    // Normalize "midnight-close" → "midnight" (before general close-stripping)
-    .replace(/midnight\s*-\s*close/gi, 'midnight')   // "midnight - close" with whitespace
-    .replace(/midnight-close/gi, 'midnight')            // "midnight-close" (tight hyphen)
-    // Normalize "to close" variants — negative lookbehind prevents "X to close" from matching
-    .replace(/(?<![a-z])to\s+(?:the\s+)?close\b/g, 'close')   // "to close" → "close" (but not "midnight to close")
+  const lower = text.toLowerCase()
+
+  return lower
+    // ── MOST SPECIFIC: time tokens that contain letters (before any am/pm handling) ──
+
+    // "midnight" / "12am" / "12:00am" / "12:00 am" → "midnight" (one canonical token)
+    // Anchored: must be standalone or hyphenated-time, not inside another word.
+    // "12:00 am" and "12:00am" both normalized before any bare-digit handling.
+    .replace(/\b12\s*:\s*00\s*am\b/g, 'midnight')
+    .replace(/\b12\s*am\b/g, 'midnight')
+
+    // "noon" / "12pm" / "12:00pm" / "12:00 pm" → "noon" (one canonical token)
+    .replace(/\b12\s*:\s*00\s*pm\b/g, 'noon')
+    .replace(/\b12\s*pm\b/g, 'noon')
+
+    // "open" → "open" (keep as time anchor; will be handled in time parsing as start=2pm)
+    // Already lowercase, no change needed.
+
+    // ── SEPARATORS: normalize ALL range connectors to single hyphen ──
+    // Anchored: these appear between two tokens, not inside time/date tokens.
+    // "10 to 6", "10 til 6", "10 until 6", "10 through 6" → "10-6"
+    // Time til time: "4 til 7" → "4-7"
+    .replace(/(\d)\s+(?:to|til|till|until)\s+(\d)/g, '$1-$2')
+    // Day til day: "mon til wed" → "mon-wed"
+    .replace(/([a-z])\s+(?:til|till|until|to)\s+([a-z])/gi, '$1-$2')
+    // Generic en/em dashes → hyphen
+    .replace(/\s*[–—]\s*/g, '-')
+    // "thru" → "-" (through as separator, not "open through" keyword — handled separately)
+    // "4 thru 6" → "4-6"
+    .replace(/(\d)\s+thru\s+(\d)/gi, '$1-$2')
+    // "through" standalone: keep it as "through" for now; classifyHHType uses it as keyword
+    .replace(/\bthru\b/gi, 'through')
+
+    // "til" as standalone connector (after time-range already normalized):
+    // "Mon til Fri" already handled above by day til day rule.
+    // "til close" preserved below.
+
+    // ── MIDNIGHT / NOON in hyphenated time ranges ──
+    // After separator normalization: "10pm-midnight" / "10pm - midnight" / "10pm to midnight"
+    // → "10pm-midnight" then "midnight" preserved as end anchor.
+    // "midnight-close" → "midnight" (collapse, then close stripped in next block)
+    .replace(/midnight\s*-\s*close/gi, 'midnight')
+    .replace(/midnight-close/gi, 'midnight')
+
+    // "to close" / "until close" → "close" (after time-range normalization)
+    // Negative lookbehind: don't fire after a letter (would clobber "X to close")
+    .replace(/(?<![a-z])to\s+(?:the\s+)?close\b/g, 'close')
     .replace(/(?<![a-z])until\s+(?:the\s+)?close\b/g, 'close')
+
+    // "til close" → "till close" (canonical form for classifier)
     .replace(/\btil\s+close\b/g, 'till close')
-    // Normalize "to midnight" → "start-midnight" (preserve start time for parser)
-    // "10 to midnight" → "10-midnight", "10 til midnight" → "10-midnight", etc.
-    // Use (?<![a-zA-Z\d]) not (?<!\d) — must not fire after "pm"/"am" abbreviations
+
+    // "to midnight" → "-midnight" (preserve start time; classifier reads "time-midnight")
+    // Anchored: must not fire after am/pm.
     .replace(/(?<![a-zA-Z\d])to\s+midnight\b/g, '-midnight')
     .replace(/(?<![a-zA-Z\d])until\s+midnight\b/g, '-midnight')
-    .replace(/\btil\s+midnight\b/g, '-midnight')   // "10 til midnight" → "10-midnight"
-    .replace(/-midnight/g, 'midnight')             // clean up residual "-midnight" before parser
-    // Normalize "from X" prefix (remove, keep the time)
+    // "til midnight" → "-midnight"  (already normalized by til rule if "4 til midnight")
+    .replace(/\btil\s+midnight\b/g, '-midnight')
+
+    // Clean up residual "-midnight" → "midnight" (already handled above but belt+Suspense)
+    .replace(/-midnight/g, 'midnight')
+
+    // ── RULE 3: "open" → 2PM (before any other "open" normalization) ──
+    // "open-6pm" → "2pm-6pm", "open-6" → "2pm-6", "open to 6pm" → "2pm-6pm", "open 6pm" → "2pm-6pm"
+    // Anchored: "open" must be a standalone word, followed by separator/space + digit.
+    // Must come BEFORE the final "to"→"-" separator normalization (which only fires for digit-TO-digit).
+    .replace(/\bopen\s*-\s*(\d)/g, '2pm-$1')    // "open-6pm" → "2pm-6pm"
+    .replace(/\bopen\s+to\s+(\d)/g, '2pm-$1') // "open to 6pm" → "2pm-6pm" (before "to"→"-" final pass)
+    .replace(/\bopen\s+til\s+(\d)/g, '2pm-$1') // "open til 7pm" → "2pm-7pm"
+    .replace(/\bopen\s+(\d)/g, '2pm-$1')      // "open 6pm" (bare) → "2pm-6pm"
+    // "open at" → "2pm" (venue opens at 2pm HH)
+    .replace(/\bopen\s+at\b/g, '2pm')
+
+    // "close" / "closing" → canonical "close"
+    .replace(/\bclosings?\b/g, 'close')
+
+    // ── PREFIX WORD STRIPPING ──
+    // "from X" / "starting at X" / "starts at X" → strip prefix, keep time
     .replace(/\bfrom\s+/g, '')
-    // Normalize "after X" (treat as late_night: X → close)
-    // Normalize "starting at" → "from"
     .replace(/\bstarting\s+at\b/g, '')
     .replace(/\bstarts?\s+at\b/g, '')
-    // Normalize "happy hour" mentions that don't add semantic meaning
+
+    // "happy hour" / "happy hour" → strip (doesn't add semantic meaning)
     .replace(/\bhap*y\s*hour\b/gi, '')
-    // Normalize day-til-day → day-day (removes "til"/"till"/"to" keyword before type classification)
-    // e.g. "Mon til Fri" → "Mon-Fri", "Friday to Sunday" → "Friday-Sunday"
-    .replace(/([a-z])\s*(?:til|till|to)\s*([a-z])/gi, '$1-$2')
-    // Normalize time-til-time → time-time (converts "4 til 7" → "4-7")
-    .replace(/(\d)\s*(?:til|till|to)\s*(\d)/g, '$1-$2')
-    .replace(/\bthru\b/g, 'through')                 // "thru" → "through"
+
+    // ── FINAL: strip remaining "to"/"til"/"until"/"through" as separators ──
+    // Only fire when surrounded by identifiable token characters.
+    // After all above: "X to Y" where X and Y are times or days has been normalized.
+    // This catches any remaining "to"/"through" that are truly standalone separators.
+    // "til close" and "to close" already handled above; "till" also preserved.
+    // e.g. "open to 6pm" — "open" is now a time anchor, "to 6pm" normalized to "-6pm" above.
+    .replace(/\s+to\s+/g, '-')          // "open to 6pm" → "open-6pm" (already handled by til rule, belt+Suspense)
+    .replace(/\s+until\s+/g, '-')
+    .replace(/\s+through\s+/g, '-')
+
+    // Normalize "X-close" (hyphenated) and "X close" (spaced) → "X-close" (for classifier)
+    // These are read by classifyHHType's late_night pattern, preserve the dash.
+    .replace(/\s+-+\s*close\b/g, '-close')
+
     // Remove extra whitespace
     .replace(/\s+/g, ' ').trim()
 }
@@ -289,15 +376,28 @@ export function parseOneClause(text: string): HHWindow | null {
     return { type: 'all_day', days, excludeDays: [], startMin: null, endMin: null }
   }
 
-  // ── NO EXPLICIT TIME for open_through / late_night ──────────────────
-  if (!adjustedText && (type === 'open_through' || type === 'late_night')) {
-    // "after 12" or "after midnight" — adjustedText is empty but type is late_night
-    // → midnight to close (startMin=0, endMin=null)
-    if (type === 'late_night') {
-      // "after midnight" or bare "after [time]" — midnight to close
+  // ── LATE NIGHT with explicit time: "4pm-close", "10pm to close" ─
+  // classifyHHType stripped the "close" keyword; if adjustedText has trailing "-",
+  // strip it so parseTimeToMin can read the time.
+  if (type === 'late_night' && adjustedText) {
+    const timeOnly = adjustedText.replace(/\s*-\s*$/, '').trim()
+    if (/^\d/.test(timeOnly)) {
+      const parsed = parseTimeToMin(timeOnly)
+      if (parsed !== null) {
+        return { type: 'late_night', days: [], excludeDays: [], startMin: parsed, endMin: null }
+      }
+    }
+    // Empty after strip → "after midnight" / "midnight to close" case
+    if (!timeOnly) {
       return { type: 'late_night', days: [], excludeDays: [], startMin: 0, endMin: null }
     }
-    return { type, days: [], excludeDays: [], startMin: null, endMin: null }
+  }
+
+  // ── NO EXPLICIT TIME for late_night ──────────────────────────────
+  if (!adjustedText && type === 'late_night') {
+    // "after midnight" — adjustedText is empty but type is late_night
+    // → midnight to close (startMin=0, endMin=null)
+    return { type: 'late_night', days: [], excludeDays: [], startMin: 0, endMin: null }
   }
 
   // ── EXTRACT DAYS from the text ──────────────────────────────────────
@@ -351,18 +451,14 @@ export function parseOneClause(text: string): HHWindow | null {
       endMin = parseTimeToMin(endStr + 'pm')
     }
 
-    if (type === 'open_through') {
-      // "open to 6pm": start is implicit (venue open = 2pm), end is explicit
-      endMin = endMin ?? parseTimeToMin(endStr + (suffix || ''))
-      startMin = startMin ?? (14 * 60)
-    } else if (type === 'late_night') {
+    if (type === 'late_night') {
       // "10pm-close": end is implicit (bar close), start is explicit
       startMin = startMin ?? parseTimeToMin(startStr + (suffix || ''))
       endMin = null
     }
-    // Cross-midnight: end before start means the range runs into next morning
-    if (startMin !== null && endMin !== null && endMin < startMin && type !== 'open_through') {
-      if (endMin >= 12 * 60) endMin -= 12 * 60 // undo wrong PM assumption → AM
+    // Rule 2: cross-midnight — bare range where PM→PM makes end < start → next-day AM
+    if (startMin !== null && endMin !== null && endMin < startMin) {
+      if (endMin >= 12 * 60) endMin -= 12 * 60
       type = 'late_night'
     }
   }
@@ -396,16 +492,8 @@ export function parseOneClause(text: string): HHWindow | null {
       if (endMin === null && !endSuffix && !startSuffix) {
         endMin = parseTimeToMin(endStr + 'pm')
       }
-
-      if (type === 'open_through') {
-        endMin = endMin ?? parseTimeToMin(endStr + (endSuffix || ''))
-        startMin = startMin ?? (14 * 60)
-      } else if (type === 'late_night') {
-        startMin = startMin ?? parseTimeToMin(startStr + (startSuffix || ''))
-        endMin = null
-      }
       // Cross-midnight: end before start means the range runs into next morning
-      if (startMin !== null && endMin !== null && endMin < startMin && type !== 'open_through') {
+      if (startMin !== null && endMin !== null && endMin < startMin) {
         if (endMin >= 12 * 60) endMin -= 12 * 60 // undo wrong PM assumption → AM
         type = 'late_night'
       }
@@ -420,35 +508,6 @@ export function parseOneClause(text: string): HHWindow | null {
     }
   }
 
-  // ── "before X" in open_through: "before 5" → 2pm-5pm ──────────────
-  // "before" was stripped from adjustedText by classifyHHType, so we check adjustedText
-  if (type === 'open_through' && startMin === null && endMin === null) {
-    // Look for a number at the start of adjustedText (the "X" in "before X")
-    // Capture explicit am/pm: "before 2am" → endMin=120 (2am), startMin=840
-    const bareMatch = adjustedText.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|p|a)?$/i)
-    if (bareMatch) {
-      const [, , , rawSuffix] = bareMatch
-      const hasExplicitAm = /am|a\.m\.|a$/i.test(rawSuffix ?? '')
-      const hasExplicitPm = /pm|p\.m\.|p$/i.test(rawSuffix ?? '')
-      const rawNum12 = parseInt(bareMatch[1])
-      const rawMin = parseTimeToMin(bareMatch[0])
-      if (rawMin !== null) {
-        if (rawNum12 === 12 && !hasExplicitAm && !hasExplicitPm) {
-          endMin = 1440
-        } else if (hasExplicitAm) {
-          // "before 2am" → endMin=120, startMin=840 (2pm-2am next day)
-          endMin = rawMin
-        } else if (hasExplicitPm) {
-          // "before 2pm" → endMin=840, startMin=840 (before 2pm = same-day 2pm-2pm)
-          endMin = rawMin
-        } else {
-          // Bare number: treat as PM (e.g. "before 5" = before 5pm)
-          endMin = rawMin < 12 * 60 ? rawMin + 12 * 60 : rawMin
-        }
-        startMin = 14 * 60
-      }
-    }
-  }
 
   // ── "(time) midnight": "10pm-midnight", "10pm to midnight" → typical, end=midnight ──
   // normalizeText collapses these to "10pm midnight" (space-separated); parse leading time, end=1440
@@ -525,6 +584,13 @@ export function parseOneClause(text: string): HHWindow | null {
         }
       }
     }
+  }
+
+  // RULE 3: bare "open" → 2pm to close (late_night)
+  // normalizeText leaves bare "open" unchanged; classifyHHType returns typical with adjustedText="open"
+  // The time extraction above skips "open" (no digits), so handle it here.
+  if (type === 'typical' && startMin === null && endMin === null && adjustedText === 'open') {
+    return { type: 'late_night', days: days.length > 0 ? days : [], excludeDays: [], startMin: 840, endMin: null }
   }
 
   // Nothing usable found

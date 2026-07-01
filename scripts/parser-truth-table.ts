@@ -1,3 +1,4 @@
+// STALE: some open_through cases are obsolete, needs regeneration
 /**
  * Parser Truth Table — Final (2026-06-21)
  *

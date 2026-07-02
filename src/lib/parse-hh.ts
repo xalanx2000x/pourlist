@@ -150,37 +150,17 @@ function classifyHHType(text: string): { type: HHType; adjustedText: string } {
  *
  * Standalone use for single-day parsing; also called from parseDayRange.
  */
+const DAY_PREFIXES: Record<string, number> = {
+  'm':1,'mo':1,'mon':1,'mond':1,'monda':1,'monday':1,
+  'tu':2,'tue':2,'tues':2,'tuesd':2,'tuesda':2,'tuesday':2,
+  'w':3,'we':3,'wed':3,'wedn':3,'wedne':3,'wednes':3,'wednesd':3,'wednesda':3,'wednesday':3,
+  'th':4,'thu':4,'thur':4,'thurs':4,'thursd':4,'thursda':4,'thursday':4,
+  'f':5,'fr':5,'fri':5,'frid':5,'frida':5,'friday':5,
+  'sa':6,'sat':6,'satur':6,'saturd':6,'saturda':6,'saturday':6,
+  'su':7,'sun':7,'sund':7,'sunda':7,'sunday':7,
+}
 function resolveDayPrefix(token: string): number | null {
-  if (token.length === 0) return null
-
-  // Unambiguous single letters
-  if (token === 'm') return 1   // Monday
-  if (token === 'w') return 3   // Wednesday
-  if (token === 'f') return 5   // Friday
-
-  // T-family tie-break: t → Tue, th+ → Thu
-  if (token.startsWith('t')) {
-    if (token === 't' || token === 'tu') return 2   // Tuesday
-    return 4                                      // th / thu / thur / thurs → Thursday
-  }
-
-  // S-family tie-break: s → Sat, su+ → Sun
-  if (token.startsWith('s')) {
-    if (token === 's' || token === 'sa') return 6  // Saturday
-    return 7                                      // su / sun → Sunday
-  }
-
-  // Full names and standard abbreviations
-  const map: Record<string, number> = {
-    monday: 1, mond: 1, mon: 1,
-    tuesday: 2, tue: 2,
-    wednesday: 3, wed: 3,
-    thursday: 4, thu: 4, thur: 4, thurs: 4,
-    friday: 5, fri: 5,
-    saturday: 6, sat: 6,
-    sunday: 7, sun: 7,
-  }
-  return map[token] ?? null
+  return DAY_PREFIXES[token.toLowerCase().trim()] ?? null
 }
 
 /**

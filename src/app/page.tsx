@@ -851,6 +851,16 @@ export default function Home() {
    * Photo format: all branches use compressed base64 (max 1.5MB JPEG) for upload.
    * Both API routes accept base64 data URLs — this standardizes the format with no regression.
    */
+  /** Lazy-loads fileToBase64 chunk. Wraps chunk-load failure so MenuReview's
+   *  neutral error handler can catch it and show the correct user message. */
+  async function loadFileToBase64() {
+    try {
+      return await import('@/lib/fileToBase64')
+    } catch {
+      throw new Error('chunk_load_failed')
+    }
+  }
+
   async function saveSubmissionCore(opts: {
     existingVenue:         Venue | null
     newVenueName:           string | null
@@ -941,7 +951,7 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      const { fileToBase64 } = await import('@/lib/fileToBase64')
+      const { fileToBase64 } = await loadFileToBase64()
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
@@ -970,7 +980,7 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      const { fileToBase64 } = await import('@/lib/fileToBase64')
+      const { fileToBase64 } = await loadFileToBase64()
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
@@ -995,7 +1005,7 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      const { fileToBase64 } = await import('@/lib/fileToBase64')
+      const { fileToBase64 } = await loadFileToBase64()
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)
@@ -1020,7 +1030,7 @@ export default function Home() {
       fd.append('phoneSource', phoneGps.source ?? 'gps')
       fd.append('deviceHash', deviceHash)
       appendHhWindows(fd)
-      const { fileToBase64 } = await import('@/lib/fileToBase64')
+      const { fileToBase64 } = await loadFileToBase64()
       for (const file of files) {
         const base64 = await fileToBase64(file, 1.5)
         fd.append('photos', base64)

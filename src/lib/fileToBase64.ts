@@ -1,5 +1,24 @@
 'use client'
-import heic2any from 'heic2any'
+
+// Module-level cache so the dynamic import only fires once per page load
+let _heic2any: typeof import('heic2any').default | null = null
+let _importFailed = false
+
+/** Lazy-load heic2any on first use. Throws 'chunk_load_failed' if the chunk
+ *  cannot be fetched (e.g. offline). The tag lets callers identify this failure. */
+async function lazyHeic2any() {
+  if (_importFailed) throw new Error('chunk_load_failed')
+  if (_heic2any) return _heic2any
+
+  try {
+    const mod = await import('heic2any' as string)
+    _heic2any = mod.default ?? mod
+    return _heic2any
+  } catch {
+    _importFailed = true
+    throw new Error('chunk_load_failed')
+  }
+}
 
 const HEIC_MIME_TYPES = ['image/heic', 'image/heif', 'image/heif-compressed']
 
@@ -11,6 +30,7 @@ function isHeic(mime: string): boolean {
  * Reads a File and returns a base64 JPEG data URL.
  * ALL images are re-encoded as JPEG via canvas — normalizes HEIC/WebP etc.
  * Images exceeding maxSizeMB are resized before encoding.
+ * Falls back with 'chunk_load_failed' if heic2any cannot be loaded (offline).
  */
 export async function fileToBase64(file: File, maxSizeMB = 1.5): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -64,12 +84,20 @@ export async function fileToBase64(file: File, maxSizeMB = 1.5): Promise<string>
     }
 
     if (isHeic(file.type)) {
-      heic2any({ blob: file, toType: 'image/jpeg' })
+      lazyHeic2any()
+        .then((heic2any) => {
+          return (heic2any as NonNullable<typeof heic2any>)({ blob: file, toType: 'image/jpeg' })
+        })
         .then((converted) => {
           const jpegBlob = Array.isArray(converted) ? converted[0] : converted
           processFile(jpegBlob as Blob)
         })
-        .catch((err: Error) => reject(new Error(`HEIC conversion failed: ${err.message}`)))
+        .catch((err: Error) => {
+          const msg = err.message === 'chunk_load_failed'
+            ? 'chunk_load_failed'
+            : `HEIC conversion failed: ${err.message}`
+          reject(new Error(msg))
+        })
     } else {
       processFile(file)
     }

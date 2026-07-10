@@ -1,14 +1,14 @@
 /**
  * app/sitemap.ts — Next.js App Router sitemap.
  *
- * Returns qualifying neighborhoods (≥15 qualifying venues) and geo-complete
+ * Returns qualifying neighborhoods (≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues) and geo-complete
  * venues with HH data. No stubs, no seed data.
  */
 import type { MetadataRoute } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { slugifyName } from '@/lib/slug'
-import { NEIGHBORHOOD_THRESHOLD } from '@/lib/neighborhoods'
+import { NEIGHBORHOOD_PAGE_THRESHOLD } from '@/lib/neighborhoods'
 
 const BASE_URL = 'https://pourlist.app'
 
@@ -37,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   const neighborhoodEntries: MetadataRoute.Sitemap = Object.values(neighborhoodKeys)
-    .filter(n => n.count >= NEIGHBORHOOD_THRESHOLD)
+    .filter(n => n.count >= NEIGHBORHOOD_PAGE_THRESHOLD)
     .map(n => {
       const stateSlug = n.state.toLowerCase()
       const citySlug = slugifyName(n.city)

@@ -10,7 +10,7 @@
 import { supabaseServer } from '@/lib/supabase-server'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
 
-export const NEIGHBORHOOD_THRESHOLD = 15
+export const NEIGHBORHOOD_PAGE_THRESHOLD = 10
 
 export interface NeighborhoodStats {
   neighborhood: string
@@ -20,7 +20,7 @@ export interface NeighborhoodStats {
 
 /**
  * Returns all neighborhoods in a given city+state that have ≥1 real venue
- * with HH data, annotated with whether they cross NEIGHBORHOOD_THRESHOLD.
+ * with HH data, annotated with whether they cross NEIGHBORHOOD_PAGE_THRESHOLD.
  *
  * Callers filter on .qualifies as needed.
  */
@@ -48,7 +48,7 @@ export async function getNeighborhoodStats(
     .map(([neighborhood, venueCount]) => ({
       neighborhood,
       venueCount,
-      qualifies: venueCount >= NEIGHBORHOOD_THRESHOLD,
+      qualifies: venueCount >= NEIGHBORHOOD_PAGE_THRESHOLD,
     }))
     .sort((a, b) => b.venueCount - a.venueCount) // descending
 }

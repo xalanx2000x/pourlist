@@ -11,7 +11,7 @@
  * prevents resolveNewSlug from assigning a venue slug that matches a
  * neighborhood fragment.
  *
- * Threshold gate: a neighborhood page renders only when ≥15 qualifying
+ * Threshold gate: a neighborhood page renders only when ≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying
  * venues exist in that neighborhood (same threshold as getQualifyingNeighborhoods).
  * Below threshold → notFound() (no thin indexed pages).
  *
@@ -24,7 +24,7 @@ import { supabaseServer } from '@/lib/supabase-server'
 import { popularityScore, fetchViewCounts } from '@/lib/popularity'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { slugifyName } from '@/lib/slug'
-import { NEIGHBORHOOD_THRESHOLD } from '@/lib/neighborhoods'
+import { NEIGHBORHOOD_PAGE_THRESHOLD } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
 import type { LeanVenueForHH, PopularVenue } from '@/components/CityPageClient'
 
@@ -80,8 +80,8 @@ async function getNeighborhoodPage(
     return nSlug === neighborhoodSlug && !!v.city && !!v.state
   })
 
-  // Threshold gate: must have ≥15 qualifying venues
-  if (allNeighborhoodVenues.length < NEIGHBORHOOD_THRESHOLD) return null
+  // Threshold gate: must have ≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues
+  if (allNeighborhoodVenues.length < NEIGHBORHOOD_PAGE_THRESHOLD) return null
 
   // Fetch view counts for Most Popular section
   const viewCounts = await fetchViewCounts(
@@ -189,7 +189,7 @@ export async function generateStaticParams() {
     const venues = venuesResult.data ?? []
     const paramsSet = new Set<string>()
 
-    // Qualifying neighborhoods (≥15 qualifying venues)
+    // Qualifying neighborhoods (≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues)
     const byKey: Record<string, number> = {}
     for (const v of neighborhoods) {
       const s = (v.state ?? '').toLowerCase()
@@ -199,7 +199,7 @@ export async function generateStaticParams() {
       byKey[`${s}/${c}/${n}`] = (byKey[`${s}/${c}/${n}`] ?? 0) + 1
     }
     for (const [key, count] of Object.entries(byKey)) {
-      if (count >= NEIGHBORHOOD_THRESHOLD) {
+      if (count >= NEIGHBORHOOD_PAGE_THRESHOLD) {
         const [st, ct, ns] = key.split('/')
         paramsSet.add(`${st}/${ct}/${ns}`)
       }

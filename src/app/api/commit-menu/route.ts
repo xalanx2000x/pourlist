@@ -405,6 +405,20 @@ export async function POST(req: NextRequest) {
       await supabase.rpc('increment_device_submissions', { p_device_hash: deviceHash })
     }
 
+    // ── Option A: completed presence-gated submission = verification ────────────
+    // Never resurrect a closed venue; stale→verified is intended (fresh submission
+    // with photo+HH supersedes flags, consistent with clear_flags_on_menu_commit).
+    if (targetVenueId) {
+      await supabase
+        .from('venues')
+        .update({
+          status: 'verified',
+          last_verified: new Date().toISOString(),
+        })
+        .eq('id', targetVenueId)
+        .neq('status', 'closed')
+    }
+
     return NextResponse.json({ venueId: targetVenueId, success: true })
   } catch (err) {
     console.error('commit-menu error:', err)

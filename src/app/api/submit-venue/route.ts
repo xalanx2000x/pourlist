@@ -246,8 +246,12 @@ export async function POST(req: NextRequest) {
       }
 
       // Build promotion update: is_seed_data=false + geo fields + slug + HH (rule b)
+      // Rule (a): completed presence-gated submission = verification
+      const now = new Date().toISOString()
       const promotionUpdate: Record<string, unknown> = {
         is_seed_data: false,
+        status: 'verified',
+        last_verified: now,
         city: geoCity,
         state: geoState,
         address: geoAddress ?? '',
@@ -434,7 +438,8 @@ export async function POST(req: NextRequest) {
       name: venueName.trim(),
       lat: venueLat,
       lng: venueLng,
-      status: 'unverified',
+      status: 'verified',  // rule (a): completed presence-gated submission = verification
+      last_verified: now,
       contributor_trust: 'new',
       is_seed_data: false,  // user-created venues are immediately visible
       menu_text: null,

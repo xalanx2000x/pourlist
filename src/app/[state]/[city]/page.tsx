@@ -16,6 +16,7 @@ import { supabaseServer } from '@/lib/supabase-server'
 import { popularityScore, fetchViewCounts } from '@/lib/popularity'
 import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
+import { capitalizeCity } from '@/lib/city-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,10 +28,6 @@ const STATE_NAMES: Record<string, string> = {
   or: 'Oregon', pa: 'Pennsylvania', tx: 'Texas', ca: 'California',
   wa: 'Washington', ny: 'New York', co: 'Colorado', az: 'Arizona',
   nv: 'Nevada', fl: 'Florida', il: 'Illinois', ma: 'Massachusetts',
-}
-
-function capitalizeCity(city: string): string {
-  return city.split(/[\s-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

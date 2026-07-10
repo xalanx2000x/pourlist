@@ -24,20 +24,11 @@ import { supabaseServer } from '@/lib/supabase-server'
 import { popularityScore, fetchViewCounts } from '@/lib/popularity'
 import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { slugifyName } from '@/lib/slug'
-import { NEIGHBORHOOD_PAGE_THRESHOLD } from '@/lib/neighborhoods'
+import { NEIGHBORHOOD_PAGE_THRESHOLD, fetchQualifyingVenues } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
 import type { LeanVenueForHH, PopularVenue } from '@/components/CityPageClient'
 
 const BASE_URL = 'https://pourlist.app'
-
-// ─── Shared column list ────────────────────────────────────────────────────────
-const HH_COLS = [
-  'id', 'name', 'slug', 'new_slug', 'neighborhood', 'lat', 'lng', 'city', 'state', 'address',
-  'hh_type', 'hh_time', 'hh_days', 'hh_exclude_days', 'hh_start', 'hh_end',
-  'hh_type_2', 'hh_days_2', 'hh_exclude_days_2', 'hh_start_2', 'hh_end_2',
-  'hh_type_3', 'hh_days_3', 'hh_exclude_days_3', 'hh_start_3', 'hh_end_3',
-  'opening_min', 'last_verified', 'created_at',
-].join(', ')
 
 // ─── Neighborhood fetch ────────────────────────────────────────────────────────
 
@@ -52,33 +43,22 @@ interface NeighborhoodPageData {
   cityName: string
 }
 
+import { capitalizeCity } from '@/lib/city-utils'
+
+// Must stay in sync with getNeighborhoodStats in src/lib/neighborhoods.ts — both call fetchQualifyingVenues.
+
+// Must stay in sync with getNeighborhoodStats in src/lib/neighborhoods.ts — both call fetchQualifyingVenues.
 async function getNeighborhoodPage(
   state: string,
-  city: string,
+  citySlug: string,
   neighborhoodSlug: string
 ): Promise<NeighborhoodPageData | null> {
-  const stateUpper = state.toUpperCase()
-  // city param is already capitalized via capitalizeCity
-  const cityName = city
-
-  // Find all venues in this (city, state, neighborhood) that are qualifying
-  const { data: venueData, error } = await supabaseServer
-    .from('venues')
-    .select(HH_COLS)
-    .eq('state', stateUpper)
-    .eq('city', cityName)
-    .eq('status', 'verified')
-    .not('hh_type', 'is', null)
-    .not('neighborhood', 'is', null)
-
-  if (error || !venueData) return null
-
-  // Filter to the matching neighborhood + geo-complete (city/state not null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allNeighborhoodVenues: LeanVenueForHH[] = (venueData as any).filter((v: any) => {
-    const nSlug = slugifyName(v.neighborhood ?? '')
-    return nSlug === neighborhoodSlug && !!v.city && !!v.state
-  })
+  // Use shared helper: slug-safe for both city and neighborhood dimensions
+  const allNeighborhoodVenues: LeanVenueForHH[] = await fetchQualifyingVenues(
+    state,
+    citySlug,
+    neighborhoodSlug
+  ) as LeanVenueForHH[]
 
   // Threshold gate: must have ≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues
   if (allNeighborhoodVenues.length < NEIGHBORHOOD_PAGE_THRESHOLD) return null
@@ -109,8 +89,8 @@ async function getNeighborhoodPage(
     popularVenues: scored,
     qualifyingCount: allNeighborhoodVenues.length,
     state,
-    city,
-    cityName,
+    city: citySlug,
+    cityName: capitalizeCity(citySlug),
   }
 }
 

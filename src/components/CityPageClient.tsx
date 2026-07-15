@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { hasActiveHappyHour } from '@/lib/activeHH'
+import { hasActiveHappyHour, resolveHH } from '@/lib/hh-state'
 import type { Venue } from '@/lib/supabase'
 
 export interface LeanVenueForHH {
@@ -25,20 +25,11 @@ export interface LeanVenueForHH {
   hh_start_3: number | null
   hh_end_3: number | null
   opening_min: number | null
+  timezone: string | null
   new_slug: string | null
   address: string | null
   lat: number | null
   lng: number | null
-}
-
-export interface PopularVenue {
-  id: string
-  name: string
-  new_slug: string | null
-  neighborhood: string | null
-  address: string | null
-  score: number
-  viewCount: number
 }
 
 interface QualifyingNeighborhood {
@@ -53,34 +44,22 @@ interface Props {
   state: string
   citySlug: string
   allVenues: LeanVenueForHH[]
-  popularVenues: PopularVenue[]
   qualifyingNeighborhoods: QualifyingNeighborhood[]
 }
 
 const STARTING_SOON_WINDOW_MIN = 60 // 1 hour
 
-// ── Pacific time helpers ───────────────────────────────────────────────────────
-
-function minsSinceMidnightPacific(): number {
-  const now = new Date()
-  const pacific = new Date(
-    now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
-  )
-  return pacific.getHours() * 60 + pacific.getMinutes()
-}
-
+/**
+ * Returns true when the next HH window opens within STARTING_SOON_WINDOW_MIN minutes,
+ * in the venue's own timezone. Falls back to Pacific when venue.timezone is null.
+ */
 function isStartingSoon(venue: LeanVenueForHH): boolean {
-  // Returns true if HH starts within the next STARTING_SOON_WINDOW_MIN minutes
-  // but is not currently active
-  if (hasActiveHappyHour(venue as unknown as Parameters<typeof hasActiveHappyHour>[0])) return false
-
-  const hhStart = venue.hh_start
-  if (hhStart == null) return false
-
-  const nowMin = minsSinceMidnightPacific()
-  const diff = hhStart - nowMin
-
-  return diff > 0 && diff <= STARTING_SOON_WINDOW_MIN
+  if (hasActiveHappyHour(venue)) return false
+  const res = resolveHH(venue)
+  if (!res.opensAt) return false
+  const now = new Date()
+  const minutesUntil = Math.round((res.opensAt.getTime() - now.getTime()) / 60_000)
+  return minutesUntil > 0 && minutesUntil <= STARTING_SOON_WINDOW_MIN
 }
 
 function formatHhTime(venue: LeanVenueForHH): string {
@@ -126,7 +105,7 @@ function VenueRow({ venue, href, label }: { venue: { name: string; neighborhood?
   )
 }
 
-function SectionHeader({ title, count, accent }: { title: string; count: number; accent: 'live' | 'soon' | 'popular' }) {
+function SectionHeader({ title, count, accent }: { title: string; count: number; accent: 'live' | 'soon' }) {
   const colors = {
     live: 'text-purple-700 bg-purple-50 border-purple-200',
     soon: 'text-orange-700 bg-orange-50 border-orange-200',
@@ -149,7 +128,7 @@ function EmptyState({ live, soon }: { live: number; soon: number }) {
   if (!bothEmpty) return null
   return (
     <div className="px-4 py-6 text-center border-t border-gray-100">
-      <p className="text-gray-500 text-sm mb-1">No happy hours are live right now in {new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long' })} evening.</p>
+      <p className="text-gray-500 text-sm mb-1">No happy hours are live right now.</p>
       <p className="text-gray-400 text-xs">Scroll down to see Portland's most popular happy hours below.</p>
     </div>
   )
@@ -163,7 +142,6 @@ export default function CityPageClient({
   state,
   citySlug,
   allVenues,
-  popularVenues,
   qualifyingNeighborhoods,
 }: Props) {
   const [tick, setTick] = useState(0) // force re-render every minute
@@ -176,10 +154,26 @@ export default function CityPageClient({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _ = tick // reference to trigger reactivity
 
-  const nowPacific = minsSinceMidnightPacific()
+  const liveRaw = allVenues.filter(v => hasActiveHappyHour(v))
+  const soonRaw = allVenues.filter(v => isStartingSoon(v))
 
-  const live = allVenues.filter(v => hasActiveHappyHour(v as unknown as Parameters<typeof hasActiveHappyHour>[0]))
-  const soon = allVenues.filter(v => isStartingSoon(v))
+  // A2: runway sort — LIVE: latest-closes first (most runway on top), til-close (null) on top
+  const live = [...liveRaw].sort((a, b) => {
+    const ra = resolveHH(a), rb = resolveHH(b)
+    if (ra.closesAt === null && rb.closesAt === null) return 0
+    // til-close (null) sorts before any explicit close time
+    if (ra.closesAt === null) return -1
+    if (rb.closesAt === null) return 1
+    return rb.closesAt.getTime() - ra.closesAt.getTime()
+  })
+
+  // A2: runway sort — SOON: earliest-opens first (starting-soonest on top)
+  const soon = [...soonRaw].sort((a, b) => {
+    const ra = resolveHH(a), rb = resolveHH(b)
+    if (!ra.opensAt) return 1
+    if (!rb.opensAt) return -1
+    return ra.opensAt.getTime() - rb.opensAt.getTime()
+  })
 
   return (
     <div className="min-h-screen bg-white">
@@ -187,7 +181,21 @@ export default function CityPageClient({
       <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-8 text-white">
         <p className="text-xs uppercase tracking-widest opacity-80 mb-1">{subheading}</p>
         <h1 className="text-3xl font-bold">{heading}</h1>
-        <p className="text-amber-100 mt-1 text-sm">
+        {/* A4: answer-first — live count in hero */}
+        {live.length > 0 ? (
+          <p className="text-amber-100 text-sm mt-1">
+            🟣 {live.length} happy hour{live.length !== 1 ? 's' : ''} on now
+          </p>
+        ) : soon.length > 0 ? (
+          <p className="text-amber-100 text-sm mt-1">
+            No happy hours live right now — {soon.length} starting soon
+          </p>
+        ) : (
+          <p className="text-amber-100 text-sm mt-1 opacity-60">
+            No live happy hours right now
+          </p>
+        )}
+        <p className="text-amber-100 text-sm">
           {allVenues.length} venue{allVenues.length !== 1 ? 's' : ''} with happy hours
         </p>
       </div>
@@ -243,35 +251,6 @@ export default function CityPageClient({
                 className="text-sm bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-800 px-3 py-1.5 rounded-full transition-colors"
               >
                 {n.name} <span className="text-gray-400">({n.count})</span>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Most Popular — server-rendered */}
-      {popularVenues.length > 0 && (
-        <section className="border-t border-gray-200 mt-2">
-          <SectionHeader title={`Most Popular ${heading}`} count={Math.min(popularVenues.length, 15)} accent="popular" />
-          <div className="divide-y divide-gray-100">
-            {popularVenues.map((v, i) => (
-              <a
-                key={v.id}
-                href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-amber-50 transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs font-mono w-5 text-right ${i < 3 ? 'text-amber-500 font-bold' : 'text-gray-300'}`}>
-                    {i + 1}
-                  </span>
-                  <div>
-                    <span className="font-medium text-gray-900 group-hover:text-amber-700">{v.name}</span>
-                    {v.neighborhood && (
-                      <span className="ml-2 text-xs text-gray-400">{v.neighborhood}</span>
-                    )}
-                  </div>
-                </div>
-                <span className="text-xs text-gray-400">{v.viewCount} views</span>
               </a>
             ))}
           </div>

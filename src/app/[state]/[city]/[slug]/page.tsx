@@ -21,12 +21,12 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-import { popularityScore, fetchViewCounts } from '@/lib/popularity'
+
 import { hasHappyHourData } from '@/lib/happy-hour-data'
 import { slugifyName } from '@/lib/slug'
-import { NEIGHBORHOOD_PAGE_THRESHOLD, fetchQualifyingVenues } from '@/lib/neighborhoods'
+import { NEIGHBORHOOD_PAGE_THRESHOLD, fetchQualifyingVenues, neighborhoodQualifies } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
-import type { LeanVenueForHH, PopularVenue } from '@/components/CityPageClient'
+import type { LeanVenueForHH } from '@/components/CityPageClient'
 
 const BASE_URL = 'https://pourlist.app'
 
@@ -36,7 +36,7 @@ interface NeighborhoodPageData {
   kind: 'neighborhood'
   neighborhood: string
   venues: LeanVenueForHH[]
-  popularVenues: { id: string; name: string; new_slug: string | null; neighborhood: string | null; address: string | null; score: number; viewCount: number }[]
+
   qualifyingCount: number
   state: string
   city: string
@@ -63,30 +63,10 @@ async function getNeighborhoodPage(
   // Threshold gate: must have ≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues
   if (allNeighborhoodVenues.length < NEIGHBORHOOD_PAGE_THRESHOLD) return null
 
-  // Fetch view counts for Most Popular section
-  const viewCounts = await fetchViewCounts(
-    allNeighborhoodVenues.map(v => v.id),
-    supabaseServer
-  )
-
-  const scored = allNeighborhoodVenues
-    .map((v: any) => ({
-      id: v.id,
-      name: v.name ?? '',
-      new_slug: v.new_slug,
-      neighborhood: v.neighborhood,
-      address: v.address,
-      score: popularityScore(viewCounts[v.id] ?? 0, v.last_verified ?? null, v.created_at ?? ''),
-      viewCount: viewCounts[v.id] ?? 0,
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 15)
-
   return {
     kind: 'neighborhood',
     neighborhood: allNeighborhoodVenues[0]?.neighborhood ?? neighborhoodSlug,
     venues: allNeighborhoodVenues,
-    popularVenues: scored,
     qualifyingCount: allNeighborhoodVenues.length,
     state,
     city: citySlug,
@@ -103,6 +83,7 @@ async function getVenueByNewSlug(state: string, city: string, slugFragment: stri
       .from('venues')
       .select('*')
       .eq('new_slug', newSlug)
+      .in('status', ['verified', 'stale'])
       .single()
     if (data && data.state?.toLowerCase() === state && data.city?.toLowerCase() === city) {
       return data
@@ -116,7 +97,12 @@ async function getVenueByNewSlug(state: string, city: string, slugFragment: stri
 // Fallback: old slug format
 async function getVenueByOldSlug(slug: string) {
   try {
-    const { data } = await supabaseServer.from('venues').select('*').eq('slug', slug).single()
+    const { data } = await supabaseServer
+      .from('venues')
+      .select('*')
+      .eq('slug', slug)
+      .in('status', ['verified', 'stale'])
+      .single()
     return data
   } catch {
     return null
@@ -156,12 +142,13 @@ export async function generateStaticParams() {
       .not('neighborhood', 'is', null)
       .not('city', 'is', null)
       .not('state', 'is', null)
-      .eq('status', 'verified')
+      .in('status', ['verified', 'stale'])
       .not('hh_type', 'is', null) as any)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const venuesResult = await (supabaseServer
       .from('venues')
       .select('id, new_slug, slug, state, city, needs_geo_review, is_seed_data')
+      .in('status', ['verified', 'stale'])
       .not('hh_type', 'is', null)
       .not('new_slug', 'is', null) as any)
 
@@ -222,7 +209,7 @@ export async function generateMetadata({
     const { neighborhood, qualifyingCount, cityName } = pageData
     return {
       title: `${neighborhood} Happy Hours — ${cityName}`,
-      description: `${qualifyingCount} happy hour bars and restaurants in ${neighborhood}, ${cityName}. Live deals, starting soon, and most popular spots.`,
+      description: `${qualifyingCount} happy hour bars and restaurants in ${neighborhood}, ${cityName}. Live deals and starting soon.`,
       robots: { index: true, follow: true },
     }
   }
@@ -249,10 +236,10 @@ export default async function UnifiedSlugPage({
 
   // ── Neighborhood page ──────────────────────────────────────────────────────
   if (pageData.kind === 'neighborhood') {
-    const { neighborhood, venues, popularVenues, state: st, cityName } = pageData
+    const { neighborhood, venues, state: st, cityName } = pageData
     const stateUpper = st.toUpperCase()
     const heading = `${neighborhood} Happy Hours`
-    const subheading = `${venues.length} spots — live, starting soon, and most popular`
+    const subheading = `${venues.length} spots — live and starting soon`
 
     return (
       <div className="min-h-screen bg-white dark:bg-gray-950">
@@ -273,7 +260,7 @@ export default async function UnifiedSlugPage({
             state={st}
             citySlug={cityName.toLowerCase()}
             allVenues={venues}
-            popularVenues={popularVenues}
+
             qualifyingNeighborhoods={[]}
           />
         </main>
@@ -313,6 +300,17 @@ export default async function UnifiedSlugPage({
   }
   if (venue.menu_text) schema.description = venue.menu_text
 
+  // A5: compute neighborhood link target
+  const venueNeighborhood = venue.neighborhood
+  const stateUpper = (venue.state ?? state).toUpperCase()
+  const cityForLink = (venue.city ?? city).toLowerCase()
+  const neighborhoodPageExists = venueNeighborhood
+    ? await neighborhoodQualifies(venueNeighborhood, venue.city ?? city, stateUpper)
+    : false
+  const neighborhoodSlug = venueNeighborhood
+    ? slugifyName(venueNeighborhood)
+    : null
+
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
@@ -326,6 +324,24 @@ export default async function UnifiedSlugPage({
           </div>
         </header>
         <main className="max-w-2xl mx-auto px-4 py-8">
+          {/* A5: cross-links breadcrumb */}
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+            <a href={`/${state}/${cityForLink}`} className="hover:text-amber-600">
+              {venue.city ?? capitalizeCity(city)}
+            </a>
+            {venueNeighborhood && (
+              <>
+                <span className="text-gray-300">/</span>
+                {neighborhoodPageExists ? (
+                  <a href={`/${state}/${cityForLink}/${neighborhoodSlug}`} className="hover:text-amber-600">
+                    {venueNeighborhood}
+                  </a>
+                ) : (
+                  <span className="text-gray-400">{venueNeighborhood}</span>
+                )}
+              </>
+            )}
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{venue.name}</h1>
           {formatAddress(venue) && (
             <p className="text-gray-500 text-sm mb-6">{formatAddress(venue)}</p>

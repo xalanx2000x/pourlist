@@ -13,7 +13,7 @@
  */
 import { Metadata } from 'next'
 import { supabaseServer } from '@/lib/supabase-server'
-import { popularityScore, fetchViewCounts } from '@/lib/popularity'
+
 import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
 import { capitalizeCity } from '@/lib/city-utils'
@@ -36,8 +36,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const cityName = capitalizeCity(city)
   return {
     title: `${cityName}, ${stateName} Happy Hours`,
-    description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`,
-    openGraph: { title: `${cityName}, ${stateName} Happy Hours`, description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and the most popular spots — all in one place.`, type: 'website' },
+    description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and all verified venues — all in one place.`,
+    openGraph: { title: `${cityName}, ${stateName} Happy Hours`, description: `Find the best happy hours in ${cityName}, ${stateName}. Live deals, starting soon, and all verified venues — all in one place.`, type: 'website' },
   }
 }
 
@@ -52,7 +52,7 @@ export default async function CityPage({ params }: Props) {
     'hh_type', 'hh_time', 'hh_days', 'hh_exclude_days', 'hh_start', 'hh_end',
     'hh_type_2', 'hh_days_2', 'hh_exclude_days_2', 'hh_start_2', 'hh_end_2',
     'hh_type_3', 'hh_days_3', 'hh_exclude_days_3', 'hh_start_3', 'hh_end_3',
-    'opening_min', 'last_verified', 'created_at',
+    'opening_min', 'timezone', 'last_verified', 'created_at',
   ].join(', ')
 
   // Fetch all verified Portland venues with HH data
@@ -62,7 +62,7 @@ export default async function CityPage({ params }: Props) {
     .eq('state', stateLower.toUpperCase())
     .eq('city', cityName)
     .not('hh_type', 'is', null)
-    .eq('status', 'verified')
+    .in('status', ['verified', 'stale'])
 
   if (venuesResult.error) {
     console.error('[cityPage] venues error:', venuesResult.error)
@@ -78,28 +78,7 @@ export default async function CityPage({ params }: Props) {
     console.error('[cityPage] getQualifyingNeighborhoods failed:', e)
   }
 
-  // View counts for popularity
-  let viewCounts: Record<string, number> = {}
-  try {
-    viewCounts = await fetchViewCounts(venueList.map(v => v.id as string), supabaseServer)
-  } catch (e) {
-    console.error('[cityPage] fetchViewCounts failed:', e)
-  }
 
-  // Build popular list (top 15)
-  const popular = [...venueList]
-    .map(v => {
-      const id = v.id as string
-      const vc = viewCounts[id] ?? 0
-      return {
-        ...v,
-        id,
-        viewCount: vc,
-        score: popularityScore(vc, v.last_verified as string | null, v.created_at as string),
-      }
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 15)
 
   const stateName = STATE_NAMES[stateLower] ?? state.toUpperCase()
 
@@ -110,7 +89,7 @@ export default async function CityPage({ params }: Props) {
       state={stateLower}
       citySlug={city}
       allVenues={venueList as unknown as Parameters<typeof CityPageClient>[0]['allVenues']}
-      popularVenues={popular as unknown as Parameters<typeof CityPageClient>[0]['popularVenues']}
+
       qualifyingNeighborhoods={qualifying.map(n => ({
         name: n.neighborhood,
         slug: n.neighborhood.toLowerCase().replace(/\s+/g, '-'),

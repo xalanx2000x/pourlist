@@ -370,7 +370,7 @@ export default function CityPageClient({
     <div className="relative min-h-screen">
       {/*
         Backdrop layer. Sits behind the card. Clicking it opens the live map at /.
-        Background-color placeholder (warm amber) renders visibly until Tyler drops in
+        Background-color placeholder (bg-amber-300 = #ffd236) renders visibly until Tyler drops in
         /public/portland-backdrop.jpg; when that file lands, the bg-image declaration
         will paint over the color. `absolute` (not `fixed`) so it scrolls with the page.
         Edge-tap accidents possible; iterate if reported.
@@ -378,7 +378,7 @@ export default function CityPageClient({
       <a
         href="/"
         aria-label="Open live map"
-        className="absolute inset-0 z-0 bg-amber-100 bg-[url(/portland-backdrop.jpg)] bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop.jpg)] bg-cover bg-center bg-no-repeat"
       />
 
       <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">

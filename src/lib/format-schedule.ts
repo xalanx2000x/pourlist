@@ -9,7 +9,7 @@
  */
 import type { Venue } from '@/lib/supabase'
 import type { LeanVenue } from '@/lib/venues'
-import { formatMin } from '@/lib/activeHH'
+import { formatMin } from '@/lib/hh-state'
 
 const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Venue } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
-import { hasActiveHappyHour } from '@/lib/activeHH'
+import { hasActiveHappyHour } from '@/lib/hh-state'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
 import ShareButton from './ShareButton'
@@ -288,11 +288,6 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             {venue.status === 'unverified' && (
               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full mt-1">
                 New
-              </span>
-            )}
-            {venue.status === 'stale' && (
-              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full mt-1">
-                Needs Update
               </span>
             )}
             <div className="ml-auto flex items-center gap-1">

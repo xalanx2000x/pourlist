@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { reverseGeocodeStructured } from '@/lib/gps'
 import { resolveNewSlug } from '@/lib/slug'
+import tzlookup from 'tz-lookup'
+import { getCityCloseMin } from '@/lib/bar-close-times'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +16,29 @@ const supabase = createClient(
 function storagePathFromUrl(url: string): string {
   const match = url.match(/\/venue-photos\/(.+)$/)
   return match ? `venue-photos/${match[1]}` : ''
+}
+
+/**
+ * Validates that a crossing-midnight window's end does not exceed the city's legal close.
+ * Returns an error message string, or null if valid.
+ * Rule: late_night/all_day types are exempt. Non-crossing windows (end >= start) are exempt.
+ * Only checks: crossing windows (end < start) where end > cityCloseMin.
+ */
+function validateImpossibleWindow(
+  city: string,
+  state: string,
+  hhType: string | null | undefined,
+  hhStart: number | null,
+  hhEnd: number | null,
+): string | null {
+  if (hhType === 'late_night' || hhType === 'all_day') return null
+  if (hhStart === null || hhEnd === null) return null
+  if (hhStart < hhEnd) return null // does not cross midnight — exempt
+  const closeMin = getCityCloseMin(city, state)
+  if (hhEnd > closeMin) {
+    return 'Invalid timeframe — please check the start and end times.'
+  }
+  return null
 }
 
 /**
@@ -175,7 +200,28 @@ export async function POST(req: NextRequest) {
       }
       // ── end gate ─────────────────────────────────────────────────────────
 
+      // ── Impossible window validation — reject crossing-midnight end > legal close ─
+      // seedVenue.city/state are already resolved at this point.
+      const vCity = seedVenue.city ?? null
+      const vState = seedVenue.state ?? null
+      if (vCity && vState) {
+        for (const [t, s, e, label] of [
+          [hh_type, hh_start, hh_end, 'window 1'],
+          [hh_type_2, hh_start_2, hh_end_2, 'window 2'],
+          [hh_type_3, hh_start_3, hh_end_3, 'window 3'],
+        ] as [string | null | undefined, string | null | undefined, string | null | undefined, string][]) {
+          const err = validateImpossibleWindow(
+            vCity, vState,
+            t,
+            s != null ? parseInt(s as string) : null,
+            e != null ? parseInt(e as string) : null,
+          )
+          if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
+        }
+      }
+
       // Reverse-geocode GPS → populate city/state before generating slug.
+      // City/state needed here for impossible-window validation below.
       // This is the root-cause fix: seed venues previously promoted without
       // geo data, landing in limbo with no new_slug.
       // Graceful degradation: promotion still succeeds even if geocode fails.
@@ -278,6 +324,16 @@ export async function POST(req: NextRequest) {
         hh_exclude_days_3: hh_exclude_days_3 || null,
         hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
         hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
+        // Belt-and-suspenders: set timezone from seed venue's stored coords at promotion time.
+        // The backfill script also handles this, but setting it here ensures correctness even
+        // if the seed was promoted before backfill ran.
+        timezone: (() => {
+          try {
+            return seedLat != null && seedLng != null && !isNaN(seedLat) && !isNaN(seedLng)
+              ? tzlookup(seedLat, seedLng)
+              : null
+          } catch { return null }
+        })(),
       }
 
       if (uploadedUrls.length > 0) {
@@ -466,6 +522,12 @@ export async function POST(req: NextRequest) {
       hh_exclude_days_3: hh_exclude_days_3 || null,
       hh_start_3: hh_start_3 ? parseInt(hh_start_3) : null,
       hh_end_3: hh_end_3 ? parseInt(hh_end_3) : null,
+      // Derive timezone from venue GPS at insert time — tzlookup is synchronous, zero network cost.
+      timezone: (() => {
+        try {
+          return !isNaN(venueLat) && !isNaN(venueLng) ? tzlookup(venueLat, venueLng) : null
+        } catch { return null }
+      })(),
     }
 
     // New-contribution hook: if we have GPS, reverse-geocode and fill
@@ -493,6 +555,25 @@ export async function POST(req: NextRequest) {
     // as {} | null rather than string | null.
     const venueCity = (venueInsert.city as string | null) ?? null
     const venueState = (venueInsert.state as string | null) ?? null
+
+    // ── Impossible window validation — reject crossing-midnight end > legal close ─
+    // Run for both new-venue flow (city/state from geocode) and seed-promotion flow
+    // (city/state from seedVenue, validated earlier).
+    if (venueCity && venueState) {
+      for (const [t, s, e] of [
+        [hh_type, hh_start, hh_end],
+        [hh_type_2, hh_start_2, hh_end_2],
+        [hh_type_3, hh_start_3, hh_end_3],
+      ] as [string | null | undefined, string | null | undefined, string | null | undefined][]) {
+        const err = validateImpossibleWindow(
+          venueCity, venueState,
+          t,
+          s != null ? parseInt(s as string) : null,
+          e != null ? parseInt(e as string) : null,
+        )
+        if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
+      }
+    }
 
     const { data: newVenue, error: venueError } = await supabase
       .from('venues')

@@ -5,8 +5,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { Venue } from '@/lib/supabase'
 import type { LeanVenue } from '@/lib/venues'
-import { hasActiveHappyHour } from '@/lib/activeHH'
-import { getHHState, getHHColor } from '@/lib/hh-state'
+import { hasActiveHappyHour, getHHState, getHHColor } from '@/lib/hh-state'
 import { formatAddress } from '@/lib/format-address'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
@@ -289,6 +288,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     if (map.current.getLayer('unclustered-point-inner-sm')) map.current.removeLayer('unclustered-point-inner-sm')
     if (map.current.getLayer('unclustered-point-inner-lg')) map.current.removeLayer('unclustered-point-inner-lg')
     if (map.current.getLayer('unclustered-point-glow')) map.current.removeLayer('unclustered-point-glow')
+    if (map.current.getLayer('unverified-badge')) map.current.removeLayer('unverified-badge')
     if (map.current.getSource('venues')) map.current.removeSource('venues')
 
     map.current.addSource('venues', {
@@ -397,6 +397,36 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
           0
         ],
         'circle-blur': 0.85
+      }
+    })
+
+    // "NEW" badge for unverified venues — symbol layer on top of the circle pin
+    map.current.addLayer({
+      id: 'unverified-badge',
+      type: 'symbol',
+      source: 'venues',
+      filter: ['!', ['has', 'point_count']],
+      layout: {
+        'text-field': [
+          'case',
+          ['==', ['get', 'status'], 'unverified'], 'NEW',
+          ''
+        ],
+        'text-size': 9,
+        'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+        'text-offset': [0, -1.8],
+        'text-anchor': 'center',
+        'text-optional': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#854d0e',
+        'text-halo-width': 1.5,
+        'text-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          12, 0,
+          13, 1
+        ]
       }
     })
 

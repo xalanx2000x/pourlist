@@ -3,7 +3,7 @@
 import type { LeanVenue } from '@/lib/venues'
 import type { Venue } from '@/lib/supabase'
 import VenueCard from './VenueCard'
-import { hasActiveHappyHour } from '@/lib/activeHH'
+import { hasActiveHappyHour } from '@/lib/hh-state'
 
 interface VenueListProps {
   venues: LeanVenue[]

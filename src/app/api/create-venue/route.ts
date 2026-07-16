@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import tzlookup from 'tz-lookup'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,7 +39,12 @@ export async function POST(req: NextRequest) {
         type: null,
         menu_text: null,
         latest_menu_image_url: null,
-        hh_time: null
+        hh_time: null,
+        timezone: (() => {
+          try {
+            return lat != null && lng != null ? tzlookup(lat, lng) : null
+          } catch { return null }
+        })(),
       })
       .select()
       .single()

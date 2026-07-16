@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import type { Venue } from '@/lib/supabase'
-import { getVenuesInBounds, getVenuesByProximity, getVenueById, getVenueBySlugClient, type LeanVenue, type VenueBounds } from '@/lib/venues'
+import { getVenuesInBounds, getVenuesByProximity, getVenueById, getVenueBySlugClient, isListed, type LeanVenue, type VenueBounds } from '@/lib/venues'
 import { checkHappyHour } from '@/lib/happyHourCheck'
 import { isWithinRadius, isWithinPresence } from '@/lib/gpsCheck'
 import VenueList from '@/components/VenueList'
@@ -22,6 +22,7 @@ import { checkRateLimit } from '@/lib/rateLimit'
 import { getBrowserLocation, LocationUnavailableError } from '@/lib/gps'
 import { parseHHSchedule } from '@/lib/parse-hh'
 import { haversineM } from '@/lib/geo'
+import { getHHState, resolveHH } from '@/lib/hh-state'
 import { isDeepLinkActive, setDeepLinkFlag } from '@/lib/deep-link'
 import SearchBar from '@/components/SearchBar'
 import MenuReview from '@/components/MenuReview'
@@ -477,6 +478,19 @@ export default function Home() {
           setUserLocation(loc)
           setZoomToUserTick(t => t + 1)
           setShowSearchThisArea(true)
+          // Fire search from the user's actual location (getMapCenter won't
+          // reflect the fly-to target until after the animation completes).
+          const userCenter = { lat: loc.lat, lng: loc.lng }
+          const latDelta = 0.0045
+          const lngDelta = latDelta / Math.cos(loc.lat * Math.PI / 180)
+          setSearchedLocation(userCenter)
+          setFlyToCenter(userCenter)
+          loadVenues({
+            north: loc.lat + latDelta,
+            south: loc.lat - latDelta,
+            east: loc.lng + lngDelta,
+            west: loc.lng - lngDelta,
+          })
         })
         .catch((err) => {
           if (err instanceof LocationUnavailableError) showLocationToastOnce()
@@ -486,6 +500,18 @@ export default function Home() {
     if (!userLocation) return
     setZoomToUserTick(t => t + 1)
     setShowSearchThisArea(true)
+    // Non-deep-link: search from current userLocation
+    const latDelta = 0.0045
+    const lngDelta = latDelta / Math.cos(userLocation.lat * Math.PI / 180)
+    const userCenter = { lat: userLocation.lat, lng: userLocation.lng }
+    setSearchedLocation(userCenter)
+    setFlyToCenter(userCenter)
+    loadVenues({
+      north: userLocation.lat + latDelta,
+      south: userLocation.lat - latDelta,
+      east: userLocation.lng + lngDelta,
+      west: userLocation.lng - lngDelta,
+    })
   }
 
   async function handleVenueSelect(venue: LeanVenue) {
@@ -1013,6 +1039,9 @@ export default function Home() {
       const res = await fetch('/api/commit-menu', { method: 'POST', body: fd })
       const result = await res.json().catch(() => ({}))
       if (!res.ok || !result.success) {
+        if (result.reason === 'invalid_timeframe') {
+          throw new Error('Invalid timeframe — please check the start and end times.')
+        }
         throw new Error(result.reason === 'photo_upload_failed'
           ? 'Photo upload didn\'t go through — nothing was saved. Please try again.'
           : result.error || 'Failed to save. Please try again.')
@@ -1041,9 +1070,12 @@ export default function Home() {
         if (result.reason === 'duplicate' && result.existingVenue) {
           throw new Error(`"${newVenueName}" already exists nearby as "${result.existingVenue.name}". Want to update that instead?`)
         }
-        throw new Error(result.reason === 'photo_upload_failed'
-          ? 'Photo upload didn\'t go through — nothing was saved. Please try again.'
-          : result.error || 'Failed to create venue. Please try again.')
+        if (result.reason === 'invalid_timeframe') {
+    throw new Error('Invalid timeframe — please check the start and end times.')
+  }
+  throw new Error(result.reason === 'photo_upload_failed'
+    ? 'Photo upload didn\'t go through — nothing was saved. Please try again.'
+    : result.error || 'Failed to create venue. Please try again.')
       }
       return { venueId: result.venueId, venueName: newVenueName }
     }
@@ -1226,14 +1258,27 @@ export default function Home() {
 
   // Both map and list use the same bounds — listBounds mirrors mapBounds when switching views
   const currentBounds = listBounds ?? mapBounds
-  // The loaded set is already sorted by distance from the bounds'
-  // centroid by getVenuesInBounds. The bounds filter is the only
-  // client-side transform we need — no re-sort here. The cap (150)
-  // is enforced server-side; if it bound, the list header surfaces
-  // a "showing top N — zoom in for more" hint via the `capped` flag.
+  // 4-tier sort: active > soon > today > default, then nearest-first within each tier.
+  // Distance measured from searchedLocation (user's committed search center).
+  // Falls back to flyToCenter (last fly-to anchor) for initial load / no-search-yet state.
   const visibleVenues = useMemo(() => {
-    return venues.filter(v => isVenueInBounds(v, currentBounds))
-  }, [venues, currentBounds])
+    const anchor = searchedLocation ?? flyToCenter
+    const anchorLat = anchor?.lat ?? 0
+    const anchorLng = anchor?.lng ?? 0
+    const now = new Date()
+    const TIER: Record<string, number> = { active: 0, hh_soon: 1, hh_today: 2, default: 3 }
+    return venues
+      .filter(v => isVenueInBounds(v, currentBounds) && isListed(v))
+      .map(v => {
+        const state = getHHState(v, now)
+        const tier = TIER[state] ?? 3
+        const dist = (v.lat != null && v.lng != null && anchor != null)
+          ? haversineM(anchorLat, anchorLng, v.lat, v.lng)
+          : Infinity
+        return { ...v, _tier: tier, _dist: dist }
+      })
+      .sort((a, b) => a._tier - b._tier || a._dist - b._dist)
+  }, [venues, currentBounds, searchedLocation, flyToCenter])
 
   return (
     <div className="h-screen flex flex-col bg-white">

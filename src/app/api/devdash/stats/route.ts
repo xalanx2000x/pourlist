@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { hasActiveHappyHour } from '@/lib/activeHH'
+import { hasActiveHappyHour } from '@/lib/hh-state'
 import type { Venue } from '@/lib/supabase'
 
 const supabase = createClient(

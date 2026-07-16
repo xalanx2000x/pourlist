@@ -1,6 +1,22 @@
 import { supabase, Venue } from './supabase'
 import { reverseGeocodeStructured } from './gps'
 import { haversineM } from './geo'
+import tzlookup from 'tz-lookup'
+
+// ─── Shared status predicates ─────────────────────────────────────────────────
+
+/** Map visibility: closed venues are invisible everywhere; verified, stale, and
+ * unverified all show as pins (unverified gets a "New" badge). */
+export function isMapVisible(venue: { status?: string | null }): boolean {
+  return venue.status !== 'closed'
+}
+
+/** Listing eligibility: only verified and stale venues appear in public lists,
+ * sidebar, neighborhood counts, and SEO pages. Unverified and closed are excluded. */
+export function isListed(venue: { status?: string | null }): boolean {
+  const s = venue.status ?? 'unverified'
+  return s === 'verified' || s === 'stale'
+}
 
 export type PhotoSet = {
   id: string
@@ -62,6 +78,7 @@ export type LeanVenue = {
   is_seed_data: boolean
   type: string | null
   latest_menu_image_url: string | null
+  timezone: string | null
   // Optional fields — the lean fetch doesn't return these, but
   // downstream functions (dealSummary, getHhLabel) accept the
   // Venue | LeanVenue union and gracefully skip them when missing.
@@ -312,7 +329,12 @@ export async function createVenueForScan(params: {
     website: null,
     type: null,
     menu_text: null,
-    latest_menu_image_url: null
+    latest_menu_image_url: null,
+    timezone: (() => {
+      try {
+        return params.lat != null && params.lng != null ? tzlookup(params.lat, params.lng) : null
+      } catch { return null }
+    })(),
   }
 
   // Hook: reverse-geocode if we have GPS and no user-typed address.

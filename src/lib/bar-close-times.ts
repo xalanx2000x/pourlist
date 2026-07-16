@@ -13,12 +13,12 @@
  */
 
 export type StateCloseTime = {
-  closeMin: number | null   // minutes since midnight; null = no mandate
+  closeMin: number   // minutes since midnight
   note?: string
 }
 
 export type CityCloseTime = {
-  closeMin: number | null
+  closeMin: number   // minutes since midnight
   note?: string
 }
 
@@ -42,7 +42,7 @@ export const STATE_CLOSE_TIMES: Record<string, StateCloseTime> = {
   IA: { closeMin: 120 },
   KS: { closeMin: 120 },
   KY: { closeMin: 120, note: 'Louisville has 4am licenses' },
-  LA: { closeMin: null, note: 'No statewide mandate' },
+  LA: { closeMin: 360, note: 'No statewide mandate — defaulting to 6am' },
   ME: { closeMin: 60, note: '1am, 2am on New Year\'s Eve' },
   MD: { closeMin: 120 },
   MA: { closeMin: 120, note: 'Cities/towns may set earlier' },
@@ -52,9 +52,9 @@ export const STATE_CLOSE_TIMES: Record<string, StateCloseTime> = {
   MO: { closeMin: 90, note: '1:30am; 3am in St. Louis & Kansas City' },
   MT: { closeMin: 90, note: '~1:30am; gas stations sell beer until 2am' },
   NE: { closeMin: 60, note: '1am; Omaha & Lincoln may go until 2am' },
-  NV: { closeMin: null, note: 'No statewide mandate' },
+  NV: { closeMin: 360, note: 'No statewide mandate — defaulting to 6am' },
   NH: { closeMin: 60, note: 'Last call 12:45am, close 1:30am' },
-  NJ: { closeMin: null, note: 'No statewide mandate; most cities 2am' },
+  NJ: { closeMin: 360, note: 'No statewide mandate; most cities 2am — defaulting to 6am' },
   NM: { closeMin: 120, note: '2am Mon–Sat, midnight Sunday' },
   NY: { closeMin: 240, note: 'State law 4am; counties may set earlier (1–3am)' },
   NC: { closeMin: 120 },
@@ -64,10 +64,10 @@ export const STATE_CLOSE_TIMES: Record<string, StateCloseTime> = {
   OR: { closeMin: 150, note: '2:30am' },
   PA: { closeMin: 120, note: 'Taverns; clubs 3am' },
   RI: { closeMin: 60, note: '1am daily; Providence 2am Fri/Sat' },
-  SC: { closeMin: null, note: 'Varies by county; most ~2am' },
+  SC: { closeMin: 360, note: 'Varies by county; most ~2am — defaulting to 6am' },
   SD: { closeMin: 120 },
   TN: { closeMin: 180 },
-  TX: { closeMin: null, note: 'Varies by city/county (midnight–2am)' },
+  TX: { closeMin: 360, note: 'Varies by city/county (midnight–2am) — defaulting to 6am' },
   UT: { closeMin: 60, note: 'Last call 1am, must close by 2am' },
   VT: { closeMin: 120, note: '3am on New Year\'s Eve' },
   VA: { closeMin: 120, note: 'Off-premises midnight' },
@@ -85,7 +85,7 @@ export const STATE_CLOSE_TIMES: Record<string, StateCloseTime> = {
 export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
 
   // ── Louisiana (state default: null = no mandate) ──
-  'New Orleans, LA': { closeMin: null, note: '24hr — no close time mandate' },
+  'New Orleans, LA': { closeMin: 360, note: '24hr — no close time mandate; defaulting to 6am' },
   'Baton Rouge, LA': { closeMin: 120 },
   'Shreveport, LA': { closeMin: 240, note: '6am downtown, 4am elsewhere' },
   'Lake Charles, LA': { closeMin: 150, note: 'Closes 2:30am Sun, open Mon–Sat 6am–2:30am' },
@@ -93,14 +93,14 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
   'Monroe, LA': { closeMin: 120 },
 
   // ── Nevada (state default: null = no mandate) ──
-  'Las Vegas, NV': { closeMin: null, note: '24hr — no close time mandate' },
-  'Reno, NV': { closeMin: null, note: 'No mandate; typically 2–4am' },
-  'Henderson, NV': { closeMin: null },
-  'Sparks, NV': { closeMin: null },
+  'Las Vegas, NV': { closeMin: 360, note: '24hr — no close time mandate; defaulting to 6am' },
+  'Reno, NV': { closeMin: 360, note: 'No mandate; typically 2–4am — defaulting to 6am' },
+  'Henderson, NV': { closeMin: 360 },
+  'Sparks, NV': { closeMin: 360 },
   'Carson City, NV': { closeMin: 120 },
 
   // ── New Jersey (state default: null = no mandate) ──
-  'Atlantic City, NJ': { closeMin: null, note: '24hr — no close time mandate' },
+  'Atlantic City, NJ': { closeMin: 360, note: '24hr — no close time mandate; defaulting to 6am' },
   'Jersey City, NJ': { closeMin: 120, note: 'Last call ~1:30am, 2am Fri/Sat' },
   'Newark, NJ': { closeMin: 120 },
   'Elizabeth, NJ': { closeMin: 120 },
@@ -292,7 +292,7 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
   // Alabama
   'Birmingham, AL': { closeMin: 120 },
   'Montgomery, AL': { closeMin: 120 },
-  'Mobile, AL': { closeMin: null, note: 'No close time for private club licenses' },
+  'Mobile, AL': { closeMin: 360, note: 'No close time for private club licenses; defaulting to 6am' },
 
   // Mississippi
   'Jackson, MS': { closeMin: 0 }, // Midnight
@@ -371,14 +371,14 @@ export const CITY_CLOSE_TIMES: Record<string, CityCloseTime> = {
   'Rock Hill, SC': { closeMin: 120 },
 
   // Louisiana — additional
-  'Metairie, LA': { closeMin: null }, // CDP; follows Orleans Parish or state default
+  'Metairie, LA': { closeMin: 360 }, // CDP; follows Orleans Parish or state default
   'Bossier City, LA': { closeMin: 120 },
 
   // Nevada — additional
-  'North Las Vegas, NV': { closeMin: null },
-  'Spring Valley, NV': { closeMin: null }, // CDP near Las Vegas
-  'Enterprise, NV': { closeMin: null }, // CDP near Las Vegas
-  'Paradise, NV': { closeMin: null }, // CDP near Las Vegas
+  'North Las Vegas, NV': { closeMin: 360 },
+  'Spring Valley, NV': { closeMin: 360 }, // CDP near Las Vegas
+  'Enterprise, NV': { closeMin: 360 }, // CDP near Las Vegas
+  'Paradise, NV': { closeMin: 360 }, // CDP near Las Vegas
 
   // Texas — additional
   'Tyler, TX': { closeMin: 120 },
@@ -430,48 +430,35 @@ function normalizeCityForLookup(city: string): string {
  *   2. STATE_CLOSE_TIMES[<state>]          — state default
  *   3. DEFAULT_CLOSE_MIN (120 = 2:00 AM)   — fallback for missing state
  *
- * IMPORTANT — null-mandate fallback (intentional, do not "fix"):
- *   When a state has closeMin: null (e.g. NV, NJ, LA — no statewide
- *   mandate), the `??` falls through to DEFAULT_CLOSE_MIN (120 = 2am).
- *   This is the intentional behavior: jurisdictions without a state
- *   mandate default to the same 2am fallback as missing/unknown states.
- *   The "no mandate" cities (e.g. Las Vegas, Atlantic City) keep their
- *   explicit null in CITY_CLOSE_TIMES and DO return null — that null
- *   only survives when the city table is hit directly, not via the
- *   state fallback path.
+ * All state and city entries now carry real close times (no nulls).
+ * DEFAULT_CLOSE_MIN (120 = 2am) is only used for completely unknown states.
  */
-export function getCityCloseMin(city: string, state: string): number | null {
+export function getCityCloseMin(city: string, state: string): number {
   const stateCode = state.toUpperCase()
   const cityKey = `${city}, ${stateCode}`
   if (cityKey in CITY_CLOSE_TIMES) {
-    const cityEntry = CITY_CLOSE_TIMES[cityKey]
-    return cityEntry.closeMin ?? 240
+    return CITY_CLOSE_TIMES[cityKey].closeMin
   }
   // Try normalized form (alias reconciliation)
   const normalizedCity = normalizeCityForLookup(city)
   const normalizedKey = `${normalizedCity}, ${stateCode}`
   if (normalizedKey in CITY_CLOSE_TIMES) {
-    const cityEntry = CITY_CLOSE_TIMES[normalizedKey]
-    return cityEntry.closeMin ?? 240
+    return CITY_CLOSE_TIMES[normalizedKey].closeMin
   }
   const stateEntry = STATE_CLOSE_TIMES[stateCode]
   if (stateEntry) {
-    return stateEntry.closeMin ?? 240
+    return stateEntry.closeMin
   }
   return DEFAULT_CLOSE_MIN
 }
 
 /**
  * Look up the default close time for a US state code.
- * Returns minutes since midnight, or null if no statewide mandate.
- *
- * Same null-mandate fallback as getCityCloseMin: explicit null in
- * STATE_CLOSE_TIMES falls through `??` to DEFAULT_CLOSE_MIN (120 = 2am).
- * Unknown state codes also resolve to 120.
+ * Returns minutes since midnight.
+ * Falls back to DEFAULT_CLOSE_MIN (120 = 2am) for unknown states.
  */
-export function getStateCloseMin(stateCode: string): number | null {
+export function getStateCloseMin(stateCode: string): number {
   const entry = STATE_CLOSE_TIMES[stateCode.toUpperCase()]
   if (!entry) return DEFAULT_CLOSE_MIN
-  // Explicit-null mandate (no legal closing time) resolves to 4am (240).
-  return entry.closeMin ?? 240
+  return entry.closeMin
 }

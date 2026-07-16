@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { hasActiveHappyHour, resolveHH } from '@/lib/activeHH'
+import { hasActiveHappyHour, resolveHH } from '@/lib/hh-state'
 import type { Venue } from '@/lib/supabase'
 
 export interface LeanVenueForHH {

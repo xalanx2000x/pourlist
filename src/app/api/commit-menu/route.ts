@@ -1,10 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getCityCloseMin } from '@/lib/bar-close-times'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+/**
+ * Validates that a crossing-midnight window's end does not exceed the city's legal close.
+ * Returns an error message string, or null if valid.
+ * Rule: late_night/all_day types are exempt. Non-crossing windows (end >= start) are exempt.
+ * Only checks: crossing windows (end < start) where end > cityCloseMin.
+ */
+function validateImpossibleWindow(
+  city: string,
+  state: string,
+  hhType: string | null | undefined,
+  hhStart: number | null,
+  hhEnd: number | null,
+): string | null {
+  if (hhType === 'late_night' || hhType === 'all_day') return null
+  if (hhStart === null || hhEnd === null) return null
+  if (hhStart < hhEnd) return null // does not cross midnight — exempt
+  const closeMin = getCityCloseMin(city, state)
+  if (hhEnd > closeMin) {
+    return 'Invalid timeframe — please check the start and end times.'
+  }
+  return null
+}
 
 /**
  * Derives the Supabase Storage path from a public URL.
@@ -168,6 +192,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, reason: 'missing_hh' }, { status: 400 })
     }
     // ── end gate ───────────────────────────────────────────────────────────
+
+    // ── Impossible window validation — reject crossing-midnight end > legal close ─
+    // Fetch city/state for the target venue (needed for validation).
+    // For new venues created inline below, city/state aren't available yet —
+    // those go through submit-venue which has geo-resolved city/state.
+    let venueCity: string | null = null
+    let venueState: string | null = null
+    {
+      const fetchId = venueId
+      if (fetchId) {
+        const { data: loc } = await supabase
+          .from('venues')
+          .select('city, state')
+          .eq('id', fetchId)
+          .single()
+        venueCity = loc?.city ?? null
+        venueState = loc?.state ?? null
+      }
+    }
+    if (venueCity && venueState) {
+      for (const [t, s, e] of [
+        [hh_type, hh_start, hh_end],
+        [hh_type_2, hh_start_2, hh_end_2],
+        [hh_type_3, hh_start_3, hh_end_3],
+      ] as [string | null | undefined, string | null | undefined, string | null | undefined][]) {
+        const err = validateImpossibleWindow(
+          venueCity, venueState,
+          t,
+          s != null ? parseInt(s as string) : null,
+          e != null ? parseInt(e as string) : null,
+        )
+        if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
+      }
+    }
 
     let targetVenueId = venueId
 

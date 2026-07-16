@@ -1,8 +1,7 @@
 'use client'
 
 import type { LeanVenue } from '@/lib/venues'
-import { hasActiveHappyHour } from '@/lib/activeHH'
-import { getHHState, getHHColor } from '@/lib/hh-state'
+import { hasActiveHappyHour, getHHState, getHHColor, resolveHH } from '@/lib/hh-state'
 import ShareButton from './ShareButton'
 import { formatAddress } from '@/lib/format-address'
 
@@ -16,6 +15,12 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
   const isActiveHH = hasActiveHappyHour(venue)
   const hhState = getHHState(venue)
   const hhColor = getHHColor(hhState)
+
+  // hh_soon badge: show "Starts in X min" using resolveHH's opensAt (never recompute here)
+  const hhSoonResult = hhState === 'hh_soon' ? resolveHH(venue) : null
+  const startsInMin = hhSoonResult?.opensAt
+    ? Math.round((hhSoonResult.opensAt.getTime() - Date.now()) / 60000)
+    : null
 
   // Keyboard a11y: outer is a <div role="button">, so handle Enter/Space
   // explicitly. Without this, keyboard users can't open the card.
@@ -60,19 +65,24 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
         <div className="shrink-0 flex flex-col items-end gap-1">
           {/* Share — 44×44px tap target, stopPropagation handled inside */}
           <ShareButton venue={venue} />
-          {isActiveHH && (
+          {hhState === 'active' && (
             <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
               HH Active
+            </span>
+          )}
+          {hhState === 'hh_soon' && startsInMin !== null && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
+              Starts {startsInMin < 1 ? '<1' : startsInMin} min
+            </span>
+          )}
+          {hhState === 'hh_today' && (
+            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-semibold">
+              Today
             </span>
           )}
           {venue.status === 'unverified' && (
             <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
               New
-            </span>
-          )}
-          {venue.status === 'stale' && (
-            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
-              Needs Update
             </span>
           )}
         </div>

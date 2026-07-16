@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { Venue } from '@/lib/supabase'
-import { hasActiveHappyHour } from '@/lib/activeHH'
+import { hasActiveHappyHour } from '@/lib/hh-state'
 
 interface VenueLiveBadgeProps {
   venue: Venue

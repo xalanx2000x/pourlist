@@ -162,30 +162,68 @@ function formatTime(date: Date, timezone: string | null): string {
   }).format(date)
 }
 
+// ── Icons (inline SVG, no deps) ───────────────────────────────────────────────
+
+function LiveDot({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ClockIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 16 14" />
+    </svg>
+  )
+}
+
+function PinIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
+    </svg>
+  )
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function VenueRow({
   venue,
   href,
   label,
+  accent,
 }: {
   venue: { name: string; neighborhood?: string | null }
   href: string
   label?: string
+  accent: 'live' | 'soon'
 }) {
+  const pillClass =
+    accent === 'live'
+      ? 'bg-purple-100 text-purple-700'
+      : 'bg-orange-100 text-orange-700'
+
   return (
     <a
       href={href}
-      className="flex items-center justify-between px-4 py-3 border-b border-gray-100 hover:bg-amber-50 transition-colors group"
+      className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors group"
     >
-      <div>
-        <span className="font-medium text-gray-900 group-hover:text-amber-700">{venue.name}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-base font-semibold text-gray-900 group-hover:text-amber-700 truncate">
+          {venue.name}
+        </div>
         {venue.neighborhood && (
-          <span className="ml-2 text-xs text-gray-400">{venue.neighborhood}</span>
+          <div className="text-xs text-gray-500 mt-0.5 truncate">{venue.neighborhood}</div>
         )}
       </div>
       {label && (
-        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+        <span
+          className={`shrink-0 text-xs font-medium px-3 py-1 rounded-full whitespace-nowrap ${pillClass}`}
+        >
           {label}
         </span>
       )}
@@ -194,30 +232,33 @@ function VenueRow({
 }
 
 function SectionHeader({
+  icon,
   title,
   count,
   accent,
 }: {
+  icon: React.ReactNode
   title: string
   count: number
-  accent: 'live' | 'soon'
+  accent: 'live' | 'soon' | 'neighborhood'
 }) {
-  const colors = {
-    live: 'text-purple-700 bg-purple-50 border-purple-200',
-    soon: 'text-orange-700 bg-orange-50 border-orange-200',
-    popular: 'text-gray-700 bg-gray-50 border-gray-200',
-  }
+  const labelClass =
+    accent === 'live'
+      ? 'text-purple-700'
+      : accent === 'soon'
+        ? 'text-orange-700'
+        : 'text-orange-700'
+  const badgeClass =
+    accent === 'live'
+      ? 'bg-purple-100 text-purple-700'
+      : 'bg-orange-100 text-orange-700'
+
   return (
-    <div className={`flex items-center gap-3 px-4 py-2 border-t border-b ${colors[accent]}`}>
-      <h2 className="text-base font-semibold">{title}</h2>
+    <div className="flex items-center gap-2.5 px-5 pt-6 pb-3">
+      <span className={labelClass}>{icon}</span>
+      <h2 className={`text-xs font-bold uppercase tracking-widest ${labelClass}`}>{title}</h2>
       <span
-        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-          accent === 'live'
-            ? 'bg-purple-200 text-purple-800'
-            : accent === 'soon'
-              ? 'bg-orange-200 text-orange-800'
-              : 'bg-gray-200 text-gray-600'
-        }`}
+        className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeClass}`}
       >
         {count}
       </span>
@@ -276,109 +317,168 @@ export default function CityPageClient({
       return (a.name ?? '').localeCompare(b.name ?? '')
     })
 
+  // Derive display name + state code for the hero label.
+  // citySlug may be lowercase like "portland"; the page passes "Portland" via heading.
+  // heading is "{cityName} Happy Hours", so we can reuse cityName = heading.replace(/\s+Happy Hours$/i, '').
+  const cityName = heading.replace(/\s+Happy Hours$/i, '')
+  const stateCode = state.toUpperCase()
+  const heroLabel = `${cityName.toUpperCase()}, ${stateCode}`
+
+  // Hero inner content — purple dot when live, orange dot otherwise.
+  // Content/copy preserved exactly from prior pass.
+  const heroContent = (() => {
+    if (live.length > 0) {
+      const plural = live.length !== 1 ? 's' : ''
+      return (
+        <h1 className="text-5xl md:text-6xl font-bold text-gray-900 leading-tight">
+          <span className="text-purple-600">{live.length}</span>{' '}
+          happy hour{plural} on now
+          <LiveDot className="inline-block w-4 h-4 md:w-5 md:h-5 text-purple-600 ml-2 -mb-1" />
+        </h1>
+      )
+    }
+    if (comingUp.length > 0) {
+      const first = resolveHH(comingUp[0], now)
+      const mins = Math.round((first.opensAt!.getTime() - now.getTime()) / 60_000)
+      if (mins <= 60 && mins > 0) {
+        return (
+          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 leading-tight">
+            <span className="text-orange-600">{mins}</span> min away at{' '}
+            {comingUp[0].name}
+            <ClockIcon className="inline-block w-5 h-5 md:w-6 md:h-6 text-orange-600 ml-2 -mb-1" />
+          </h1>
+        )
+      }
+      return (
+        <h1 className="text-5xl md:text-6xl font-bold text-gray-900 leading-tight">
+          <span className="text-orange-600">
+            Next at {formatHeroTime(first.opensAt!, comingUp[0].timezone, now)}
+          </span>{' '}
+          at {comingUp[0].name}
+          <ClockIcon className="inline-block w-5 h-5 md:w-6 md:h-6 text-orange-600 ml-2 -mb-1" />
+        </h1>
+      )
+    }
+    return (
+      <h1 className="text-3xl md:text-4xl font-semibold text-gray-700 leading-tight">
+        <span className="text-orange-600">No happy hours in horizon</span> — check back later
+      </h1>
+    )
+  })()
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-8 text-white">
-        <p className="text-xs uppercase tracking-widest opacity-80 mb-1">{subheading}</p>
-        <h1 className="text-3xl font-bold">{heading}</h1>
+    <div className="relative min-h-screen">
+      {/*
+        Backdrop layer. Sits behind the card. Clicking it opens the live map at /.
+        Background-color placeholder (warm amber) renders visibly until Tyler drops in
+        /public/portland-backdrop.jpg; when that file lands, the bg-image declaration
+        will paint over the color. `absolute` (not `fixed`) so it scrolls with the page.
+        Edge-tap accidents possible; iterate if reported.
+      */}
+      <a
+        href="/"
+        aria-label="Open live map"
+        className="absolute inset-0 z-0 bg-amber-100 bg-[url(/portland-backdrop.jpg)] bg-cover bg-center bg-no-repeat"
+      />
 
-        {/* Hero — adapts to top of the list */}
-        {live.length > 0 ? (
-          <p className="text-amber-100 text-sm mt-1">
-            🟣 {live.length} happy hour{live.length !== 1 ? 's' : ''} on now
-          </p>
-        ) : comingUp.length > 0 ? (() => {
-          const first = resolveHH(comingUp[0], now)
-          const mins = Math.round((first.opensAt!.getTime() - now.getTime()) / 60_000)
-          return mins <= 60 && mins > 0 ? (
-            <p className="text-amber-100 text-sm mt-1">
-              🍊 Starts in {mins} min at {comingUp[0].name}
+      <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">
+        <article className="w-full max-w-[600px] bg-white rounded-2xl shadow-xl overflow-hidden">
+          {/* Hero */}
+          <header className="px-6 pt-8 pb-6 border-b border-gray-100">
+            <p className="text-xs uppercase tracking-widest text-gray-500 mb-4 font-medium">
+              {heroLabel}
             </p>
-          ) : (
-            <p className="text-amber-100 text-sm mt-1">
-              🍊 Next at {formatHeroTime(first.opensAt!, comingUp[0].timezone, now)} at{' '}
-              {comingUp[0].name}
+            {heroContent}
+            <p className="text-sm text-gray-500 mt-4">
+              {allVenues.length} venue{allVenues.length !== 1 ? 's' : ''} with happy hours
             </p>
-          )
-        })() : (
-          <p className="text-amber-100 text-sm mt-1 opacity-80">
-            🍊 No happy hours in horizon — check back later
-          </p>
-        )}
+          </header>
 
-        <p className="text-amber-100 text-sm">
-          {allVenues.length} venue{allVenues.length !== 1 ? 's' : ''} with happy hours
-        </p>
-      </div>
+          {/* Live Now */}
+          {live.length > 0 && (
+            <section>
+              <SectionHeader
+                icon={<LiveDot className="w-3.5 h-3.5" />}
+                title="Live Now"
+                count={live.length}
+                accent="live"
+              />
+              <div>
+                {live.map(v => {
+                  const { closesAt } = resolveHH(v, now)
+                  const label =
+                    closesAt === null ? 'Until close' : `Until ${formatTime(closesAt, v.timezone)}`
+                  return (
+                    <VenueRow
+                      key={v.id}
+                      venue={{ name: v.name, neighborhood: v.neighborhood }}
+                      href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
+                      label={label}
+                      accent="live"
+                    />
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
-      {/* Live Now */}
-      {live.length > 0 && (
-        <section>
-          <SectionHeader title="Live Now" count={live.length} accent="live" />
-          <div className="divide-y divide-gray-100">
-            {live.map(v => {
-              const { closesAt } = resolveHH(v, now)
-              const label = closesAt === null ? 'Until close' : `Until ${formatTime(closesAt, v.timezone)}`
-              return (
-                <VenueRow
-                  key={v.id}
-                  venue={{ name: v.name, neighborhood: v.neighborhood }}
-                  href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
-                  label={label}
-                />
-              )
-            })}
+          {/* Coming Up */}
+          {comingUp.length > 0 && (
+            <section>
+              <SectionHeader
+                icon={<ClockIcon className="w-4 h-4" />}
+                title="Coming Up"
+                count={comingUp.length}
+                accent="soon"
+              />
+              <div>
+                {comingUp.map(v => {
+                  const { opensAt } = resolveHH(v, now)
+                  return (
+                    <VenueRow
+                      key={v.id}
+                      venue={{ name: v.name, neighborhood: v.neighborhood }}
+                      href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
+                      label={opensAt ? formatComingUpBadge(opensAt, v.timezone, now) : ''}
+                      accent="soon"
+                    />
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Neighborhood links */}
+          {qualifyingNeighborhoods.length > 0 && (
+            <section>
+              <SectionHeader
+                icon={<PinIcon className="w-4 h-4" />}
+                title="Browse by Neighborhood"
+                count={qualifyingNeighborhoods.length}
+                accent="neighborhood"
+              />
+              <div className="px-5 pb-6 flex flex-wrap gap-2">
+                {qualifyingNeighborhoods.map(n => (
+                  <a
+                    key={n.slug}
+                    href={`/${state}/${citySlug}/${n.slug}`}
+                    className="text-sm border border-orange-300 text-orange-700 hover:bg-orange-50 px-3 py-1.5 rounded-full transition-colors"
+                  >
+                    {n.name} <span className="text-orange-400">({n.count})</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className="text-center text-xs text-gray-400 py-5 border-t border-gray-100">
+            Powered by PourList ·{' '}
+            <a href="/" className="underline hover:text-amber-600">
+              Browse all cities
+            </a>
           </div>
-        </section>
-      )}
-
-      {/* Coming Up */}
-      {comingUp.length > 0 && (
-        <section>
-          <SectionHeader title="Coming Up" count={comingUp.length} accent="soon" />
-          <div className="divide-y divide-gray-100">
-            {comingUp.map(v => {
-              const { opensAt } = resolveHH(v, now)
-              return (
-                <VenueRow
-                  key={v.id}
-                  venue={{ name: v.name, neighborhood: v.neighborhood }}
-                  href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
-                  label={opensAt ? formatComingUpBadge(opensAt, v.timezone, now) : ''}
-                />
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Neighborhood links */}
-      {qualifyingNeighborhoods.length > 0 && (
-        <section className="px-6 py-4 border-t border-gray-100">
-          <h3 className="text-xs uppercase tracking-widest text-gray-400 mb-3">
-            Browse by Neighborhood
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {qualifyingNeighborhoods.map(n => (
-              <a
-                key={n.slug}
-                href={`/${state}/${citySlug}/${n.slug}`}
-                className="text-sm bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-800 px-3 py-1.5 rounded-full transition-colors"
-              >
-                {n.name} <span className="text-gray-400">({n.count})</span>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="text-center text-xs text-gray-400 py-6 border-t border-gray-100">
-        Powered by PourList ·{' '}
-        <a href="/" className="underline hover:text-amber-600">
-          Browse all cities
-        </a>
-      </div>
+        </article>
+      </main>
     </div>
   )
 }

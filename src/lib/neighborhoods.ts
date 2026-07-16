@@ -76,7 +76,7 @@ export async function getNeighborhoodStats(
   const citySlug = slugifyName(city)
   const { data: allVenues } = await supabaseServer
     .from('venues')
-    .select('neighborhood')
+    .select('neighborhood, city')
     .eq('state', state.toUpperCase())
     .eq('is_seed_data', false)
     .in('status', ['verified', 'stale'])

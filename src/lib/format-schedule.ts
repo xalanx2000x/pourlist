@@ -72,8 +72,8 @@ export function formatWindow(
       return dayLabel ? `${dayLabel} late night` : 'Late night'
     }
     const start = formatMin(startMin)
-    // endMin=0 in DB = midnight; display it as "midnight" not "12:00 AM"
-    const end = (endMin != null && endMin !== 0) ? formatMin(endMin) : 'midnight'
+    // endMin=null means til-close: render "close", not "midnight" or "12:00 AM"
+    const end = endMin != null ? (endMin !== 0 ? formatMin(endMin) : 'midnight') : 'close'
     return dayLabel ? `${dayLabel} ${start}–${end}` : `${start}–${end}`
   }
   if (type === 'typical') {

@@ -62,24 +62,18 @@ function isStartingSoon(venue: LeanVenueForHH): boolean {
   return minutesUntil > 0 && minutesUntil <= STARTING_SOON_WINDOW_MIN
 }
 
-function formatHhTime(venue: LeanVenueForHH): string {
-  if (venue.hh_time) return venue.hh_time
-  if (venue.hh_start != null) {
-    const h = Math.floor(venue.hh_start / 60)
-    const m = venue.hh_start % 60
-    const period = h < 12 ? 'AM' : 'PM'
-    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-    const start = `${hour12}:${m.toString().padStart(2, '0')} ${period}`
-    if (venue.hh_end != null) {
-      const eh = Math.floor(venue.hh_end / 60)
-      const em = venue.hh_end % 60
-      const ePeriod = eh < 12 ? 'AM' : 'PM'
-      const eHour12 = eh === 0 ? 12 : eh > 12 ? eh - 12 : eh
-      return `${start} – ${eHour12}:${em.toString().padStart(2, '0')} ${ePeriod}`
-    }
-    return `${start}`
-  }
-  return 'Happy Hour'
+/**
+ * Format a Date as "H:MM AM/PM" in the venue's timezone.
+ * Falls back to local browser time when venue.timezone is null.
+ */
+function formatTime(date: Date, timezone: string | null): string {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone ?? undefined,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  return fmt.format(date)
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -205,14 +199,20 @@ export default function CityPageClient({
         <section>
           <SectionHeader title="Live Right Now" count={live.length} accent="live" />
           <div className="divide-y divide-gray-100">
-            {live.map(v => (
-              <VenueRow
-                key={v.id}
-                venue={{ name: v.name, neighborhood: v.neighborhood }}
-                href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
-                label={`Until ${formatHhTime(v).split(' – ').pop()}`}
-              />
-            ))}
+            {live.map(v => {
+              const { closesAt } = resolveHH(v)
+              const label = closesAt === null
+                ? 'Until close'
+                : `Until ${formatTime(closesAt, v.timezone)}`
+              return (
+                <VenueRow
+                  key={v.id}
+                  venue={{ name: v.name, neighborhood: v.neighborhood }}
+                  href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
+                  label={label}
+                />
+              )
+            })}
           </div>
         </section>
       )}
@@ -222,14 +222,20 @@ export default function CityPageClient({
         <section>
           <SectionHeader title="Starting Soon" count={soon.length} accent="soon" />
           <div className="divide-y divide-gray-100">
-            {soon.map(v => (
-              <VenueRow
-                key={v.id}
-                venue={{ name: v.name, neighborhood: v.neighborhood }}
-                href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
-                label={`Starts ${formatHhTime(v).split(' – ')[0]}`}
-              />
-            ))}
+            {soon.map(v => {
+              const { opensAt } = resolveHH(v)
+              const label = opensAt
+                ? `Starts ${formatTime(opensAt, v.timezone)}`
+                : 'Starting soon'
+              return (
+                <VenueRow
+                  key={v.id}
+                  venue={{ name: v.name, neighborhood: v.neighborhood }}
+                  href={`/${state}/${citySlug}/${v.new_slug?.split('/').pop()}`}
+                  label={label}
+                />
+              )
+            })}
           </div>
         </section>
       )}

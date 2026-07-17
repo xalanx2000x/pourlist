@@ -95,6 +95,8 @@ export default async function CityPage({ params }: Props) {
         slug: n.neighborhood.toLowerCase().replace(/\s+/g, '-'),
         count: n.venueCount,
       }))}
+      shareTitle={`${cityName} happy hours · PourList`}
+      shareText={`Live happy hour info for ${cityName}`}
     />
   )
 }

@@ -262,6 +262,8 @@ export default async function UnifiedSlugPage({
             allVenues={venues}
 
             qualifyingNeighborhoods={[]}
+            shareTitle={`Happy hours in ${neighborhood}, ${cityName} · PourList`}
+            shareText={`Live happy hour info for ${neighborhood}, ${cityName}`}
           />
         </main>
       </div>
@@ -275,6 +277,7 @@ export default async function UnifiedSlugPage({
   const { formatAddress, normalizeAddress } = await import('@/lib/format-address')
   const { buildVenueTitle } = await import('@/lib/format-title')
   const { default: VenueLiveBadge } = await import('@/components/VenueLiveBadge')
+  const { default: ShareButton } = await import('@/components/ShareButton')
   const schedule = getHhLabel(venue)
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${slug}`}`
 
@@ -326,14 +329,21 @@ export default async function UnifiedSlugPage({
           aria-label="Open live map"
           className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.jpg)]"
         />
-        <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">
-          <article className="w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
+        <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12 pointer-events-none">
+          <article className="pointer-events-auto w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
             <header className="border-b border-gray-200 px-4 py-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">
                   ← PourList map
                 </a>
-                <VenueLiveBadge venue={venue} />
+                <div className="flex items-center gap-3">
+                  <VenueLiveBadge venue={venue} />
+                  <ShareButton
+                    variant="labeled"
+                    title={`${venue.name} · Happy hour on PourList`}
+                    text={`${venue.name} — ${schedule ?? 'Happy hour on PourList'}`}
+                  />
+                </div>
               </div>
             </header>
             <div className="px-4 py-8">

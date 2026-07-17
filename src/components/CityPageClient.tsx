@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { hasActiveHappyHour, resolveHH } from '@/lib/hh-state'
 import { getCityCloseMin } from '@/lib/bar-close-times'
 import type { Venue } from '@/lib/supabase'
+import ShareButton from '@/components/ShareButton'
 
 export interface LeanVenueForHH {
   id: string
@@ -46,6 +47,10 @@ interface Props {
   citySlug: string
   allVenues: LeanVenueForHH[]
   qualifyingNeighborhoods: QualifyingNeighborhood[]
+  /** Title used by the share button (rendered in the card header). */
+  shareTitle?: string
+  /** Body text used by the share button. */
+  shareText?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -275,6 +280,8 @@ export default function CityPageClient({
   citySlug,
   allVenues,
   qualifyingNeighborhoods,
+  shareTitle,
+  shareText,
 }: Props) {
   const [tick, setTick] = useState(0) // force re-render every minute
 
@@ -382,8 +389,14 @@ export default function CityPageClient({
         className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.jpg)]"
       />
 
-      <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">
-        <article className="w-full max-w-[600px] bg-white rounded-2xl shadow-xl overflow-hidden">
+      <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12 pointer-events-none">
+        <article className="pointer-events-auto w-full max-w-[600px] bg-white rounded-2xl shadow-xl overflow-hidden">
+          {/* Card header strip — share button (city + neighborhood pages have no back-link) */}
+          {shareTitle && (
+            <div className="flex justify-end px-4 py-3 border-b border-gray-100">
+              <ShareButton variant="labeled" title={shareTitle} text={shareText ?? shareTitle} />
+            </div>
+          )}
           {/* Hero */}
           <header className="px-6 pt-8 pb-6 border-b border-gray-100">
             <p className="text-xs uppercase tracking-widest text-gray-500 mb-4 font-medium">

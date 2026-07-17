@@ -370,15 +370,16 @@ export default function CityPageClient({
     <div className="relative min-h-screen">
       {/*
         Backdrop layer. Sits behind the card. Clicking it opens the live map at /.
-        Background-color placeholder (bg-amber-300 = #ffd236) renders visibly until Tyler drops in
-        /public/portland-backdrop.jpg; when that file lands, the bg-image declaration
-        will paint over the color. `absolute` (not `fixed`) so it scrolls with the page.
+        Background-color placeholder (bg-amber-300 = #ffd236) renders visibly when
+        neither backdrop file loads. Mobile uses the portrait file (vertical aspect
+        ratio); desktop will use the horizontal file when Tyler drops it in.
+        `absolute` (not `fixed`) so it scrolls with the page.
         Edge-tap accidents possible; iterate if reported.
       */}
       <a
         href="/"
         aria-label="Open live map"
-        className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop.jpg)] bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.jpg)]"
       />
 
       <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">

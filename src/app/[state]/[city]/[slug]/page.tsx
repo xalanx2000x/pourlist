@@ -314,75 +314,90 @@ export default async function UnifiedSlugPage({
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
-      <div className="min-h-screen bg-white dark:bg-gray-950">
-        <header className="border-b border-gray-200 bg-white dark:bg-gray-900 px-4 py-4">
-          <div className="max-w-2xl mx-auto flex items-center justify-between">
-            <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">
-              ← PourList map
-            </a>
-            <VenueLiveBadge venue={venue} />
-          </div>
-        </header>
-        <main className="max-w-2xl mx-auto px-4 py-8">
-          {/* A5: cross-links breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <a href={`/${state}/${cityForLink}`} className="hover:text-amber-600">
-              {venue.city ?? capitalizeCity(city)}
-            </a>
-            {venueNeighborhood && (
-              <>
-                <span className="text-gray-300">/</span>
-                {neighborhoodPageExists ? (
-                  <a href={`/${state}/${cityForLink}/${neighborhoodSlug}`} className="hover:text-amber-600">
-                    {venueNeighborhood}
-                  </a>
-                ) : (
-                  <span className="text-gray-400">{venueNeighborhood}</span>
-                )}
-              </>
-            )}
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{venue.name}</h1>
-          {formatAddress(venue) && (
-            <p className="text-gray-500 text-sm mb-6">{formatAddress(venue)}</p>
-          )}
-          {indexable ? (
-            <div className="space-y-6">
-              {schedule && (
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Happy Hour</h2>
-                  <p className="text-lg text-gray-900 dark:text-gray-100">{schedule}</p>
-                </div>
-              )}
-              {venue.menu_text && (
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Deals &amp; Menu</h2>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{venue.menu_text}</p>
-                </div>
-              )}
-              {venue.lat != null && venue.lng != null && (
-                <a
-                  href={`/?venue=${slug}`}
-                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
-                >
-                  📍 View on map
+      {/*
+        Backdrop layer mirrors the city page. Clicking the visible margin opens
+        the live map at /. Portrait image for phones; horizontal image (TBD)
+        for md+ screens; amber-300 placeholder if both files 404.
+        `absolute` (not `fixed`) so it scrolls with the page.
+      */}
+      <div className="relative min-h-screen">
+        <a
+          href="/"
+          aria-label="Open live map"
+          className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.jpg)]"
+        />
+        <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12">
+          <article className="w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
+            <header className="border-b border-gray-200 px-4 py-4">
+              <div className="flex items-center justify-between">
+                <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">
+                  ← PourList map
                 </a>
+                <VenueLiveBadge venue={venue} />
+              </div>
+            </header>
+            <div className="px-4 py-8">
+              {/* A5: cross-links breadcrumb */}
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                <a href={`/${state}/${cityForLink}`} className="hover:text-amber-600">
+                  {venue.city ?? capitalizeCity(city)}
+                </a>
+                {venueNeighborhood && (
+                  <>
+                    <span className="text-gray-300">/</span>
+                    {neighborhoodPageExists ? (
+                      <a href={`/${state}/${cityForLink}/${neighborhoodSlug}`} className="hover:text-amber-600">
+                        {venueNeighborhood}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">{venueNeighborhood}</span>
+                    )}
+                  </>
+                )}
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{venue.name}</h1>
+              {formatAddress(venue) && (
+                <p className="text-gray-500 text-sm mb-6">{formatAddress(venue)}</p>
+              )}
+              {indexable ? (
+                <div className="space-y-6">
+                  {schedule && (
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Happy Hour</h2>
+                      <p className="text-lg text-gray-900 dark:text-gray-100">{schedule}</p>
+                    </div>
+                  )}
+                  {venue.menu_text && (
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Deals &amp; Menu</h2>
+                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{venue.menu_text}</p>
+                    </div>
+                  )}
+                  {venue.lat != null && venue.lng != null && (
+                    <a
+                      href={`/?venue=${slug}`}
+                      className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
+                    >
+                      📍 View on map
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
+                  <p className="text-gray-900 font-semibold mb-1.5 text-base">No happy hour here yet — be the first!</p>
+                  <p className="text-gray-700 text-sm mb-5">
+                    Snap a photo of the menu and you&apos;ll put <span className="font-medium">{venue.name}</span> on the map for everyone.
+                  </p>
+                  <a
+                    href={`/?venue=${slug}`}
+                    className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
+                  >
+                    📷 Scan Menu
+                  </a>
+                </div>
               )}
             </div>
-          ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
-              <p className="text-gray-900 font-semibold mb-1.5 text-base">No happy hour here yet — be the first!</p>
-              <p className="text-gray-700 text-sm mb-5">
-                Snap a photo of the menu and you&apos;ll put <span className="font-medium">{venue.name}</span> on the map for everyone.
-              </p>
-              <a
-                href={`/?venue=${slug}`}
-                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
-              >
-                📷 Scan Menu
-              </a>
-            </div>
-          )}
+          </article>
         </main>
       </div>
     </>

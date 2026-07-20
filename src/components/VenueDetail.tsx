@@ -614,26 +614,30 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60 z-10">
             <button
               onClick={closePhotoViewer}
-              className="flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium"
+              className="flex items-center gap-2 text-white text-sm font-medium px-2 py-1 rounded hover:bg-white/10 transition-colors"
             >
               ← Back
             </button>
-            <span className="text-white/60 text-xs">
+            <span className="text-white/80 text-xs font-medium">
               {viewerPhotoIndex + 1} / {allPhotos.length}
             </span>
-            {/* Close button — top-right X. Standard lightbox affordance.
-                "← Back" alone is unfamiliar on desktop where users expect an X. */}
-            <button
-              onClick={closePhotoViewer}
-              aria-label="Close photo viewer"
-              className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="5" y1="5" x2="17" y2="17" />
-                <line x1="17" y1="5" x2="5" y2="17" />
-              </svg>
-            </button>
+            <div className="w-16" /> {/* spacer to keep counter centered */}
           </div>
+
+          {/* Close button — independently positioned in the top-right corner.
+              Lives OUTSIDE the header so it can't be hidden by any header issue.
+              Visible background pill + "Close" text + X icon = unmissable. */}
+          <button
+            onClick={closePhotoViewer}
+            aria-label="Close photo viewer"
+            className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-2 bg-white/90 hover:bg-white text-black rounded-full text-sm font-semibold shadow-lg transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="5" y1="5" x2="17" y2="17" />
+              <line x1="17" y1="5" x2="5" y2="17" />
+            </svg>
+            <span>Close</span>
+          </button>
 
           {/* Full-screen image area */}
           <div className="absolute inset-0 flex items-center justify-center">

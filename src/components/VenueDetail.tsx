@@ -228,6 +228,16 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
     setPhotoViewerOpen(false)
   }
 
+  // Escape closes the photo lightbox (standard lightbox behavior on desktop).
+  useEffect(() => {
+    if (!photoViewerOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') closePhotoViewer()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [photoViewerOpen])
+
   function prevPhoto() {
     setViewerPhotoIndex(prev => (prev > 0 ? prev - 1 : allPhotos.length - 1))
   }
@@ -611,6 +621,18 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             <span className="text-white/60 text-xs">
               {viewerPhotoIndex + 1} / {allPhotos.length}
             </span>
+            {/* Close button — top-right X. Standard lightbox affordance.
+                "← Back" alone is unfamiliar on desktop where users expect an X. */}
+            <button
+              onClick={closePhotoViewer}
+              aria-label="Close photo viewer"
+              className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+            >
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="5" y1="5" x2="17" y2="17" />
+                <line x1="17" y1="5" x2="5" y2="17" />
+              </svg>
+            </button>
           </div>
 
           {/* Full-screen image area */}

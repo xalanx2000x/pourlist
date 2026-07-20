@@ -880,15 +880,18 @@ export default function SeedTool({
 
           <fieldset className="mb-4">
             <legend className="text-sm font-semibold text-neutral-900 mb-2">Photos (optional)</legend>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              multiple
-              onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
-              className="text-xs"
-            />
+            <label className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-amber-600 rounded hover:bg-amber-700 cursor-pointer focus-within:ring-2 focus-within:ring-amber-500 focus-within:ring-offset-2">
+              <span>Choose photos</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                multiple
+                onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
+                className="sr-only"
+              />
+            </label>
             {photos.length > 0 && (
-              <p className="mt-1 text-xs text-neutral-600">
+              <p className="mt-2 text-xs text-neutral-700">
                 {photos.length} file{photos.length === 1 ? '' : 's'} queued. Extensions + contentType derive from each file&apos;s actual type.
               </p>
             )}

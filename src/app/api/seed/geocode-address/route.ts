@@ -23,20 +23,20 @@ export async function POST(req: NextRequest) {
   // Determine query construction
   // Check if the address already contains location info, so we don't
   // append city/state redundantly (e.g. address = "5627 SW Kelly Ave, Portland Oregon 97239").
-  // Normalize both strings: strip zip codes, commas, and normalize whitespace.
+  // Normalize: strip zip codes, commas, and normalize whitespace.
   const addrNormalized = trimmedAddress.replace(/\b\d{5}(?:-\d{4})?\b/g, '').replace(/,/g, '').replace(/\s+/g, ' ').trim()
-  const cityStateNormalized = `${city} ${state}`.replace(/\s+/g, ' ').trim().toLowerCase() // "portland or"
-  const addrLower = addrNormalized.toLowerCase()
-  // True if city/state (space-separated, normalized) already appears at the end of the address
-  const hasCityState = addrLower.endsWith(cityStateNormalized)
+  const cityLower = (city ?? '').toLowerCase().trim()
+  // Check if city name alone already appears anywhere in the address — avoids
+  // abbreviation-vs-full-name mismatch ("OR" vs "Oregon", "CA" vs "California")
+  const hasCity = cityLower.length > 0 && addrNormalized.toLowerCase().includes(cityLower)
 
   let query: string
   if (city && state) {
     // Append city/state only if not already present in the address
-    query = hasCityState ? trimmedAddress : `${trimmedAddress}, ${city}, ${state}`
+    query = hasCity ? trimmedAddress : `${trimmedAddress}, ${city}, ${state}`
   } else if (city && !state) {
-    // Have city, no state — append city only if not already present
-    query = addrLower.includes(city.toLowerCase()) ? trimmedAddress : `${trimmedAddress}, ${city}`
+    // Have city, no state — skip city if already present
+    query = hasCity ? trimmedAddress : `${trimmedAddress}, ${city}`
   } else if (!trimmedAddress.includes(',')) {
     // No city/state AND no commas in address — looks like just a street address without location context
     return NextResponse.json(

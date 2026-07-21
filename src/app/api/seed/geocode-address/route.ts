@@ -23,12 +23,12 @@ export async function POST(req: NextRequest) {
   // Determine query construction
   // Check if the address already contains location info, so we don't
   // append city/state redundantly (e.g. address = "5627 SW Kelly Ave, Portland Oregon 97239").
-  // Normalize: strip zip codes and normalize whitespace for the duplicate check.
-  const addrNormalized = trimmedAddress.replace(/\b\d{5}(?:-\d{4})?\b/g, '').replace(/\s+/g, ' ').trim()
-  const cityStateStr = `${city}, ${state}`.toLowerCase()
-  const cityStateSpaceStr = `${city} ${state}`.toLowerCase()
+  // Normalize both strings: strip zip codes, commas, and normalize whitespace.
+  const addrNormalized = trimmedAddress.replace(/\b\d{5}(?:-\d{4})?\b/g, '').replace(/,/g, '').replace(/\s+/g, ' ').trim()
+  const cityStateNormalized = `${city} ${state}`.replace(/\s+/g, ' ').trim().toLowerCase() // "portland or"
   const addrLower = addrNormalized.toLowerCase()
-  const hasCityState = addrLower.includes(cityStateStr) || addrLower.includes(cityStateSpaceStr)
+  // True if city/state (space-separated, normalized) already appears at the end of the address
+  const hasCityState = addrLower.endsWith(cityStateNormalized)
 
   let query: string
   if (city && state) {
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
 
   let mapboxData: Record<string, unknown>
   let mapboxStatus: number | null = null
+  console.error('[geocode-address] Calling Mapbox with query:', query)
   try {
     const res = await fetch(url)
     mapboxStatus = res.status

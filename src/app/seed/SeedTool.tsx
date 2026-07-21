@@ -439,6 +439,10 @@ export default function SeedTool({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [geocoding, setGeocoding] = useState(false)
   const [coordsChangedSinceGeocode, setCoordsChangedSinceGeocode] = useState(true)
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [lookupPlaceName, setLookupPlaceName] = useState<string | null>(null)
+  const [lookupTier, setLookupTier] = useState<'precise' | 'close' | 'approximate' | 'imprecise' | null>(null)
 
   // Geocode debounce: when lat/lng changes (and parses), call /api/seed/geocode
   // and update the canonical display fields.
@@ -532,6 +536,38 @@ export default function SeedTool({
     setW2Type(''); setW2Days(new Set()); setW2Exclude(new Set()); setW2Start(''); setW2End('')
     setW3Type(''); setW3Days(new Set()); setW3Exclude(new Set()); setW3Start(''); setW3End('')
     setPhotos([]); setLoaded(null); setResult(null); setCoordsChangedSinceGeocode(true)
+  }
+
+  async function lookupCoords() {
+    if (!address.trim()) {
+      setLookupError("Enter an address first.")
+      return
+    }
+    setLookupLoading(true)
+    setLookupError(null)
+    setLookupPlaceName(null)
+    setLookupTier(null)
+    try {
+      const res = await fetch('/api/seed/geocode-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, city: city || undefined, state: stateCode || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setLookupError(data.message || data.reason || 'Lookup failed')
+        return
+      }
+      setLat(String(data.lat))
+      setLng(String(data.lng))
+      setLookupPlaceName(data.place_name)
+      setLookupTier(data.tier)
+      setCoordsChangedSinceGeocode(false)
+    } catch {
+      setLookupError('Network error — try again')
+    } finally {
+      setLookupLoading(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -742,11 +778,37 @@ export default function SeedTool({
               <input
                 type="text"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="1314 NW Glisan St"
+                onChange={(e) => { setAddress(e.target.value); setLookupError(null); setLookupPlaceName(null); setLookupTier(null) }}
+                placeholder="1314 NW Glisan St, Portland, OR"
                 className="w-full px-3 py-2 text-sm border border-neutral-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </label>
+
+            {/* Look up precise coordinates from Mapbox */}
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={lookupCoords}
+                disabled={lookupLoading || !address.trim()}
+                className="text-xs px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded border border-amber-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {lookupLoading ? 'Looking up…' : 'Look up coordinates'}
+              </button>
+              {lookupError && (
+                <p className="mt-1 text-xs text-red-600">{lookupError}</p>
+              )}
+              {lookupPlaceName && lookupTier && (
+                <p className={`mt-1 text-xs font-medium ${
+                  lookupTier === 'precise' ? 'text-green-700' :
+                  lookupTier === 'close' ? 'text-yellow-700' :
+                  lookupTier === 'approximate' ? 'text-orange-700' :
+                  'text-red-700'
+                }`}>
+                  {lookupTier === 'precise' ? '●' : lookupTier === 'close' ? '◐' : lookupTier === 'approximate' ? '○' : '✕'}{" "}
+                  {lookupTier.charAt(0).toUpperCase() + lookupTier.slice(1)} — set from: {lookupPlaceName}
+                </p>
+              )}
+            </div>
 
             {/* Coords: SECONDARY. Pre-filled from existing row or geocoder.
                 Visually de-emphasized. */}

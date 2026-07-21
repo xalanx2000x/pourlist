@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { Venue } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/hh-state'
@@ -602,8 +603,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         </p>
       </div>
 
-      {/* Full-screen photo viewer — all photos, navigable */}
-      {photoViewerOpen && allPhotos.length > 0 && (
+      {/* Full-screen photo viewer — all photos, navigable. Portal to document.body escapes any ancestor transform/filter. */}
+      {photoViewerOpen && allPhotos.length > 0 && createPortal(
         <div
           className="fixed inset-0 z-[200] bg-black/95"
           onClick={(e) => {
@@ -624,9 +625,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             <div className="w-16" /> {/* spacer to keep counter centered */}
           </div>
 
-          {/* Close button — independently positioned in the top-right corner.
-              Lives OUTSIDE the header so it can't be hidden by any header issue.
-              Visible background pill + "Close" text + X icon = unmissable. */}
+          {/* Close button — independently positioned in the top-right corner. */}
           <button
             onClick={closePhotoViewer}
             aria-label="Close photo viewer"
@@ -683,7 +682,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
               />
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

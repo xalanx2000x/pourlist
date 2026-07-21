@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       const text = await res.text()
       console.error('[geocode-address] Mapbox non-ok status:', res.status)
       console.error('[geocode-address] Mapbox error body:', text)
-      return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status }, { status: 502 })
+      return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status, mapboxBody: text }, { status: 502 })
     }
     const okText = await res.text()
     console.error('[geocode-address] Mapbox ok status:', res.status)

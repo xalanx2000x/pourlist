@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+  const tokenSet = !!token
   if (!token) {
     console.error('[geocode-address] NEXT_PUBLIC_MAPBOX_TOKEN not set')
     return NextResponse.json({ success: false, reason: 'server_config_error' }, { status: 500 })
@@ -56,6 +57,11 @@ export async function POST(req: NextRequest) {
 
   const encoded = encodeURIComponent(query)
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=3&country=us`
+  // Log URL without token
+  const urlForLog = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=<token_set:${tokenSet}>&limit=3&country=us`
+  console.error('[geocode-address] tokenSet:', tokenSet)
+  console.error('[geocode-address] Mapbox URL (no token):', urlForLog)
+  console.error('[geocode-address] query:', query)
 
   let mapboxData: Record<string, unknown>
   let mapboxStatus: number | null = null
@@ -65,12 +71,20 @@ export async function POST(req: NextRequest) {
     mapboxStatus = res.status
     if (!res.ok) {
       const text = await res.text()
-      console.error('[geocode-address] Mapbox error:', res.status, text.substring(0, 200))
+      console.error('[geocode-address] Mapbox non-ok status:', res.status)
+      console.error('[geocode-address] Mapbox error body:', text)
       return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status }, { status: 502 })
     }
-    mapboxData = await res.json()
-  } catch (err) {
-    console.error('[geocode-address] fetch failed. mapboxStatus so far:', mapboxStatus, err)
+    const okText = await res.text()
+    console.error('[geocode-address] Mapbox ok status:', res.status)
+    console.error('[geocode-address] Mapbox response body:', okText)
+    mapboxData = JSON.parse(okText)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : undefined
+    console.error('[geocode-address] fetch threw. mapboxStatus so far:', mapboxStatus)
+    console.error('[geocode-address] fetch error.message:', msg)
+    if (stack) console.error('[geocode-address] fetch error.stack:', stack)
     return NextResponse.json({ success: false, reason: 'network_error', mapboxStatus }, { status: 502 })
   }
 

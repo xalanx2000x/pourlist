@@ -49,17 +49,19 @@ export async function POST(req: NextRequest) {
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=3&country=us`
 
   let mapboxData: Record<string, unknown>
+  let mapboxStatus: number | null = null
   try {
     const res = await fetch(url)
+    mapboxStatus = res.status
     if (!res.ok) {
       const text = await res.text()
-      console.error('[geocode-address] Mapbox error:', res.status, text)
-      return NextResponse.json({ success: false, reason: 'geocoder_error' }, { status: 502 })
+      console.error('[geocode-address] Mapbox error:', res.status, text.substring(0, 200))
+      return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status }, { status: 502 })
     }
     mapboxData = await res.json()
   } catch (err) {
-    console.error('[geocode-address] fetch failed:', err)
-    return NextResponse.json({ success: false, reason: 'network_error' }, { status: 502 })
+    console.error('[geocode-address] fetch failed. mapboxStatus so far:', mapboxStatus, err)
+    return NextResponse.json({ success: false, reason: 'network_error', mapboxStatus }, { status: 502 })
   }
 
   const features = mapboxData.features as Array<{

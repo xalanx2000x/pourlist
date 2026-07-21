@@ -555,7 +555,9 @@ export default function SeedTool({
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
-        setLookupError(data.message || data.reason || 'Lookup failed')
+        const msg = data.message || data.reason || 'Lookup failed'
+        const detail = data.mapboxStatus ? ` (Mapbox status: ${data.mapboxStatus})` : ''
+        setLookupError(msg + detail)
         return
       }
       setLat(String(data.lat))

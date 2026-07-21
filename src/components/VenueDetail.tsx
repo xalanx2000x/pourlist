@@ -611,18 +611,11 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             if (e.target === e.currentTarget) closePhotoViewer()
           }}
         >
-          {/* Header — absolute overlaid on top of image. pointer-events-none so clicks pass through to the close button below. */}
-          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-black/60 z-10 pointer-events-none">
-            <button
-              onClick={closePhotoViewer}
-              className="flex items-center gap-2 text-white text-sm font-medium px-2 py-1 rounded hover:bg-white/10 transition-colors pointer-events-auto"
-            >
-              ← Back
-            </button>
+          {/* Photo counter — centered at top, pointer-events-none so clicks pass through to the close button below. */}
+          <div className="absolute top-0 left-0 right-0 flex justify-center px-4 py-3 bg-black/60 z-10 pointer-events-none">
             <span className="text-white/80 text-xs font-medium">
               {viewerPhotoIndex + 1} / {allPhotos.length}
             </span>
-            <div className="w-16" /> {/* spacer to keep counter centered */}
           </div>
 
           {/* Close button — independently positioned in the top-right corner. */}

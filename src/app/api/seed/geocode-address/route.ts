@@ -21,13 +21,22 @@ export async function POST(req: NextRequest) {
   const trimmedAddress = address.trim()
 
   // Determine query construction
+  // Check if the address already contains location info, so we don't
+  // append city/state redundantly (e.g. address = "5627 SW Kelly Ave, Portland Oregon 97239").
+  // Normalize: strip zip codes and normalize whitespace for the duplicate check.
+  const addrNormalized = trimmedAddress.replace(/\b\d{5}(?:-\d{4})?\b/g, '').replace(/\s+/g, ' ').trim()
+  const cityStateStr = `${city}, ${state}`.toLowerCase()
+  const cityStateSpaceStr = `${city} ${state}`.toLowerCase()
+  const addrLower = addrNormalized.toLowerCase()
+  const hasCityState = addrLower.includes(cityStateStr) || addrLower.includes(cityStateSpaceStr)
+
   let query: string
   if (city && state) {
-    // City and state available — append them to disambiguate
-    query = `${trimmedAddress}, ${city}, ${state}`
+    // Append city/state only if not already present in the address
+    query = hasCityState ? trimmedAddress : `${trimmedAddress}, ${city}, ${state}`
   } else if (city && !state) {
-    // Have city, no state — append city only
-    query = `${trimmedAddress}, ${city}`
+    // Have city, no state — append city only if not already present
+    query = addrLower.includes(city.toLowerCase()) ? trimmedAddress : `${trimmedAddress}, ${city}`
   } else if (!trimmedAddress.includes(',')) {
     // No city/state AND no commas in address — looks like just a street address without location context
     return NextResponse.json(

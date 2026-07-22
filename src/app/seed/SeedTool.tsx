@@ -415,7 +415,6 @@ export default function SeedTool({
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
   const [venueType, setVenueType] = useState('')
-  const [openingMin, setOpeningMin] = useState('14:00')
   const [menuText, setMenuText] = useState('')
   const [hhSummary, setHhSummary] = useState('')
   const [hhTime, setHhTime] = useState('')
@@ -594,7 +593,7 @@ export default function SeedTool({
       fd.set('phone', phone)
       fd.set('website', website)
       fd.set('type', venueType)
-      if (openingMin) fd.set('opening_min', String(hhmmToMin(openingMin) ?? ''))
+
       fd.set('menuText', menuText)
       fd.set('hhSummary', hhSummary)
       if (hhTime) fd.set('hhTime', hhTime)
@@ -916,17 +915,6 @@ export default function SeedTool({
                 <span className="block text-xs font-medium text-neutral-700 mb-1">Type</span>
                 <input type="text" value={venueType} onChange={(e) => setVenueType(e.target.value)} placeholder="bar, restaurant…" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
               </label>
-              <label className="block">
-                <span className="block text-xs font-medium text-neutral-700 mb-1">Opening time (HH:MM 24h)</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={openingMin}
-                  onChange={(e) => setOpeningMin(e.target.value)}
-                  placeholder="14:00"
-                  className="w-full px-2 py-1 text-sm border border-neutral-300 rounded"
-                />
-              </label>
             </div>
           </fieldset>
 
@@ -1010,7 +998,7 @@ export default function SeedTool({
           <div className="flex items-center justify-between gap-3">
             <button
               type="submit"
-              disabled={submitting || !name || !lat || !lng || !address}
+              disabled={submitting || !name || !lat || !lng || !address || photos.length === 0}
               className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:bg-neutral-300 disabled:cursor-not-allowed"
             >
               {submitting ? 'Saving…' : (mode === 'new' ? 'Create venue' : mode === 'graduate' ? 'Graduate seed → verified' : 'Save changes')}

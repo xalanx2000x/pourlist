@@ -185,22 +185,22 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
         </label>
 
         <label className="text-xs text-neutral-700">
-          <span className="block mb-0.5">Start (HH:MM)</span>
+          <span className="block mb-0.5">Start (HH:MM 24h)</span>
           <input
             type="time"
             value={start}
-            placeholder="16:00"
+            placeholder="14:00"
             onChange={(e) => onChange({ start: e.target.value })}
             className="text-sm border border-neutral-300 rounded px-2 py-1 w-28"
           />
         </label>
 
         <label className="text-xs text-neutral-700">
-          <span className="block mb-0.5">End (HH:MM)</span>
+          <span className="block mb-0.5">End (HH:MM 24h)</span>
           <input
             type="time"
             value={end}
-            placeholder="19:00"
+            placeholder="18:00"
             onChange={(e) => onChange({ end: e.target.value })}
             className="text-sm border border-neutral-300 rounded px-2 py-1 w-28"
           />
@@ -413,7 +413,7 @@ export default function SeedTool({
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
   const [venueType, setVenueType] = useState('')
-  const [openingMin, setOpeningMin] = useState('')
+  const [openingMin, setOpeningMin] = useState('14:00')
   const [menuText, setMenuText] = useState('')
   const [hhSummary, setHhSummary] = useState('')
   const [hhTime, setHhTime] = useState('')
@@ -421,20 +421,20 @@ export default function SeedTool({
   const [w1Type, setW1Type] = useState('')
   const [w1Days, setW1Days] = useState<Set<number>>(new Set())
   const [w1Exclude, setW1Exclude] = useState<Set<number>>(new Set())
-  const [w1Start, setW1Start] = useState('')
-  const [w1End, setW1End] = useState('')
+  const [w1Start, setW1Start] = useState('14:00')
+  const [w1End, setW1End] = useState('18:00')
 
   const [w2Type, setW2Type] = useState('')
   const [w2Days, setW2Days] = useState<Set<number>>(new Set())
   const [w2Exclude, setW2Exclude] = useState<Set<number>>(new Set())
-  const [w2Start, setW2Start] = useState('')
-  const [w2End, setW2End] = useState('')
+  const [w2Start, setW2Start] = useState('14:00')
+  const [w2End, setW2End] = useState('18:00')
 
   const [w3Type, setW3Type] = useState('')
   const [w3Days, setW3Days] = useState<Set<number>>(new Set())
   const [w3Exclude, setW3Exclude] = useState<Set<number>>(new Set())
-  const [w3Start, setW3Start] = useState('')
-  const [w3End, setW3End] = useState('')
+  const [w3Start, setW3Start] = useState('14:00')
+  const [w3End, setW3End] = useState('18:00')
 
   const [photos, setPhotos] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -887,7 +887,7 @@ export default function SeedTool({
                 <input type="text" value={venueType} onChange={(e) => setVenueType(e.target.value)} placeholder="bar, restaurant…" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-neutral-700 mb-1">Opening time (HH:MM)</span>
+                <span className="block text-xs font-medium text-neutral-700 mb-1">Opening time (HH:MM 24h)</span>
                 <input type="time" value={openingMin} onChange={(e) => setOpeningMin(e.target.value)} className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
               </label>
             </div>

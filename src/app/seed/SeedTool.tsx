@@ -189,7 +189,6 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
           <input
             type="text"
             inputMode="numeric"
-            pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
             value={start}
             placeholder="14:00"
             onChange={(e) => onChange({ start: e.target.value })}
@@ -202,7 +201,6 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
           <input
             type="text"
             inputMode="numeric"
-            pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
             value={end}
             placeholder="18:00"
             onChange={(e) => onChange({ end: e.target.value })}
@@ -923,7 +921,6 @@ export default function SeedTool({
                 <input
                   type="text"
                   inputMode="numeric"
-                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                   value={openingMin}
                   onChange={(e) => setOpeningMin(e.target.value)}
                   placeholder="14:00"

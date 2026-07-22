@@ -189,6 +189,7 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
           <input
             type="time"
             value={start}
+            placeholder="16:00"
             onChange={(e) => onChange({ start: e.target.value })}
             className="text-sm border border-neutral-300 rounded px-2 py-1 w-28"
           />
@@ -199,6 +200,7 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
           <input
             type="time"
             value={end}
+            placeholder="19:00"
             onChange={(e) => onChange({ end: e.target.value })}
             className="text-sm border border-neutral-300 rounded px-2 py-1 w-28"
           />

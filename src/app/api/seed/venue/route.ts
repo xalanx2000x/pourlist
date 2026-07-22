@@ -267,6 +267,8 @@ export async function POST(req: NextRequest) {
       case 'edit':      return await handleEdit(formData, venueId)
       case 'graduate':  return await handleGraduate(formData, venueId)
       case 'geocode':   return await handleGeocode(formData, venueId)
+      case 'close':     return await handleClose(venueId)
+      case 'delete':    return await handleDelete(venueId)
       default:
         return NextResponse.json({ success: false, reason: 'unknown_mode' }, { status: 400 })
     }
@@ -278,6 +280,40 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/* ── Mode: CLOSE ─────────────────────────────────────────────────────────── */
+
+async function handleClose(venueId: string | null) {
+  if (!venueId) {
+    return NextResponse.json({ success: false, reason: 'missing_venue_id' }, { status: 400 })
+  }
+  const { error } = await supabase
+    .from('venues')
+    .update({ status: 'closed' })
+    .eq('id', venueId)
+  if (error) {
+    console.error('[seed/venue] handleClose error:', error)
+    return NextResponse.json({ success: false, reason: 'db_error', error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ success: true, mode: 'close', venueId })
+}
+
+/* ── Mode: DELETE ────────────────────────────────────────────────────────── */
+
+async function handleDelete(venueId: string | null) {
+  if (!venueId) {
+    return NextResponse.json({ success: false, reason: 'missing_venue_id' }, { status: 400 })
+  }
+  const { error } = await supabase
+    .from('venues')
+    .delete()
+    .eq('id', venueId)
+  if (error) {
+    console.error('[seed/venue] handleDelete error:', error)
+    return NextResponse.json({ success: false, reason: 'db_error', error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ success: true, mode: 'delete', venueId })
 }
 
 /* ── Mode: NEW ───────────────────────────────────────────────────────────── */

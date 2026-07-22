@@ -445,6 +445,7 @@ export default function SeedTool({
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookupPlaceName, setLookupPlaceName] = useState<string | null>(null)
   const [lookupTier, setLookupTier] = useState<'precise' | 'close' | 'approximate' | 'imprecise' | null>(null)
+  const [pendingAction, setPendingAction] = useState<'close' | 'delete' | null>(null)
 
   // Geocode debounce: when lat/lng changes (and parses), call /api/seed/geocode
   // and update the canonical display fields.
@@ -635,6 +636,33 @@ export default function SeedTool({
       setResult({ ok: false, message: `Network error: ${err instanceof Error ? err.message : String(err)}` })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleDestructiveAction(action: 'close' | 'delete') {
+    if (!loaded) return
+    setSubmitting(true)
+    setResult(null)
+    try {
+      const fd = new FormData()
+      fd.set('mode', action)
+      fd.set('venueId', loaded.id)
+      const res = await fetch('/api/seed/venue', { method: 'POST', body: fd })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        const reason = data?.reason ?? 'unknown'
+        const detail = data?.error ? ` — ${data.error}` : ''
+        setResult({ ok: false, message: `${action} failed: ${reason}${detail}` })
+        return
+      }
+      setResult({ ok: true, message: `Venue ${action}d.` })
+      // Reload to reflect server state
+      loadVenue(loaded.id)
+    } catch (err) {
+      setResult({ ok: false, message: `Network error: ${err instanceof Error ? err.message : String(err)}` })
+    } finally {
+      setSubmitting(false)
+      setPendingAction(null)
     }
   }
 
@@ -989,6 +1017,55 @@ export default function SeedTool({
             </p>
           )}
         </form>
+
+        {/* Danger zone — graduate-only destructive actions */}
+        {mode === 'graduate' && loaded && (
+          <div className="mt-4 border border-red-200 rounded p-4 bg-red-50">
+            <p className="text-xs font-semibold text-red-700 mb-3">Danger zone</p>
+            {pendingAction === null ? (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingAction('close')}
+                  className="text-xs px-3 py-1.5 border border-red-300 text-red-700 rounded hover:bg-red-100 disabled:opacity-40"
+                >
+                  Close venue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingAction('delete')}
+                  className="text-xs px-3 py-1.5 border border-red-300 text-red-700 rounded hover:bg-red-100 disabled:opacity-40"
+                >
+                  Delete permanently
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-red-700">
+                  {pendingAction === 'close'
+                    ? 'Close this venue? It will no longer appear on the map.'
+                    : 'Delete this venue permanently from the database? This cannot be undone.'}
+                </span>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleDestructiveAction(pendingAction)}
+                  className="text-xs px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-40"
+                >
+                  {submitting ? '…' : 'Confirm'}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setPendingAction(null)}
+                  className="text-xs px-3 py-1.5 border border-red-300 text-red-700 rounded hover:bg-red-100 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -187,7 +187,9 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
         <label className="text-xs text-neutral-700">
           <span className="block mb-0.5">Start (HH:MM 24h)</span>
           <input
-            type="time"
+            type="text"
+            inputMode="numeric"
+            pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
             value={start}
             placeholder="14:00"
             onChange={(e) => onChange({ start: e.target.value })}
@@ -198,7 +200,9 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
         <label className="text-xs text-neutral-700">
           <span className="block mb-0.5">End (HH:MM 24h)</span>
           <input
-            type="time"
+            type="text"
+            inputMode="numeric"
+            pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
             value={end}
             placeholder="18:00"
             onChange={(e) => onChange({ end: e.target.value })}
@@ -916,7 +920,15 @@ export default function SeedTool({
               </label>
               <label className="block">
                 <span className="block text-xs font-medium text-neutral-700 mb-1">Opening time (HH:MM 24h)</span>
-                <input type="time" value={openingMin} onChange={(e) => setOpeningMin(e.target.value)} className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                  value={openingMin}
+                  onChange={(e) => setOpeningMin(e.target.value)}
+                  placeholder="14:00"
+                  className="w-full px-2 py-1 text-sm border border-neutral-300 rounded"
+                />
               </label>
             </div>
           </fieldset>

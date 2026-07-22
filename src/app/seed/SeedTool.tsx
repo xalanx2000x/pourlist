@@ -898,7 +898,7 @@ export default function SeedTool({
 
             <label className="block mb-3">
               <span className="block text-xs font-medium text-neutral-700 mb-1">HH summary (one-liner shown to users)</span>
-              <input type="text" value={hhSummary} onChange={(e) => setHhSummary(e.target.value)} placeholder="$5 wells, $4 drafts, 4-6pm" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
+              <input type="text" value={hhSummary} onChange={(e) => setHhSummary(e.target.value)} placeholder="$5 wells, $4 drafts, 14:00–18:00" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
             </label>
 
             <HhWindow index={1} type={w1Type} days={w1Days} excludeDays={w1Exclude} start={w1Start} end={w1End}

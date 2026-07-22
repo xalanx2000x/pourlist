@@ -48,10 +48,10 @@ export async function POST(req: NextRequest) {
     query = trimmedAddress
   }
 
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+  const token = process.env.MAPBOX_SERVER_TOKEN
   const tokenSet = !!token
   if (!token) {
-    console.error('[geocode-address] NEXT_PUBLIC_MAPBOX_TOKEN not set')
+    console.error('[geocode-address] MAPBOX_SERVER_TOKEN not set')
     return NextResponse.json({ success: false, reason: 'server_config_error' }, { status: 500 })
   }
 
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       const text = await res.text()
       console.error('[geocode-address] Mapbox non-ok status:', res.status)
       console.error('[geocode-address] Mapbox error body:', text)
-      return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status, mapboxBody: text }, { status: 502 })
+      return NextResponse.json({ success: false, reason: 'geocoder_error', mapboxStatus: res.status }, { status: 502 })
     }
     const okText = await res.text()
     console.error('[geocode-address] Mapbox ok status:', res.status)

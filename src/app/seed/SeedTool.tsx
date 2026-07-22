@@ -523,7 +523,6 @@ export default function SeedTool({
     setPhone(v.phone ?? '')
     setWebsite(v.website ?? '')
     setVenueType(v.type ?? '')
-    setOpeningMin(v.opening_min != null ? minToHHMM(v.opening_min) : '')
     setMenuText(v.menu_text ?? '')
     setHhSummary(v.hh_summary ?? '')
     setHhTime(v.hh_time ?? '')
@@ -535,7 +534,7 @@ export default function SeedTool({
 
   function clearForm() {
     setName(''); setAddress(''); setLat(''); setLng(''); setCity(''); setStateCode(''); setNeighborhood(''); setZip(''); setCountry('')
-    setPhone(''); setWebsite(''); setVenueType(''); setOpeningMin(''); setMenuText(''); setHhSummary(''); setHhTime('')
+    setPhone(''); setWebsite(''); setVenueType(''); setMenuText(''); setHhSummary(''); setHhTime('')
     setW1Type(''); setW1Days(new Set()); setW1Exclude(new Set()); setW1Start(''); setW1End('')
     setW2Type(''); setW2Days(new Set()); setW2Exclude(new Set()); setW2Start(''); setW2End('')
     setW3Type(''); setW3Days(new Set()); setW3Exclude(new Set()); setW3Start(''); setW3End('')

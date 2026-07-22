@@ -832,12 +832,12 @@ export default function SeedTool({
               {lookupPlaceName && lookupTier && (
                 <p className={`mt-1 text-xs font-medium ${
                   lookupTier === 'precise' ? 'text-green-700' :
-                  lookupTier === 'close' ? 'text-yellow-700' :
+                  lookupTier === 'close' ? 'text-amber-700' :
                   lookupTier === 'approximate' ? 'text-orange-700' :
                   'text-red-700'
                 }`}>
                   {lookupTier === 'precise' ? '●' : lookupTier === 'close' ? '◐' : lookupTier === 'approximate' ? '○' : '✕'}{" "}
-                  {lookupTier.charAt(0).toUpperCase() + lookupTier.slice(1)} — set from: {lookupPlaceName}
+                  Accuracy: {lookupTier.charAt(0).toUpperCase() + lookupTier.slice(1)} — set from: {lookupPlaceName}
                 </p>
               )}
             </div>

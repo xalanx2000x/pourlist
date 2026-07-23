@@ -976,13 +976,16 @@ export default function SeedTool({
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                 multiple
-                onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? [])
+                  setPhotos(files.slice(0, 4))
+                }}
                 className="sr-only"
               />
             </label>
             {photos.length > 0 && (
               <p className="mt-2 text-xs text-neutral-700">
-                {photos.length} file{photos.length === 1 ? '' : 's'} queued. Extensions + contentType derive from each file&apos;s actual type.
+                {photos.length} photo{photos.length === 1 ? '' : 's'} queued{photos.length < 4 ? ` — ${4 - photos.length} more slots available` : ' (max 4)'}.
               </p>
             )}
             {loaded?.latest_menu_image_url && (

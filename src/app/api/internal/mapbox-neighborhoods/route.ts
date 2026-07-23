@@ -1,12 +1,9 @@
 /**
  * Internal route — NOT publicly linked.
- * Uses MAPBOX_SERVER_TOKEN (server-only, no URL restrictions) to enumerate
- * all Mapbox neighborhood features within NYC's place boundary.
+ * Uses MAPBOX_SERVER_TOKEN to enumerate ALL Mapbox neighborhood features in NYC,
+ * including zero-venue neighborhoods.
  *
  * GET /api/internal/mapbox-neighborhoods
- *
- * Authorization: SEED_PASSWORD env must be present (server-side invocation guard).
- * Returns CSV of all NYC neighborhood names from Mapbox, with venue counts.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -18,8 +15,98 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Probe Mapbox Boundaries API to find correct ID format for NYC
+async function getMapboxNeighborhoods(token: string): Promise<{ neighborhoods: string[], error?: string }> {
+  // Step 1: get NYC place ID in multiple formats from Mapbox Geocoding
+  const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/New%20York.json?types=place&access_token=${token}&limit=5`
+  const geoRes = await fetch(geoUrl)
+  if (!geoRes.ok) return { neighborhoods: [], error: `geocode failed: ${geoRes.status}` }
+  const geoData = await geoRes.json()
+  const nyFeature = geoData.features?.[0]
+  if (!nyFeature) return { neighborhoods: [], error: 'NYC not found in Mapbox' }
+
+  const shortId = nyFeature.id // e.g. "place.12345"
+  const fullId = nyFeature.properties?.mapbox_id // e.g. "po.1234567890" — this is the correct ID for Boundaries API
+
+  // Log both for debugging
+  console.log('[mapbox-neighborhoods] NYC shortId:', shortId, 'fullId:', fullId)
+
+  // Step 2: try Boundaries API v5 with full mapbox_id (po.xxx format)
+  let allNeighborhoods: string[] = []
+
+  if (fullId) {
+    const boundaryUrl = `https://api.mapbox.com/geocoding/v5/mapbox.boundaries-v5/${fullId}/neighborhood.json?access_token=${token}&limit=200`
+    const r = await fetch(boundaryUrl)
+    const text = await r.text()
+    console.log('[mapbox-neighborhoods] boundaries v5 status:', r.status, 'body:', text.slice(0, 200))
+    if (r.ok) {
+      const d = JSON.parse(text)
+      if (d.features) {
+        for (const f of d.features) {
+          const name = f.properties?.name || f.properties?.short_code
+          if (name) allNeighborhoods.push(name)
+        }
+      }
+    }
+  }
+
+  // Step 3: if boundaries v5 fails, fall back to querying via tile features from NYC center
+  if (allNeighborhoods.length === 0 && shortId) {
+    // Try with short ID format — boundaries API may accept it
+    const boundaryUrl2 = `https://api.mapbox.com/geocoding/v5/mapbox.boundaries-v5/${shortId}/neighborhood.json?access_token=${token}&limit=200`
+    const r2 = await fetch(boundaryUrl2)
+    const text2 = await r2.text()
+    console.log('[mapbox-neighborhoods] boundaries v5 short-id status:', r2.status, 'body:', text2.slice(0, 200))
+    if (r2.ok) {
+      const d = JSON.parse(text2)
+      if (d.features) {
+        for (const f of d.features) {
+          const name = f.properties?.name || f.properties?.short_code
+          if (name) allNeighborhoods.push(name)
+        }
+      }
+    }
+  }
+
+  // Step 4: if still empty, try using Mapbox search with bbox of NYC for neighborhoods
+  if (allNeighborhoods.length === 0) {
+    // Use Mapbox geocoding with bbox to get all neighborhoods in NYC
+    // bbox: minLon, minLat, maxLon, maxLat for NYC
+    const bbox = '-74.26,40.49,-73.70,40.92'
+    const searchUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/neighborhood.json?bbox=${bbox}&limit=50&types=neighborhood&access_token=${token}`
+    const r3 = await fetch(searchUrl)
+    if (r3.ok) {
+      const d = await r3.json()
+      console.log('[mapbox-neighborhoods] search API features count:', d.features?.length)
+      if (d.features) {
+        for (const f of d.features) {
+          const name = f.text || f.properties?.name
+          if (name) allNeighborhoods.push(name)
+        }
+      }
+    }
+  }
+
+  // Step 5: also query by center point to get surrounding neighborhoods
+  const centerSearchUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/neighborhood.json?proximity=-73.985,40.748&limit=50&types=neighborhood&access_token=${token}`
+  const r4 = await fetch(centerSearchUrl)
+  if (r4.ok) {
+    const d = await r4.json()
+    if (d.features) {
+      for (const f of d.features) {
+        const name = f.text || f.properties?.name
+        if (name && !allNeighborhoods.includes(name)) allNeighborhoods.push(name)
+      }
+    }
+  }
+
+  // Deduplicate
+  allNeighborhoods = [...new Set(allNeighborhoods)]
+
+  return { neighborhoods: allNeighborhoods.sort() }
+}
+
 export async function GET(req: NextRequest) {
-  // Guard: only allow server-side invocation (SEED_PASSWORD is set on server)
   if (!process.env.SEED_PASSWORD) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
@@ -29,39 +116,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'MAPBOX_SERVER_TOKEN not configured' }, { status: 500 })
   }
 
-  // Step 1: get NYC place boundary ID from Mapbox Geocoding API
-  const parentUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/New%20York.json?types=place&access_token=${token}`
-  const parentRes = await fetch(parentUrl)
-  if (!parentRes.ok) {
-    return NextResponse.json({ error: 'failed to geocode NYC', status: parentRes.status }, { status: 502 })
-  }
-  const parentData = await parentRes.json()
-  const nyFeature = parentData.features?.[0]
-  if (!nyFeature) {
-    return NextResponse.json({ error: 'NYC place not found in Mapbox' }, { status: 404 })
-  }
-  const nyId = nyFeature.id // e.g. "place.12345"
-
-  // Step 2: list all neighborhood children of the NYC place boundary
-  const boundaryUrl = `https://api.mapbox.com/geocoding/v5/mapbox.boundaries-v5/${nyId}/neighborhood.json?access_token=${token}&limit=200`
-  const boundaryRes = await fetch(boundaryUrl)
-  if (!boundaryRes.ok) {
-    return NextResponse.json({ error: 'boundaries API failed', status: boundaryRes.status }, { status: 502 })
-  }
-  const boundaryData = await boundaryRes.json()
-
-  // Step 3: extract neighborhood names from the boundaries response
-  const mapboxNeighborhoods = new Set<string>()
-  if (boundaryData.features) {
-    for (const f of boundaryData.features) {
-      // Use short_code (e.g. "manhattan-community-board-4") if available,
-      // fall back to name (e.g. "Manhattan Community Board 4")
-      if (f.properties?.short_code) mapboxNeighborhoods.add(f.properties.short_code)
-      if (f.properties?.name) mapboxNeighborhoods.add(f.properties.name)
-    }
+  const { neighborhoods, error } = await getMapboxNeighborhoods(token)
+  if (error) {
+    return NextResponse.json({ error }, { status: 502 })
   }
 
-  // Step 4: get venue counts per neighborhood from Supabase (all NYC venues, all statuses)
+  // Get venue counts per neighborhood from Supabase
   const { data: venueData } = await supabase
     .from('venues')
     .select('neighborhood')
@@ -74,9 +134,8 @@ export async function GET(req: NextRequest) {
     if (n) venueCounts[n] = (venueCounts[n] ?? 0) + 1
   }
 
-  // Step 5: build CSV — all Mapbox neighborhoods, with venue count (0 if none in DB)
   const csvRows = ['mapbox_neighborhood,display_name,total_venue_count']
-  for (const n of Array.from(mapboxNeighborhoods).sort()) {
+  for (const n of neighborhoods) {
     const count = venueCounts[n] ?? 0
     csvRows.push(`${n},,${count}`)
   }

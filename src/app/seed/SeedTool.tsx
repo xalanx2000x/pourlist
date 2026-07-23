@@ -977,8 +977,8 @@ export default function SeedTool({
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                 multiple
                 onChange={(e) => {
-                  const files = Array.from(e.target.files ?? [])
-                  setPhotos(files.slice(0, 4))
+                  const incoming = Array.from(e.target.files ?? [])
+                  setPhotos((prev) => [...prev, ...incoming].slice(0, 4))
                 }}
                 className="sr-only"
               />

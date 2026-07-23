@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { reverseGeocodeStructured } from '@/lib/gps'
 import { resolveNewSlug } from '@/lib/slug'
 import tzlookup from 'tz-lookup'
+import { substituteNeighborhood } from '@/lib/neighborhood-substitution'
 import { getCityCloseMin } from '@/lib/bar-close-times'
 import { checkSeedAuth } from '@/lib/seed-auth'
 
@@ -391,7 +392,8 @@ async function handleNew(formData: FormData) {
     address_autofilled: false, // Tyler's text, not geocoder's
     city: geoCity,
     state: geoState,
-    neighborhood: geo?.neighborhood ?? null,
+    neighborhood: await substituteNeighborhood(geoCity, geoState, geo?.neighborhood ?? null),
+    neighborhood_raw: geo?.neighborhood ?? null,
     country: geo?.country ?? null,
     zip: geo?.zip ?? null,
     street: geo?.street ?? null,
@@ -499,14 +501,17 @@ async function handleEdit(formData: FormData, venueId: string | null) {
   let zip = (existing.zip as string | null) ?? null
   let street = (existing.street as string | null) ?? null
   let timezone: string | null = (existing.timezone as string | null) ?? null
+  let neighborhood_raw: string | null = (existing.neighborhood_raw as string | null) ?? null
 
   if (coordsChanged) {
+    let geoRawNeighborhood: string | null = null
     try {
       const geo = await reverseGeocodeStructured(formLat, formLng)
       if (geo) {
         city = geo.city
         state = geo.state
-        neighborhood = geo.neighborhood
+        geoRawNeighborhood = geo.neighborhood
+        neighborhood = await substituteNeighborhood(city, state, geo.neighborhood)
         country = geo.country
         zip = geo.zip
         street = geo.street
@@ -517,6 +522,8 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     try {
       timezone = tzlookup(formLat, formLng)
     } catch { /* keep existing */ }
+    // Always preserve raw on coord change
+    neighborhood_raw = geoRawNeighborhood
   }
 
   // Impossible-window validation against current city/state
@@ -560,7 +567,8 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     status: 'verified',
     last_verified: new Date().toISOString(),
     ...hhUpdate,
-  }
+    ...(coordsChanged ? { neighborhood_raw } : {}),
+  } as Record<string, unknown>
 
   const { error: updateError } = await supabase
     .from('venues')
@@ -797,10 +805,13 @@ async function handleGeocode(formData: FormData, venueId: string | null) {
   let timezone: string | null = null
   try { timezone = tzlookup(lat, lng) } catch { /* leave null */ }
 
+  const mappedNeighborhood = await substituteNeighborhood(geo.city, geo.state, geo.neighborhood)
+
   const update: Record<string, unknown> = {
     city: geo.city,
     state: geo.state,
-    neighborhood: geo.neighborhood,
+    neighborhood: mappedNeighborhood,
+    neighborhood_raw: geo.neighborhood,
     country: geo.country,
     zip: geo.zip,
     street: geo.street,
@@ -839,7 +850,7 @@ async function handleGeocode(formData: FormData, venueId: string | null) {
     geocoded: {
       city: geo.city,
       state: geo.state,
-      neighborhood: geo.neighborhood,
+      neighborhood: mappedNeighborhood,
       zip: geo.zip,
       country: geo.country,
       street: geo.street,

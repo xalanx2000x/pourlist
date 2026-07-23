@@ -29,15 +29,12 @@ export async function GET(req: NextRequest) {
   const cityUpper = city.trim()
   const stateUpper = state.trim().toUpperCase()
 
-  // Fetch all qualifying venues (matching getNeighborhoodStats criteria) for this city
+  // Fetch ALL Manhattan venues with a raw neighborhood value — all statuses, seed and real, HH and non-HH
   const { data, error } = await supabase
     .from('venues')
-    .select('neighborhood, city, state')
+    .select('id, neighborhood, city, state')
     .eq('state', stateUpper)
     .eq('city', cityUpper)
-    .eq('is_seed_data', false)
-    .in('status', ['verified', 'stale'])
-    .not('hh_type', 'is', null)
     .not('neighborhood', 'is', null)
 
   if (error) {
@@ -45,7 +42,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, reason: 'db_error', error: error.message }, { status: 500 })
   }
 
-  // Count qualifying venues per raw neighborhood
+  // Count all venues per raw neighborhood
   const counts: Record<string, number> = {}
   for (const row of data ?? []) {
     const n = (row.neighborhood as string | null)?.trim()
@@ -54,11 +51,11 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1]) // descending by count
+    .sort((a, b) => b[1] - a[1]) // descending by total venue count
     .map(([neighborhood, count]) => ({ neighborhood, count }))
 
   // Build CSV manually
-  const header = 'mapbox_neighborhood,display_name,qualifying_venue_count\n'
+  const header = 'mapbox_neighborhood,display_name,total_venue_count\n'
   const csv = rows
     .map(r => `${r.neighborhood},,${r.count}`)
     .join('\n')
@@ -173,7 +170,6 @@ export async function POST(req: NextRequest) {
 
   for (const [key, regionMappings] of Object.entries(byRegion)) {
     const [city, state] = key.split('|')
-    const [c, s] = key.split('|')
 
     // Build a map of mapbox_neighborhood → display_name for this region
     const lookup: Record<string, string> = {}

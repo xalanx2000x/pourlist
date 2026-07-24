@@ -250,7 +250,6 @@ export async function GET(req: NextRequest) {
  * Modes:
  *   - new:       create a fresh venue
  *   - edit:      update existing venue (any status; always promotes to verified)
- *   - graduate:  promote seed pin → verified venue (mirrors submit-venue seed branch)
  *   - geocode:   re-run reverseGeocodeStructured on stored lat/lng, update
  *                structured fields + slug. No HH or photo changes.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -275,7 +274,6 @@ export async function POST(req: NextRequest) {
     switch (mode) {
       case 'new':       return await handleNew(formData)
       case 'edit':      return await handleEdit(formData, venueId)
-      case 'graduate':  return await handleGraduate(formData, venueId)
       case 'geocode':   return await handleGeocode(formData, venueId)
       case 'close':     return await handleClose(venueId)
       case 'delete':    return await handleDelete(venueId)
@@ -644,158 +642,6 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     mode: 'edit',
     recoveredFrom: existing.status === 'closed' ? 'closed' : null,
   })
-}
-
-/* ── Mode: GRADUATE ──────────────────────────────────────────────────────── */
-
-async function handleGraduate(formData: FormData, venueId: string | null) {
-  if (!venueId) {
-    return NextResponse.json({ success: false, reason: 'missing_venue_id' }, { status: 400 })
-  }
-
-  const { data: existing, error: fetchErr } = await supabase
-    .from('venues')
-    .select('*')
-    .eq('id', venueId)
-    .single()
-  if (fetchErr || !existing) {
-    return NextResponse.json({ success: false, reason: 'venue_not_found' }, { status: 404 })
-  }
-  if (existing.is_seed_data !== true) {
-    return NextResponse.json(
-      { success: false, reason: 'not_a_seed_venue' },
-      { status: 400 }
-    )
-  }
-
-  // Tyler's typed address — required for graduation
-  const address = ((formData.get('address') as string | null) ?? '').trim()
-  if (!address) {
-    return NextResponse.json({ success: false, reason: 'missing_address' }, { status: 400 })
-  }
-
-  // lat/lng: prefer existing (seed venue has them) — allow override
-  const latStr = formData.get('lat') as string | null
-  const lngStr = formData.get('lng') as string | null
-  const formLat = latStr != null ? parseFloat(latStr) : (existing.lat as number | null)
-  const formLng = lngStr != null ? parseFloat(lngStr) : (existing.lng as number | null)
-  if (typeof formLat !== 'number' || isNaN(formLat) || typeof formLng !== 'number' || isNaN(formLng)) {
-    return NextResponse.json({ success: false, reason: 'missing_coords' }, { status: 400 })
-  }
-
-  const hh = readHhFromForm(formData)
-  const hhUpdate = buildHhUpdate(hh)
-
-  // Re-geocode if coords changed OR seed venue never had structured fields
-  let city = (existing.city as string | null) ?? null
-  let state = (existing.state as string | null) ?? null
-  let neighborhood = (existing.neighborhood as string | null) ?? null
-  let country = (existing.country as string | null) ?? null
-  let zip = (existing.zip as string | null) ?? null
-  let street = (existing.street as string | null) ?? null
-  let timezone: string | null = (existing.timezone as string | null) ?? null
-  const needsGeo = !city || !state
-
-  if (needsGeo) {
-    try {
-      const geo = await reverseGeocodeStructured(formLat, formLng)
-      if (geo) {
-        city = geo.city
-        state = geo.state
-        neighborhood = geo.neighborhood
-        country = geo.country
-        zip = geo.zip
-        street = geo.street
-      }
-    } catch (err) {
-      console.warn('[seed/graduate] geocode failed:', err)
-    }
-    try {
-      timezone = tzlookup(formLat, formLng)
-    } catch { /* keep existing */ }
-  }
-
-  // Impossible-window validation
-  if (city && state) {
-    for (const [t, s, e] of [
-      [hhUpdate.hh_type, hhUpdate.hh_start, hhUpdate.hh_end],
-      [hhUpdate.hh_type_2, hhUpdate.hh_start_2, hhUpdate.hh_end_2],
-      [hhUpdate.hh_type_3, hhUpdate.hh_start_3, hhUpdate.hh_end_3],
-    ] as [string | null, number | null, number | null][]) {
-      const err = validateImpossibleWindow(city, state, t, s, e)
-      if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
-    }
-  }
-
-  const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
-  const website = ((formData.get('website') as string | null) ?? '').trim() || null
-  const type = ((formData.get('type') as string | null) ?? '').trim() || null
-  const venueName = ((formData.get('venueName') as string | null) ?? existing.name)?.trim() ?? existing.name
-
-  const update: Record<string, unknown> = {
-    is_seed_data: false,
-    status: 'verified',
-    last_verified: new Date().toISOString(),
-    name: venueName,
-    address, // Tyler's typed text
-    lat: formLat,
-    lng: formLng,
-    city,
-    state,
-    neighborhood,
-    country,
-    zip,
-    street,
-    timezone,
-    phone,
-    website,
-    type,
-    menu_text: ((formData.get('menuText') as string | null) ?? '').trim() || null,
-    address_autofilled: false,
-    ...hhUpdate,
-  }
-
-  const { error: updateError } = await supabase
-    .from('venues')
-    .update(update)
-    .eq('id', venueId)
-  if (updateError) {
-    console.error('[seed/graduate] venue update error:', updateError)
-    return NextResponse.json(
-      { success: false, reason: 'update_failed', error: updateError.message },
-      { status: 500 }
-    )
-  }
-
-  // Generate slug
-  const { path: newSlug, needsGeoReview } = await resolveNewSlug(
-    { id: venueId, name: venueName, city, state },
-    supabase
-  )
-  if (newSlug !== null) {
-    await supabase.from('venues').update({ new_slug: newSlug, needs_geo_review: needsGeoReview }).eq('id', venueId)
-  } else if (needsGeoReview) {
-    await supabase.from('venues').update({ needs_geo_review: true }).eq('id', venueId)
-  }
-
-  // Photos (optional for graduate)
-  const rawPhotos = formData
-    .getAll('photos')
-    .filter(f => f && (typeof f === 'string' || f instanceof File)) as (string | File)[]
-  if (rawPhotos.length > 0) {
-    const { urls, failed } = await uploadPhotos(venueId, rawPhotos)
-    if (!failed) {
-      await commitPhotoSet(venueId, urls)
-      if (urls.length > 0) {
-        await supabase.from('venues').update({ latest_menu_image_url: urls[0] }).eq('id', venueId)
-      }
-    }
-  }
-
-  // Clear flags — graduation is verification
-  await supabase.from('flags').delete().eq('venue_id', venueId)
-
-  return NextResponse.json({ success: true, venueId, mode: 'graduate' })
 }
 
 /* ── Mode: GEOCODE ───────────────────────────────────────────────────────── */

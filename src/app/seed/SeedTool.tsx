@@ -99,6 +99,23 @@ function dayCsvFromSet(set: Set<number>): string {
   return DAY_VALUES.filter(d => set.has(d)).join(',')
 }
 
+/** Classify a HH window as empty / partial / complete. */
+function windowStatus(
+  type: string,
+  start: string,
+  end: string,
+  useCloseTime: boolean,
+): 'empty' | 'partial' | 'complete' {
+  const hasType   = type !== ''
+  const hasStart  = start !== ''
+  const hasEnd    = end !== '' || useCloseTime
+  const hasDays   = true // days always required now
+
+  if (!hasType && !hasStart && !hasEnd) return 'empty'
+  if (hasType && hasStart && hasEnd) return 'complete'
+  return 'partial'
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
  * Time helpers — UI uses HH:MM strings; DB uses minutes since midnight.
  * ────────────────────────────────────────────────────────────────────────── */
@@ -136,9 +153,10 @@ interface WindowProps {
   disabled?: boolean
   onChange: (next: Partial<{ type: string; days: Set<number>; start: string; end: string }>) => void
   onUseCloseTimeChange?: (v: boolean) => void
+  isPartial?: boolean
 }
 
-function HhWindow({ index, type, days, start, end, useCloseTime, disabled, onChange, onUseCloseTimeChange }: WindowProps) {
+function HhWindow({ index, type, days, start, end, useCloseTime, disabled, onChange, onUseCloseTimeChange, isPartial }: WindowProps) {
   function toggleDay(d: number) {
     if (disabled) return
     const next = new Set(days)
@@ -150,7 +168,11 @@ function HhWindow({ index, type, days, start, end, useCloseTime, disabled, onCha
   return (
     <fieldset
       disabled={disabled}
-      className="border border-neutral-200 rounded p-3 mb-3 disabled:opacity-50"
+      className={`border rounded p-3 mb-3 disabled:opacity-50 ${
+        isPartial
+          ? 'border-amber-400 bg-amber-50'
+          : 'border-neutral-200'
+      }`}
     >
       <legend className="text-xs font-semibold text-neutral-700 px-1">
         Window {index}
@@ -232,6 +254,11 @@ function HhWindow({ index, type, days, start, end, useCloseTime, disabled, onCha
         <p className="text-xs text-neutral-500 mt-1">
           tap days that are ACTIVE — at least one required
         </p>
+        {isPartial && (
+          <p className="text-xs text-amber-700 mt-1 font-medium">
+            Fill in all fields or leave this window empty
+          </p>
+        )}
       </div>
     </fieldset>
   )
@@ -940,6 +967,7 @@ export default function SeedTool({
             </label>
 
             <HhWindow index={1} type={w1Type} days={w1Days} start={w1Start} end={w1End} useCloseTime={w1UseClose}
+              isPartial={windowStatus(w1Type, w1Start, w1End, w1UseClose ?? false) === 'partial'}
               onChange={(p) => {
                 if (p.type !== undefined) setW1Type(p.type)
                 if (p.days) setW1Days(p.days)
@@ -949,6 +977,7 @@ export default function SeedTool({
               onUseCloseTimeChange={(v) => setW1UseClose(v)}
             />
             <HhWindow index={2} type={w2Type} days={w2Days} start={w2Start} end={w2End} useCloseTime={w2UseClose}
+              isPartial={windowStatus(w2Type, w2Start, w2End, w2UseClose ?? false) === 'partial'}
               onChange={(p) => {
                 if (p.type !== undefined) setW2Type(p.type)
                 if (p.days) setW2Days(p.days)
@@ -958,6 +987,7 @@ export default function SeedTool({
               onUseCloseTimeChange={(v) => setW2UseClose(v)}
             />
             <HhWindow index={3} type={w3Type} days={w3Days} start={w3Start} end={w3End} useCloseTime={w3UseClose}
+              isPartial={windowStatus(w3Type, w3Start, w3End, w3UseClose ?? false) === 'partial'}
               onChange={(p) => {
                 if (p.type !== undefined) setW3Type(p.type)
                 if (p.days) setW3Days(p.days)
@@ -1017,7 +1047,17 @@ export default function SeedTool({
           <div className="flex items-center justify-between gap-3">
             <button
               type="submit"
-              disabled={submitting || !name || !lat || !lng || !address || photos.length === 0}
+              disabled={
+                submitting ||
+                !name ||
+                !lat ||
+                !lng ||
+                !address ||
+                photos.length === 0 ||
+                windowStatus(w1Type, w1Start, w1End, w1UseClose ?? false) === 'partial' ||
+                windowStatus(w2Type, w2Start, w2End, w2UseClose ?? false) === 'partial' ||
+                windowStatus(w3Type, w3Start, w3End, w3UseClose ?? false) === 'partial'
+              }
               className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:bg-neutral-300 disabled:cursor-not-allowed"
             >
               {submitting ? 'Saving…' : (loaded ? 'Save changes' : 'Create venue')}

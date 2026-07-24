@@ -37,7 +37,12 @@ function validateImpossibleWindow(
   hhEnd: number | null,
 ): string | null {
   if (hhType === 'late_night' || hhType === 'all_day') return null
-  if (hhStart === null || hhEnd === null) return null
+  if (hhEnd === null) {
+    // null end means "until close" — only valid when city/state can resolve close time
+    if (hhType === 'typical') return 'Invalid timeframe — please check the start and end times.'
+    return null
+  }
+  if (hhStart === null) return null
   if (hhStart < hhEnd) return null // does not cross midnight — exempt
   const closeMin = getCityCloseMin(city, state)
   if (hhEnd > closeMin) {
@@ -94,7 +99,11 @@ function readHhFromForm(formData: FormData) {
 }
 
 function buildHhUpdate(hh: ReturnType<typeof readHhFromForm>) {
-  const parseIntOrNull = (s: string) => (s ? parseInt(s, 10) : null)
+  const parseIntOrNull = (s: string) => {
+    if (!s || s === 'close') return null
+    const n = parseInt(s, 10)
+    return isNaN(n) ? null : n
+  }
   const trimOrNull = (s: string) => (s && s.length > 0 ? s : null)
   return {
     hh_updated_at: new Date().toISOString(),
@@ -371,12 +380,10 @@ async function handleNew(formData: FormData) {
   }
 
   // Resolve null hh_end → city close time (e.g. "10pm-close" → actual minutes)
-  if (geoCity && geoState) {
-    const closeMin = getCityCloseMin(geoCity, geoState)
-    if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
-    if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
-    if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
-  }
+  const closeMin = getCityCloseMin(geoCity ?? '', geoState ?? '')
+  if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
+  if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
+  if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
 
   const now = new Date().toISOString()
   let timezone: string | null = null
@@ -547,12 +554,10 @@ async function handleEdit(formData: FormData, venueId: string | null) {
   }
 
   // Resolve null hh_end → city close time (e.g. "10pm-close" → actual minutes)
-  if (city && state) {
-    const closeMin = getCityCloseMin(city, state)
-    if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
-    if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
-    if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
-  }
+  const closeMin = getCityCloseMin(city ?? '', state ?? '')
+  if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
+  if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
+  if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
 
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
   const website = ((formData.get('website') as string | null) ?? '').trim() || null

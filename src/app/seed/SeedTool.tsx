@@ -132,11 +132,13 @@ interface WindowProps {
   excludeDays: Set<number>
   start: string // HH:MM
   end: string
+  useCloseTime?: boolean
   disabled?: boolean
   onChange: (next: Partial<{ type: string; days: Set<number>; excludeDays: Set<number>; start: string; end: string }>) => void
+  onUseCloseTimeChange?: (v: boolean) => void
 }
 
-function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChange }: WindowProps) {
+function HhWindow({ index, type, days, excludeDays, start, end, useCloseTime, disabled, onChange, onUseCloseTimeChange }: WindowProps) {
   function toggleDay(d: number) {
     if (disabled) return
     const next = new Set(days)
@@ -203,9 +205,22 @@ function HhWindow({ index, type, days, excludeDays, start, end, disabled, onChan
             inputMode="numeric"
             value={end}
             placeholder="18:00"
+            disabled={useCloseTime || disabled}
             onChange={(e) => onChange({ end: e.target.value })}
-            className="text-sm border border-neutral-300 rounded px-2 py-1 w-28"
+            className="text-sm border border-neutral-300 rounded px-2 py-1 w-28 disabled:bg-neutral-100 disabled:text-neutral-400"
           />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-neutral-700 pt-5">
+          <input
+            type="checkbox"
+            checked={useCloseTime ?? false}
+            onChange={(e) => {
+              onUseCloseTimeChange?.(e.target.checked)
+              if (e.target.checked) onChange({ end: '' })
+            }}
+            className="accent-amber-600"
+          />
+          Until close
         </label>
       </div>
 
@@ -424,18 +439,21 @@ export default function SeedTool({
   const [w1Exclude, setW1Exclude] = useState<Set<number>>(new Set())
   const [w1Start, setW1Start] = useState('14:00')
   const [w1End, setW1End] = useState('18:00')
+  const [w1UseClose, setW1UseClose] = useState(false)
 
   const [w2Type, setW2Type] = useState('')
   const [w2Days, setW2Days] = useState<Set<number>>(new Set())
   const [w2Exclude, setW2Exclude] = useState<Set<number>>(new Set())
   const [w2Start, setW2Start] = useState('14:00')
   const [w2End, setW2End] = useState('18:00')
+  const [w2UseClose, setW2UseClose] = useState(false)
 
   const [w3Type, setW3Type] = useState('')
   const [w3Days, setW3Days] = useState<Set<number>>(new Set())
   const [w3Exclude, setW3Exclude] = useState<Set<number>>(new Set())
   const [w3Start, setW3Start] = useState('14:00')
   const [w3End, setW3End] = useState('18:00')
+  const [w3UseClose, setW3UseClose] = useState(false)
 
   const [photos, setPhotos] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -526,16 +544,16 @@ export default function SeedTool({
     setMenuText(v.menu_text ?? '')
     setHhSummary(v.hh_summary ?? '')
     setHhTime(v.hh_time ?? '')
-    setW1Type(v.hh_type ?? ''); setW1Days(parseDayCsv(v.hh_days)); setW1Exclude(parseDayCsv(v.hh_exclude_days)); setW1Start(minToHHMM(v.hh_start)); setW1End(minToHHMM(v.hh_end))
-    setW2Type(v.hh_type_2 ?? ''); setW2Days(parseDayCsv(v.hh_days_2)); setW2Exclude(parseDayCsv(v.hh_exclude_days_2)); setW2Start(minToHHMM(v.hh_start_2)); setW2End(minToHHMM(v.hh_end_2))
-    setW3Type(v.hh_type_3 ?? ''); setW3Days(parseDayCsv(v.hh_days_3)); setW3Exclude(parseDayCsv(v.hh_exclude_days_3)); setW3Start(minToHHMM(v.hh_start_3)); setW3End(minToHHMM(v.hh_end_3))
+    setW1Type(v.hh_type ?? ''); setW1Days(parseDayCsv(v.hh_days)); setW1Exclude(parseDayCsv(v.hh_exclude_days)); setW1Start(minToHHMM(v.hh_start)); setW1End(minToHHMM(v.hh_end ?? null)); setW1UseClose(v.hh_end == null)
+    setW2Type(v.hh_type_2 ?? ''); setW2Days(parseDayCsv(v.hh_days_2)); setW2Exclude(parseDayCsv(v.hh_exclude_days_2)); setW2Start(minToHHMM(v.hh_start_2)); setW2End(minToHHMM(v.hh_end_2 ?? null)); setW2UseClose(v.hh_end_2 == null)
+    setW3Type(v.hh_type_3 ?? ''); setW3Days(parseDayCsv(v.hh_days_3)); setW3Exclude(parseDayCsv(v.hh_exclude_days_3)); setW3Start(minToHHMM(v.hh_start_3)); setW3End(minToHHMM(v.hh_end_3 ?? null)); setW3UseClose(v.hh_end_3 == null)
     setCoordsChangedSinceGeocode(false)
   }
 
   function clearForm() {
     setName(''); setAddress(''); setLat(''); setLng(''); setCity(''); setStateCode(''); setNeighborhood(''); setZip(''); setCountry('')
     setPhone(''); setWebsite(''); setVenueType(''); setMenuText(''); setHhSummary(''); setHhTime('')
-    setW1Type(''); setW1Days(new Set()); setW1Exclude(new Set()); setW1Start(''); setW1End('')
+    setW1Type(''); setW1Days(new Set()); setW1Exclude(new Set()); setW1Start(''); setW1End(''); setW1UseClose(false)
     setW2Type(''); setW2Days(new Set()); setW2Exclude(new Set()); setW2Start(''); setW2End('')
     setW3Type(''); setW3Days(new Set()); setW3Exclude(new Set()); setW3Start(''); setW3End('')
     setPhotos([]); setLoaded(null); setResult(null); setCoordsChangedSinceGeocode(true)
@@ -597,7 +615,7 @@ export default function SeedTool({
       fd.set('hhSummary', hhSummary)
       if (hhTime) fd.set('hhTime', hhTime)
 
-      function setWindow(idx: 1 | 2 | 3, type: string, days: Set<number>, ex: Set<number>, start: string, end: string) {
+      function setWindow(idx: 1 | 2 | 3, type: string, days: Set<number>, ex: Set<number>, start: string, end: string, useClose: boolean) {
         const suffix = idx === 1 ? '' : `_${idx}`
         if (type) fd.set(`hh_type${suffix}`, type)
         const dStr = dayCsvFromSet(days)
@@ -605,11 +623,13 @@ export default function SeedTool({
         if (dStr) fd.set(`hh_days${suffix}`, dStr)
         if (eStr) fd.set(`hh_exclude_days${suffix}`, eStr)
         if (start) fd.set(`hh_start${suffix}`, String(hhmmToMin(start) ?? ''))
-        if (end) fd.set(`hh_end${suffix}`, String(hhmmToMin(end) ?? ''))
+        // 'close' sentinel → server resolves to city close time
+        if (useClose) fd.set(`hh_end${suffix}`, 'close')
+        else if (end) fd.set(`hh_end${suffix}`, String(hhmmToMin(end) ?? ''))
       }
-      setWindow(1, w1Type, w1Days, w1Exclude, w1Start, w1End)
-      setWindow(2, w2Type, w2Days, w2Exclude, w2Start, w2End)
-      setWindow(3, w3Type, w3Days, w3Exclude, w3Start, w3End)
+      setWindow(1, w1Type, w1Days, w1Exclude, w1Start, w1End, w1UseClose ?? false)
+      setWindow(2, w2Type, w2Days, w2Exclude, w2Start, w2End, w2UseClose ?? false)
+      setWindow(3, w3Type, w3Days, w3Exclude, w3Start, w3End, w3UseClose ?? false)
 
       for (const p of photos) fd.append('photos', p)
 
@@ -925,30 +945,36 @@ export default function SeedTool({
               <input type="text" value={hhSummary} onChange={(e) => setHhSummary(e.target.value)} placeholder="$5 wells, $4 drafts, 14:00–18:00" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
             </label>
 
-            <HhWindow index={1} type={w1Type} days={w1Days} excludeDays={w1Exclude} start={w1Start} end={w1End}
+            <HhWindow index={1} type={w1Type} days={w1Days} excludeDays={w1Exclude} start={w1Start} end={w1End} useCloseTime={w1UseClose}
               onChange={(p) => {
                 if (p.type !== undefined) setW1Type(p.type)
                 if (p.days) setW1Days(p.days)
                 if (p.excludeDays) setW1Exclude(p.excludeDays)
                 if (p.start !== undefined) setW1Start(p.start)
                 if (p.end !== undefined) setW1End(p.end)
-              }} />
-            <HhWindow index={2} type={w2Type} days={w2Days} excludeDays={w2Exclude} start={w2Start} end={w2End}
+              }}
+              onUseCloseTimeChange={(v) => setW1UseClose(v)}
+            />
+            <HhWindow index={2} type={w2Type} days={w2Days} excludeDays={w2Exclude} start={w2Start} end={w2End} useCloseTime={w2UseClose}
               onChange={(p) => {
                 if (p.type !== undefined) setW2Type(p.type)
                 if (p.days) setW2Days(p.days)
                 if (p.excludeDays) setW2Exclude(p.excludeDays)
                 if (p.start !== undefined) setW2Start(p.start)
                 if (p.end !== undefined) setW2End(p.end)
-              }} />
-            <HhWindow index={3} type={w3Type} days={w3Days} excludeDays={w3Exclude} start={w3Start} end={w3End}
+              }}
+              onUseCloseTimeChange={(v) => setW2UseClose(v)}
+            />
+            <HhWindow index={3} type={w3Type} days={w3Days} excludeDays={w3Exclude} start={w3Start} end={w3End} useCloseTime={w3UseClose}
               onChange={(p) => {
                 if (p.type !== undefined) setW3Type(p.type)
                 if (p.days) setW3Days(p.days)
                 if (p.excludeDays) setW3Exclude(p.excludeDays)
                 if (p.start !== undefined) setW3Start(p.start)
                 if (p.end !== undefined) setW3End(p.end)
-              }} />
+              }}
+              onUseCloseTimeChange={(v) => setW3UseClose(v)}
+            />
 
             <label className="block mt-3">
               <span className="block text-xs font-medium text-neutral-700 mb-1">

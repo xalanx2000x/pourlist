@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * Types
  * ────────────────────────────────────────────────────────────────────────── */
 
-type Mode = 'new' | 'edit' | 'graduate' | 'geocode'
+type Mode = 'add' | 'geocode'
 
 interface VenueRow {
   id: string
@@ -264,9 +264,7 @@ function HhWindow({ index, type, days, excludeDays, start, end, useCloseTime, di
 
 function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   const tabs: Array<{ key: Mode; label: string }> = [
-    { key: 'new', label: 'New' },
-    { key: 'edit', label: 'Edit' },
-    { key: 'graduate', label: 'Graduate seed' },
+    { key: 'add', label: 'Add venue' },
     { key: 'geocode', label: 'Geocode' },
   ]
   return (
@@ -296,9 +294,13 @@ function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void 
 function VenuePicker({
   filter,
   onPick,
+  onClear,
+  isLoaded,
 }: {
   filter: 'all' | 'seed'
   onPick: (v: SearchResult) => void
+  onClear?: () => void
+  isLoaded?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
@@ -375,6 +377,18 @@ function VenuePicker({
             </li>
           ))}
         </ul>
+      )}
+      {isLoaded && (
+        <div className="mt-3 pt-3 border-t border-neutral-200">
+          <p className="text-xs text-neutral-600 mb-1">You have a venue loaded.</p>
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-xs px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded border border-neutral-300"
+          >
+            ✕ Clear &amp; start fresh
+          </button>
+        </div>
       )}
     </div>
   )
@@ -499,7 +513,7 @@ export default function SeedTool({
   // Auto-open the coords toggle when EDIT/GRADUATE pre-fills (they're second-class
   // but visible so Tyler sees the values).
   useEffect(() => {
-    if (mode === 'edit' || mode === 'graduate') setShowCoords(true)
+    if (mode === 'add') setShowCoords(true)
   }, [mode])
 
   // Load venue when initialVenueId set OR when picker chooses one
@@ -601,8 +615,9 @@ export default function SeedTool({
 
     try {
       const fd = new FormData()
-      fd.set('mode', mode)
-      if (mode !== 'new' && loaded) fd.set('venueId', loaded.id)
+      const submitMode = loaded ? 'edit' : 'new'
+      fd.set('mode', submitMode)
+      if (loaded) fd.set('venueId', loaded.id)
       fd.set('venueName', name)
       fd.set('address', address)
       if (lat) fd.set('lat', lat)
@@ -644,9 +659,9 @@ export default function SeedTool({
 
       const recoveredFrom = data.recoveredFrom as string | undefined
       const tail = recoveredFrom ? ` (recovered from ${recoveredFrom})` : ''
-      setResult({ ok: true, message: `Saved ${data.mode ?? mode}${tail}. venueId=${data.venueId}` })
-      if (mode === 'new') {
-        // Clear form after a fresh create so Tyler can do another
+      setResult({ ok: true, message: `Saved ${data.mode ?? submitMode}${tail}. venueId=${data.venueId}` })
+      if (!loaded) {
+        // Fresh create — clear form so Tyler can do another
         clearForm()
       } else if (data.venueId) {
         // Reload to reflect canonical state from server
@@ -778,7 +793,7 @@ export default function SeedTool({
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-neutral-900">
-            /seed — {mode === 'new' ? 'New venue' : mode === 'edit' ? 'Edit venue' : 'Graduate seed'}
+            /seed — {loaded ? `Editing: ${loaded.name}` : 'New venue'}
           </h1>
           <button type="button" onClick={handleLogout} className="text-xs text-neutral-600 hover:text-neutral-900">
             Logout
@@ -787,22 +802,27 @@ export default function SeedTool({
 
         <ModeTabs mode={mode} onChange={(m) => { setMode(m); clearForm() }} />
 
-        {(mode === 'edit' || mode === 'graduate') && !loaded && (
+        {mode === 'add' && (
           <VenuePicker
-            filter={mode === 'graduate' ? 'seed' : 'all'}
+            filter="all"
             onPick={(r) => loadVenue(r.id)}
+            onClear={loaded ? () => { clearForm() } : undefined}
+            isLoaded={loaded !== null}
           />
         )}
 
         {loadingVenue && <p className="text-sm text-neutral-500">Loading venue…</p>}
         {loadError && <p className="text-sm text-red-600">{loadError}</p>}
 
-        {loaded && (mode === 'edit' || mode === 'graduate') && (
+        {loaded && (
           <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4 text-xs text-amber-900">
             Editing <strong>{loaded.name}</strong> — current status:{' '}
             <StatusBadge status={loaded.status} isSeed={loaded.is_seed_data} />
             {loaded.status === 'closed' && (
               <span className="ml-2 text-amber-800">(saving will recover to verified)</span>
+            )}
+            {loaded.is_seed_data && (
+              <span className="ml-2 text-amber-800">(saving will upgrade to user-submitted)</span>
             )}
           </div>
         )}
@@ -1029,9 +1049,9 @@ export default function SeedTool({
               disabled={submitting || !name || !lat || !lng || !address || photos.length === 0}
               className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:bg-neutral-300 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Saving…' : (mode === 'new' ? 'Create venue' : mode === 'graduate' ? 'Graduate seed → verified' : 'Save changes')}
+              {submitting ? 'Saving…' : (loaded ? 'Save changes' : 'Create venue')}
             </button>
-            {mode === 'edit' && loaded?.status === 'closed' && (
+            {loaded?.status === 'closed' && (
               <span className="text-xs text-amber-700">⚠ This will resurrect a closed venue.</span>
             )}
           </div>
@@ -1043,8 +1063,8 @@ export default function SeedTool({
           )}
         </form>
 
-        {/* Danger zone — graduate-only destructive actions */}
-        {mode === 'graduate' && loaded && (
+        {/* Danger zone — destructive actions for loaded venues */}
+        {mode === 'add' && loaded && (
           <div className="mt-4 border border-red-200 rounded p-4 bg-red-50">
             <p className="text-xs font-semibold text-red-700 mb-3">Danger zone</p>
             {pendingAction === null ? (

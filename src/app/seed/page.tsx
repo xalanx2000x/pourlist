@@ -8,10 +8,8 @@ import SeedTool from './SeedTool'
  * Server entry: checks the seed_session cookie. If valid, renders the tool.
  * If not, renders the password form.
  *
- * The tool has four modes:
- *   - NEW      (default)         — empty form for a fresh venue
- *   - EDIT     (?mode=edit)      — pick a venue, edit everything
- *   - GRADUATE (?mode=graduate)  — pick a seed pin, fill gaps, promote
+ * Two modes:
+ *   - ADD      (default)         — search for existing or create new venue
  *   - GEOCODE  (?mode=geocode)   — pick a venue, re-run reverseGeocodeStructured
  *
  * Auth is via httpOnly cookie signed with SEED_PASSWORD (HMAC-SHA256).
@@ -29,9 +27,7 @@ export default async function SeedPage({
     return <SeedLoginForm />
   }
 
-  const mode = params.mode === 'edit' || params.mode === 'graduate' || params.mode === 'geocode'
-    ? params.mode
-    : 'new'
+  const mode = params.mode === 'geocode' ? 'geocode' : 'add'
 
   return <SeedTool initialMode={mode} initialVenueId={params.venueId ?? null} />
 }

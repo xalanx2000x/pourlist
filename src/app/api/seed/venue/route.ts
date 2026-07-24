@@ -581,10 +581,12 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     type,
     menu_text: menuText,
     address_autofilled: false, // Tyler's text, not geocoder's
+    // UPGRADE OSM → user-submitted: admin edit removes OSM designation.
     // CLOSED-VENUE RECOVERY: every admin EDIT promotes to verified.
     // - closed  → verified (recovery)
     // - stale   → verified (refresh)
     // - verified → verified (no-op, intentional — keeps semantics consistent)
+    is_seed_data: false,
     status: 'verified',
     last_verified: new Date().toISOString(),
     ...hhUpdate,

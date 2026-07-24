@@ -370,6 +370,14 @@ async function handleNew(formData: FormData) {
     if (err3) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
   }
 
+  // Resolve null hh_end → city close time (e.g. "10pm-close" → actual minutes)
+  if (geoCity && geoState) {
+    const closeMin = getCityCloseMin(geoCity, geoState)
+    if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
+    if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
+    if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
+  }
+
   const now = new Date().toISOString()
   let timezone: string | null = null
   try {
@@ -536,6 +544,14 @@ async function handleEdit(formData: FormData, venueId: string | null) {
       const err = validateImpossibleWindow(city, state, t, s, e)
       if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
     }
+  }
+
+  // Resolve null hh_end → city close time (e.g. "10pm-close" → actual minutes)
+  if (city && state) {
+    const closeMin = getCityCloseMin(city, state)
+    if (hhUpdate.hh_end === null) hhUpdate.hh_end = closeMin
+    if (hhUpdate.hh_end_2 === null) hhUpdate.hh_end_2 = closeMin
+    if (hhUpdate.hh_end_3 === null) hhUpdate.hh_end_3 = closeMin
   }
 
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null

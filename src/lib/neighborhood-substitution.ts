@@ -17,25 +17,37 @@ const supabaseMap = createClient(
 )
 
 /**
- * Looks up display_name in neighborhood_map.
- * Returns the raw neighborhood name unchanged if no mapping exists.
+ * Looks up display_name via zone polygon (if lat/lng provided and a zone matches),
+ * then via neighborhood_map text table, then returns raw name unchanged.
+ * The raw value is preserved in venues.neighborhood_raw as an immutable rollback.
  */
 export async function substituteNeighborhood(
   city: string | null,
   state: string | null,
-  rawNeighborhood: string | null
+  rawNeighborhood: string | null,
+  lat?: number | null,
+  lng?: number | null,
 ): Promise<string | null> {
+  // 1. Zone polygon lookup (takes precedence)
+  if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+    const { data: zoneName } = await supabaseMap.rpc('find_zone_by_point', {
+      p_lat: lat,
+      p_lng: lng,
+    })
+    if (typeof zoneName === 'string' && zoneName.length > 0) {
+      return zoneName
+    }
+  }
+
+  // 2. Text mapping fallback
   if (!rawNeighborhood) return rawNeighborhood
   if (!city || !state) return rawNeighborhood
-
-  const cityStr = city as string
-  const stateStr = state as string
 
   const { data } = await supabaseMap
     .from('neighborhood_map')
     .select('display_name')
-    .eq('city', cityStr)
-    .eq('state', stateStr)
+    .eq('city', city)
+    .eq('state', state)
     .eq('mapbox_neighborhood', rawNeighborhood)
     .maybeSingle()
 

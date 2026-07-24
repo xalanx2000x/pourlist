@@ -392,7 +392,7 @@ async function handleNew(formData: FormData) {
     address_autofilled: false, // Tyler's text, not geocoder's
     city: geoCity,
     state: geoState,
-    neighborhood: await substituteNeighborhood(geoCity, geoState, geo?.neighborhood ?? null),
+    neighborhood: await substituteNeighborhood(geoCity, geoState, geo?.neighborhood ?? null, venueLat, venueLng),
     neighborhood_raw: geo?.neighborhood ?? null,
     country: geo?.country ?? null,
     zip: geo?.zip ?? null,
@@ -511,7 +511,7 @@ async function handleEdit(formData: FormData, venueId: string | null) {
         city = geo.city
         state = geo.state
         geoRawNeighborhood = geo.neighborhood
-        neighborhood = await substituteNeighborhood(city, state, geo.neighborhood)
+        neighborhood = await substituteNeighborhood(city, state, geo.neighborhood, formLat, formLng)
         country = geo.country
         zip = geo.zip
         street = geo.street
@@ -805,7 +805,7 @@ async function handleGeocode(formData: FormData, venueId: string | null) {
   let timezone: string | null = null
   try { timezone = tzlookup(lat, lng) } catch { /* leave null */ }
 
-  const mappedNeighborhood = await substituteNeighborhood(geo.city, geo.state, geo.neighborhood)
+  const mappedNeighborhood = await substituteNeighborhood(geo.city, geo.state, geo.neighborhood, lat, lng)
 
   const update: Record<string, unknown> = {
     city: geo.city,

@@ -571,8 +571,8 @@ export default function SeedTool({
     setName(''); setAddress(''); setLat(''); setLng(''); setCity(''); setStateCode(''); setNeighborhood(''); setZip(''); setCountry('')
     setPhone(''); setWebsite(''); setVenueType(''); setMenuText(''); setHhSummary(''); setHhTime('')
     setW1Type(''); setW1Days(new Set()); setW1Start(''); setW1End(''); setW1UseClose(false)
-    setW2Type(''); setW2Days(new Set()); setW2Start(''); setW2End('')
-    setW3Type(''); setW3Days(new Set()); setW3Start(''); setW3End('')
+    setW2Type(''); setW2Days(new Set()); setW2Start(''); setW2End(''); setW2UseClose(false)
+    setW3Type(''); setW3Days(new Set()); setW3Start(''); setW3End(''); setW3UseClose(false)
     setPhotos([]); setLoaded(null); setResult(null); setCoordsChangedSinceGeocode(true)
   }
 

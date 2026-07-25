@@ -561,9 +561,27 @@ export default function SeedTool({
     setMenuText(v.menu_text ?? '')
     setHhSummary(v.hh_summary ?? '')
     setHhTime(v.hh_time ?? '')
-    setW1Type(v.hh_type ?? ''); setW1Days(parseDayCsv(v.hh_days)); setW1Start(minToHHMM(v.hh_start)); setW1End(minToHHMM(v.hh_end ?? null)); setW1UseClose(v.hh_end == null)
-    setW2Type(v.hh_type_2 ?? ''); setW2Days(parseDayCsv(v.hh_days_2)); setW2Start(minToHHMM(v.hh_start_2)); setW2End(minToHHMM(v.hh_end_2 ?? null)); setW2UseClose(v.hh_end_2 == null)
-    setW3Type(v.hh_type_3 ?? ''); setW3Days(parseDayCsv(v.hh_days_3)); setW3Start(minToHHMM(v.hh_start_3)); setW3End(minToHHMM(v.hh_end_3 ?? null)); setW3UseClose(v.hh_end_3 == null)
+    // Only populate a window if its type is set; otherwise leave it empty to avoid partial state
+    const hasW1 = !!(v.hh_type)
+    setW1Type(v.hh_type ?? '')
+    setW1Days(hasW1 ? parseDayCsv(v.hh_days) : new Set())
+    setW1Start(hasW1 ? minToHHMM(v.hh_start) : '')
+    setW1End(hasW1 ? minToHHMM(v.hh_end ?? null) : '')
+    setW1UseClose(hasW1 ? (v.hh_end == null) : false)
+
+    const hasW2 = !!(v.hh_type_2)
+    setW2Type(v.hh_type_2 ?? '')
+    setW2Days(hasW2 ? parseDayCsv(v.hh_days_2) : new Set())
+    setW2Start(hasW2 ? minToHHMM(v.hh_start_2) : '')
+    setW2End(hasW2 ? minToHHMM(v.hh_end_2 ?? null) : '')
+    setW2UseClose(hasW2 ? (v.hh_end_2 == null) : false)
+
+    const hasW3 = !!(v.hh_type_3)
+    setW3Type(v.hh_type_3 ?? '')
+    setW3Days(hasW3 ? parseDayCsv(v.hh_days_3) : new Set())
+    setW3Start(hasW3 ? minToHHMM(v.hh_start_3) : '')
+    setW3End(hasW3 ? minToHHMM(v.hh_end_3 ?? null) : '')
+    setW3UseClose(hasW3 ? (v.hh_end_3 == null) : false)
     setCoordsChangedSinceGeocode(false)
   }
 

@@ -1053,7 +1053,7 @@ export default function SeedTool({
                 !lat ||
                 !lng ||
                 !address ||
-                photos.length === 0 ||
+                (photos.length === 0 && !(loaded && loaded.latest_menu_image_url)) ||
                 windowStatus(w1Type, w1Start, w1End, w1UseClose ?? false) === 'partial' ||
                 windowStatus(w2Type, w2Start, w2End, w2UseClose ?? false) === 'partial' ||
                 windowStatus(w3Type, w3Start, w3End, w3UseClose ?? false) === 'partial'

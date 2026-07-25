@@ -456,20 +456,20 @@ export default function SeedTool({
 
   const [w1Type, setW1Type] = useState('')
   const [w1Days, setW1Days] = useState<Set<number>>(new Set())
-  const [w1Start, setW1Start] = useState('14:00')
-  const [w1End, setW1End] = useState('18:00')
+  const [w1Start, setW1Start] = useState('')
+  const [w1End, setW1End] = useState('')
   const [w1UseClose, setW1UseClose] = useState(false)
 
   const [w2Type, setW2Type] = useState('')
   const [w2Days, setW2Days] = useState<Set<number>>(new Set())
-  const [w2Start, setW2Start] = useState('14:00')
-  const [w2End, setW2End] = useState('18:00')
+  const [w2Start, setW2Start] = useState('')
+  const [w2End, setW2End] = useState('')
   const [w2UseClose, setW2UseClose] = useState(false)
 
   const [w3Type, setW3Type] = useState('')
   const [w3Days, setW3Days] = useState<Set<number>>(new Set())
-  const [w3Start, setW3Start] = useState('14:00')
-  const [w3End, setW3End] = useState('18:00')
+  const [w3Start, setW3Start] = useState('')
+  const [w3End, setW3End] = useState('')
   const [w3UseClose, setW3UseClose] = useState(false)
 
   const [photos, setPhotos] = useState<File[]>([])

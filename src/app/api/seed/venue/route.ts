@@ -12,6 +12,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+/** Maps any full US state name to its 2-letter code, or returns input unchanged. */
+const STATE_ABBREV: Record<string, string> = {
+  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',
+  Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', Florida: 'FL', Georgia: 'GA',
+  Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA',
+  Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD',
+  Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS',
+  Missouri: 'MO', Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH',
+  'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC',
+  'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA',
+  'Rhode Island': 'RI', 'South Carolina': 'SC', 'South Dakota': 'SD',
+  Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT', Virginia: 'VA',
+  Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY',
+  'District of Columbia': 'DC',
+}
+function normalizeState(s: string | null | undefined): string | null {
+  if (!s) return null
+  return STATE_ABBREV[s] ?? s
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Helpers — copied verbatim from submit-venue/commit-menu. Do not refactor
  * into shared lib per Tyler's standing rule. Submission logic stays inline.
@@ -522,7 +542,7 @@ async function handleEdit(formData: FormData, venueId: string | null) {
       const geo = await reverseGeocodeStructured(formLat, formLng)
       if (geo) {
         city = geo.city
-        state = geo.state
+        state = normalizeState(geo.state)
         geoRawNeighborhood = geo.neighborhood
         neighborhood = await substituteNeighborhood(city, state, geo.neighborhood, formLat, formLng)
         country = geo.country

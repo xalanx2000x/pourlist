@@ -49,6 +49,18 @@ interface Stats {
   }
   topVenues: { id: string; name: string; status: string; views: number }[]
   // Public-safe: usage concentration by city, distinct from data coverage
+  // Internal-only: 50 most recently added user-created venues
+  recentVenues: {
+    recentVenues: {
+      id: string
+      name: string
+      city: string
+      state: string
+      status: string
+      createdAt: string
+      hasHh: boolean
+    }[]
+  }
   topCities: { city: string; state: string; views: number }[]
   // Public-safe: venues with HH active at this moment
   liveHhCount: { liveHhCount: number; totalWithHhData: number }
@@ -280,6 +292,49 @@ export default function DevdashClient() {
           sub={`${stats.dataAging.aging} aging · ${stats.dataAging.stale} stale · ${stats.dataAging.old} old`}
         />
       </div>
+
+      {/* Most Recent Venues — most recently added user-created venues first */}
+      <SectionCard title="Most Recent Venues (User-Created)">
+        {stats.recentVenues.recentVenues.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">Venue</th>
+                  <th className="text-left pb-2">Location</th>
+                  <th className="text-center pb-2">HH</th>
+                  <th className="text-left pb-2">Status</th>
+                  <th className="text-right pb-2">Added</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.recentVenues.recentVenues.map((v) => (
+                  <tr key={v.id} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 pr-3 font-medium">{v.name}</td>
+                    <td className="py-2 text-gray-500">{[v.city, v.state].filter(Boolean).join(', ')}</td>
+                    <td className="py-2 text-center">
+                      {v.hasHh
+                        ? <span className="text-green-500 text-xs">✓</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="py-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        v.status === 'verified' ? 'bg-green-100 text-green-700' :
+                        v.status === 'stale' ? 'bg-orange-100 text-orange-700' :
+                        v.status === 'closed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>{v.status}</span>
+                    </td>
+                    <td className="py-2 text-right text-gray-400 text-xs">{v.createdAt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No user-created venues yet.</p>
+        )}
+      </SectionCard>
 
       {/* Row 1: Scan Funnel + HH Coverage */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -448,7 +448,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview, recentVenues] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -469,9 +469,10 @@ export async function GET() {
       getTopZeroResultSearches(),
       getDemandVsSupply(),
       getGeoReviewVenues(),
+      getRecentVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview, recentVenues })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -940,4 +941,32 @@ async function getParseQuality() {
     failedParseLog: failedParses,
     failedParseLogNote: 'Forward-only: only captures failures logged after this change. Historical failures not retained.',
   }
+}
+
+// Internal-only: 50 most recently added user-created venues.
+// Excludes OSM seed data (is_seed_data=true). Sorted newest first.
+// Shows whether real humans are submitting new venues beyond Tyler.
+async function getRecentVenues() {
+  const res = await supabase
+    .from('venues')
+    .select('id, name, city, state, status, created_at, hh_type, is_seed_data')
+    .eq('is_seed_data', false)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  const rows = res.data ?? []
+  const venues = rows.map(v => ({
+    id: v.id,
+    name: v.name,
+    city: v.city ?? '',
+    state: v.state ?? '',
+    status: v.status,
+    createdAt: new Date(v.created_at).toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: 'short', day: 'numeric',
+    }),
+    hasHh: !!v.hh_type,
+  }))
+
+  return { recentVenues: venues }
 }

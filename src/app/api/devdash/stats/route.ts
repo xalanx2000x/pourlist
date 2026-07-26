@@ -16,21 +16,59 @@ const supabase = createClient(
 
 export const revalidate = 300
 
-function daysAgo(n: number): string {
+// ── Timezone helpers ────────────────────────────────────────────────────────────────
+// All stats use Pacific time (America/Los_Angeles) — consistent with the PourList day
+// definition (2pm–1:59am). Avoids UTC-midnight boundary bugs where events logged at
+// 9am PDT appear as "yesterday" in UTC.
+//
+// Strategy: read the Pacific date components via Intl, then construct a midnight-UTC
+// Date. This gives us the correct ISO timestamp for Supabase .gte() comparisons.
+
+function pacificDateToISOString(date: Date): string {
+  const year = Number(
+    date.toLocaleString('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric' })
+  )
+  const month = Number(
+    date.toLocaleString('en-CA', { timeZone: 'America/Los_Angeles', month: 'numeric' })
+  )
+  const day = Number(
+    date.toLocaleString('en-CA', { timeZone: 'America/Los_Angeles', day: 'numeric' })
+  )
+  // YYYY-MM-DD is parsed as midnight UTC by JavaScript — exactly what we need for .gte()
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`
+}
+
+function pacificTodayStart(): string {
+  const now = new Date()
+  const ptHour = Number(
+    now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false })
+  )
+  // PourList day runs 2pm → 1:59am. Before 2pm Pacific = still in previous calendar day.
+  const pourDayOffset = ptHour < 14 ? 1 : 0
+  const d = new Date(now)
+  d.setDate(d.getDate() - pourDayOffset)
+  return pacificDateToISOString(d)
+}
+
+function pacificDaysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+  return pacificDateToISOString(d)
 }
 
+function pacificWeekStart(): string {
+  return pacificDaysAgo(7)
+}
+
+// Legacy aliases (keep signatures unchanged for callers that pass n directly)
+function daysAgo(n: number): string {
+  return pacificDaysAgo(n)
+}
 function todayStart(): string {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+  return pacificTodayStart()
 }
-
 function weekStart(): string {
-  return daysAgo(7)
+  return pacificWeekStart()
 }
 
 async function getFunnelStats() {
@@ -107,9 +145,20 @@ async function getVolumeStats() {
     supabase.from('events').select('id', { count: 'exact', head: true }).eq('event_name', 'scan_complete').gte('created_at', today),
     supabase.from('venues').select('id', { count: 'exact', head: true }).gte('created_at', today),
     supabase.from('photos').select('id', { count: 'exact', head: true }).gte('created_at', today),
-    supabase.from('events').select('device_hash', { count: 'exact', head: true }).eq('event_name', 'scan_start').gte('created_at', today),
-    supabase.from('events').select('device_hash', { count: 'exact', head: true }).eq('event_name', 'scan_start').gte('created_at', week),
+    supabase.from('events').select('device_hash').eq('event_name', 'scan_start').gte('created_at', today).limit(5000),
+    supabase.from('events').select('device_hash').eq('event_name', 'scan_start').gte('created_at', week).limit(5000),
   ])
+
+  const uniqueDevicesTodaySet = new Set(
+    (devicesTodayRes.data ?? [])
+      .map((r: { device_hash: string }) => r.device_hash)
+      .filter(Boolean)
+  )
+  const uniqueDevicesWeekSet = new Set(
+    (devicesWeekRes.data ?? [])
+      .map((r: { device_hash: string }) => r.device_hash)
+      .filter(Boolean)
+  )
 
   return {
     scansToday: scansTodayRes.count ?? 0,
@@ -117,8 +166,8 @@ async function getVolumeStats() {
     completionsToday: completionsTodayRes.count ?? 0,
     newVenuesToday: newVenuesTodayRes.count ?? 0,
     photosToday: photosTodayRes.count ?? 0,
-    uniqueDevicesToday: devicesTodayRes.count ?? 0,
-    uniqueDevicesThisWeek: devicesWeekRes.count ?? 0,
+    uniqueDevicesToday: uniqueDevicesTodaySet.size,
+    uniqueDevicesThisWeek: uniqueDevicesWeekSet.size,
   }
 }
 

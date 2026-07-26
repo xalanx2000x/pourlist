@@ -269,8 +269,14 @@ async function getModerationStats() {
   const staleRes = await supabase.from('venues').select('id', { count: 'exact', head: true }).eq('status', 'stale')
   const staleVenues = staleRes.count ?? 0
 
-  // abusive = devices with >5 flags in last 30 days
+  // abusive = devices with >5 flags in last 30 days, excluding developer/trusted devices
   const thirtyDaysAgo = daysAgo(30)
+  const trustedDevices = new Set(
+    (process.env.TRUSTED_DEVICE_HASHES ?? '')
+      .split(',')
+      .map(h => h.trim())
+      .filter(Boolean)
+  )
   let abusiveDevices = 0
   try {
     const abusiveRes = await supabase
@@ -283,7 +289,10 @@ async function getModerationStats() {
     ;(abusiveRes.data ?? []).forEach((row: { device_hash: string }) => {
       flagCount[row.device_hash] = (flagCount[row.device_hash] ?? 0) + 1
     })
-    abusiveDevices = Object.values(flagCount).filter(c => c > 5).length
+    abusiveDevices = Object.entries(flagCount)
+      .filter(([dh]) => !trustedDevices.has(dh))
+      .filter(([, count]) => count > 5)
+      .length
   } catch {
     // table may not exist
   }

@@ -499,7 +499,7 @@ export default function DevdashClient() {
         </SectionCard>
 
         <SectionCard title="Top Zero-Result Searches">
-        {stats.topZeroSearches.topZeroSearches.length > 0 ? (
+        {stats.topSearches.topZeroSearches.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -509,7 +509,7 @@ export default function DevdashClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.topZeroSearches.topZeroSearches.map((s, i) => (
+                {stats.topSearches.topZeroSearches.map((s, i) => (
                   <tr key={i} className="text-gray-700 dark:text-gray-300">
                     <td className="py-2 font-medium">{s.query}</td>
                     <td className="py-2 text-right font-bold text-amber-600">{s.count}</td>

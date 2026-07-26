@@ -897,11 +897,18 @@ async function getDemandVsSupply() {
     }
   }
 
-  // For each search area, compare to venue count.
-  // Match search_area against city name (same normalization).
+    // Normalize search_area to city name for venue count lookup.
+  // "Portland, OR" → "portland", "New York, NY" → "new york".
+  // venueCounts keys are city-only (no state), so search_area must match.
+  function cityFromArea(area: string): string {
+    const comma = area.indexOf(',')
+    return comma >= 0 ? area.slice(0, comma).toLowerCase().trim() : area
+  }
+
   const gaps = Object.entries(areaSearches)
     .map(([area, searches]) => {
-      const venues = venueCounts[area] ?? 0
+      const city = cityFromArea(area)
+      const venues = venueCounts[city] ?? 0
       return { area, searches, venues }
     })
     .filter(r => r.venues === 0) // only areas where we have NO real venues

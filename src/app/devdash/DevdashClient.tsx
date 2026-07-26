@@ -576,7 +576,7 @@ export default function DevdashClient() {
       {/* Row 2.5c: Usage Over Time — Public-safe daily counts, PourList-day bucketing */}
       <SectionCard title="Usage Over Time (PourList Days, 2pm–2pm)">
         {stats.usageOverTime && stats.usageOverTime.uniqueDevices.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="space-y-6">
             {/* Unique Devices / day */}
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Unique Devices / Day</p>

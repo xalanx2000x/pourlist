@@ -47,7 +47,7 @@ interface Stats {
     onlineNow: number
     lastUpdated: string
   }
-  topVenues: { id: string; name: string; status: string; views: number }[]
+  topVenues: { topVenues: { id: string; name: string; status: string; views: number }[] }
   // Public-safe: usage concentration by city, distinct from data coverage
   // Internal-only: 50 most recently added user-created venues
   recentVenues: {
@@ -61,7 +61,7 @@ interface Stats {
       hasHh: boolean
     }[]
   }
-  topCities: { city: string; state: string; views: number }[]
+  topCities: { topCities: { city: string; state: string; views: number }[] }
   // Public-safe: venues with HH active at this moment
   liveHhCount: { liveHhCount: number; totalWithHhData: number }
   // Internal-only: broader user counts (device hashes are identifiable)
@@ -913,7 +913,7 @@ export default function DevdashClient() {
       {/* Row 4: Top Cities + Top Venues */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SectionCard title="Popular Cities (Last 30 Days)">
-          {stats.topCities.length > 0 ? (
+          {stats.topCities.topCities.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -924,7 +924,7 @@ export default function DevdashClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {stats.topCities.map((c, i) => (
+                  {stats.topCities.topCities.map((c, i) => (
                     <tr key={`${c.city}-${c.state}`} className="text-gray-700 dark:text-gray-300">
                       <td className="py-2 pr-3 text-gray-400">{i + 1}</td>
                       <td className="py-2 font-medium">{c.city}{c.state ? `, ${c.state}` : ''}</td>
@@ -940,7 +940,7 @@ export default function DevdashClient() {
         </SectionCard>
 
         <SectionCard title="Top Venues (Last 30 Days)">
-        {stats.topVenues.length > 0 ? (
+        {stats.topVenues.topVenues.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -952,7 +952,7 @@ export default function DevdashClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.topVenues.map((v, i) => (
+                {stats.topVenues.topVenues.map((v, i) => (
                   <tr key={v.id} className="text-gray-700 dark:text-gray-300">
                     <td className="py-2 pr-3 text-gray-400">{i + 1}</td>
                     <td className="py-2 font-medium">{v.name}</td>

@@ -14,9 +14,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// ISR disabled — stats must always be fresh; CDN-cached HTML error pages
-// cause the client to crash when r.json() receives HTML instead of JSON.
-export const revalidate = 0
+export const revalidate = 300
 
 // ── Timezone helpers ────────────────────────────────────────────────────────────────
 // All stats use Pacific time (America/Los_Angeles) — consistent with the PourList day
@@ -483,7 +481,7 @@ export async function GET() {
       getRecentVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topSearches, demandVsSupply, geoReview, recentVenues })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topSearches, topZeroSearches, demandVsSupply, geoReview, recentVenues })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })

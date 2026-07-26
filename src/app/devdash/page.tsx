@@ -1,7 +1,6 @@
 import DevdashClient from './DevdashClient'
 
-// Devdash must be dynamic — never pre-render with stale CDN-cached API data
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 export default function DevdashPage() {
   return <DevdashClient />

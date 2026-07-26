@@ -64,11 +64,7 @@ interface Stats {
   topCities: { topCities: { city: string; state: string; views: number }[] }
   // Public-safe: venues with HH active at this moment
   liveHhCount: { liveHhCount: number; totalWithHhData: number }
-  // Internal-only: top searches (all) + zero-result searches
-  topSearches: {
-    topSearches: { query: string; count: number }[]
-    topZeroSearches: { query: string; count: number }[]
-  }
+  topSearches: { query: string; count: number }[]
   userCounts: {
     activeDevicesToday: number
     activeDevicesThisWeek: number
@@ -115,8 +111,7 @@ interface Stats {
       kind: 're-verified' | 'added'
     }[]
   }
-  // Public-safe (aggregate): searches that returned zero results — most wanted / most missing
-  topZeroSearches: { topZeroSearches: { query: string; count: number }[] }
+  topZeroSearches: { query: string; count: number }[]
   // Public-safe (aggregate): geographic areas with high search demand but no real venues
   demandVsSupply: { demandVsSupply: { area: string; searches: number; venues: number }[] }
   // Internal-only: venues needing geographic review (geo-incomplete)
@@ -474,7 +469,7 @@ export default function DevdashClient() {
       {/* Row 2.5b: Top Searches (all) + Top Zero-Result Searches */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SectionCard title="Top Searches (Last 30 Days)">
-          {stats.topSearches.topSearches.length > 0 ? (
+          {stats.topSearches.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -484,7 +479,7 @@ export default function DevdashClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {stats.topSearches.topSearches.map((s, i) => (
+                  {stats.topSearches.map((s, i) => (
                     <tr key={i} className="text-gray-700 dark:text-gray-300">
                       <td className="py-2 font-medium">{s.query}</td>
                       <td className="py-2 text-right font-bold text-amber-600">{s.count}</td>
@@ -499,7 +494,7 @@ export default function DevdashClient() {
         </SectionCard>
 
         <SectionCard title="Top Zero-Result Searches">
-        {stats.topSearches.topZeroSearches.length > 0 ? (
+        {stats.topZeroSearches.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -509,7 +504,7 @@ export default function DevdashClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.topSearches.topZeroSearches.map((s, i) => (
+                {stats.topZeroSearches.map((s, i) => (
                   <tr key={i} className="text-gray-700 dark:text-gray-300">
                     <td className="py-2 font-medium">{s.query}</td>
                     <td className="py-2 text-right font-bold text-amber-600">{s.count}</td>

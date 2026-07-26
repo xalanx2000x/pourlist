@@ -375,24 +375,25 @@ async function handleNew(formData: FormData) {
   const geo = await reverseGeocodeStructured(venueLat, venueLng)
   const geoCity = geo?.city ?? null
   const geoState = geo?.state ?? null
+  const geoStateNorm = normalizeState(geoState)
 
   if (geoCity && geoState) {
     const err = validateImpossibleWindow(
-      geoCity, geoState,
+      geoCity, geoStateNorm,
       hhUpdate.hh_type as string | null,
       hhUpdate.hh_start as number | null,
       hhUpdate.hh_end as number | null,
     )
     if (err) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
     const err2 = validateImpossibleWindow(
-      geoCity, geoState,
+      geoCity, geoStateNorm,
       hhUpdate.hh_type_2 as string | null,
       hhUpdate.hh_start_2 as number | null,
       hhUpdate.hh_end_2 as number | null,
     )
     if (err2) return NextResponse.json({ success: false, reason: 'invalid_timeframe' }, { status: 400 })
     const err3 = validateImpossibleWindow(
-      geoCity, geoState,
+      geoCity, geoStateNorm,
       hhUpdate.hh_type_3 as string | null,
       hhUpdate.hh_start_3 as number | null,
       hhUpdate.hh_end_3 as number | null,
@@ -427,8 +428,8 @@ async function handleNew(formData: FormData) {
     is_seed_data: false,
     address_autofilled: false, // Tyler's text, not geocoder's
     city: geoCity,
-    state: geoState,
-    neighborhood: await substituteNeighborhood(geoCity, geoState, geo?.neighborhood ?? null, venueLat, venueLng),
+    state: geoStateNorm,
+    neighborhood: await substituteNeighborhood(geoCity, geoStateNorm, geo?.neighborhood ?? null, venueLat, venueLng),
     neighborhood_raw: geo?.neighborhood ?? null,
     country: geo?.country ?? null,
     zip: geo?.zip ?? null,
@@ -459,7 +460,7 @@ async function handleNew(formData: FormData) {
 
   // Resolve slug using geocoder's canonical city/state + Tyler's typed name
   const { path: newSlug, needsGeoReview } = await resolveNewSlug(
-    { id: venueId, name: venueName, city: geoCity, state: geoState },
+    { id: venueId, name: venueName, city: geoCity, state: geoStateNorm },
     supabase
   )
   if (newSlug !== null) {
@@ -697,11 +698,12 @@ async function handleGeocode(formData: FormData, venueId: string | null) {
   let timezone: string | null = null
   try { timezone = tzlookup(lat, lng) } catch { /* leave null */ }
 
-  const mappedNeighborhood = await substituteNeighborhood(geo.city, geo.state, geo.neighborhood, lat, lng)
+  const geoStateNorm = normalizeState(geo.state)
+  const mappedNeighborhood = await substituteNeighborhood(geo.city, geoStateNorm, geo.neighborhood, lat, lng)
 
   const update: Record<string, unknown> = {
     city: geo.city,
-    state: geo.state,
+    state: geoStateNorm,
     neighborhood: mappedNeighborhood,
     neighborhood_raw: geo.neighborhood,
     country: geo.country,
@@ -726,7 +728,7 @@ async function handleGeocode(formData: FormData, venueId: string | null) {
 
   // Re-resolve slug (city may have changed)
   const { path: newSlug, needsGeoReview } = await resolveNewSlug(
-    { id: venueId, name: existing.name, city: geo.city, state: geo.state },
+    { id: venueId, name: existing.name, city: geo.city, state: geoStateNorm },
     supabase
   )
   if (newSlug !== null) {

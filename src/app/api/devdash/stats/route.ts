@@ -14,7 +14,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export const revalidate = 300
+// ISR disabled — stats must always be fresh; CDN-cached HTML error pages
+// cause the client to crash when r.json() receives HTML instead of JSON.
+export const revalidate = 0
 
 // ── Timezone helpers ────────────────────────────────────────────────────────────────
 // All stats use Pacific time (America/Los_Angeles) — consistent with the PourList day

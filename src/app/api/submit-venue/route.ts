@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { reverseGeocodeStructured } from '@/lib/gps'
 import { resolveNewSlug } from '@/lib/slug'
+import { normalizeState } from '@/lib/normalize'
 import tzlookup from 'tz-lookup'
 import { getCityCloseMin } from '@/lib/bar-close-times'
 
@@ -242,7 +243,7 @@ export async function POST(req: NextRequest) {
           const geo = await reverseGeocodeStructured(seedLat, seedLng)
           if (geo) {
             geoCity = geo.city
-            geoState = geo.state
+            geoState = normalizeState(geo.state)
             geoAddress = geo.place_name
             geoStreet = geo.street
             geoNeighborhood = geo.neighborhood
@@ -545,7 +546,7 @@ export async function POST(req: NextRequest) {
           }
           venueInsert.street = geo.street
           venueInsert.city = geo.city
-          venueInsert.state = geo.state
+          venueInsert.state = normalizeState(geo.state)
           venueInsert.neighborhood = geo.neighborhood
           venueInsert.country = geo.country
           if (geo.zip) venueInsert.zip = geo.zip

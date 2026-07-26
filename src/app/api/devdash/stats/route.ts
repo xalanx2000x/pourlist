@@ -457,7 +457,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview, recentVenues] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, { topSearches, topZeroSearches }, demandVsSupply, geoReview, recentVenues] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -475,13 +475,13 @@ export async function GET() {
       getSearchStats(),
       getUsageOverTime(),
       getStaleVenues(),
-      getTopZeroResultSearches(),
+      getTopSearches(),
       getDemandVsSupply(),
       getGeoReviewVenues(),
       getRecentVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topZeroSearches, demandVsSupply, geoReview, recentVenues })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topSearches, demandVsSupply, geoReview, recentVenues })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -825,28 +825,41 @@ async function getGeoReviewVenues() {
   return { geoReviewVenues: venues }
 }
 
-async function getTopZeroResultSearches() {
+// Internal-only: top searches (all) + zero-result searches — last 30 days, Pacific time
+async function getTopSearches() {
+  const thirtyDaysAgo = daysAgo(30)
+
   const res = await supabase
     .from('events')
     .select('metadata')
     .eq('event_name', 'search')
+    .gte('created_at', thirtyDaysAgo)
     .limit(5000)
 
-  const queryCounts: Record<string, number> = {}
+  const allQueryCounts: Record<string, number> = {}
+  const zeroQueryCounts: Record<string, number> = {}
+
   for (const row of res.data ?? []) {
     const m = row.metadata as { query?: string; resultCount?: number } | null
-    if (m?.query && m.resultCount === 0) {
-      const q = (m.query as string).trim().toLowerCase()
-      queryCounts[q] = (queryCounts[q] ?? 0) + 1
+    if (!m?.query) continue
+    const q = (m.query as string).trim().toLowerCase()
+    allQueryCounts[q] = (allQueryCounts[q] ?? 0) + 1
+    if (m.resultCount === 0) {
+      zeroQueryCounts[q] = (zeroQueryCounts[q] ?? 0) + 1
     }
   }
 
-  const top = Object.entries(queryCounts)
+  const topAll = Object.entries(allQueryCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 15)
     .map(([query, count]) => ({ query, count }))
 
-  return { topZeroSearches: top }
+  const topZero = Object.entries(zeroQueryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([query, count]) => ({ query, count }))
+
+  return { topSearches: topAll, topZeroSearches: topZero }
 }
 
 // Public-safe (aggregate only, no PII): search demand vs real venue supply by geographic area.

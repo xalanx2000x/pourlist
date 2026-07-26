@@ -64,7 +64,11 @@ interface Stats {
   topCities: { topCities: { city: string; state: string; views: number }[] }
   // Public-safe: venues with HH active at this moment
   liveHhCount: { liveHhCount: number; totalWithHhData: number }
-  // Internal-only: broader user counts (device hashes are identifiable)
+  // Internal-only: top searches (all) + zero-result searches
+  topSearches: {
+    topSearches: { query: string; count: number }[]
+    topZeroSearches: { query: string; count: number }[]
+  }
   userCounts: {
     activeDevicesToday: number
     activeDevicesThisWeek: number
@@ -467,8 +471,34 @@ export default function DevdashClient() {
         )}
       </SectionCard>
 
-      {/* Row 2.5b: Top Zero-Result Searches — what people are looking for that we don't have */}
-      <SectionCard title="Top Zero-Result Searches">
+      {/* Row 2.5b: Top Searches (all) + Top Zero-Result Searches */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <SectionCard title="Top Searches (Last 30 Days)">
+          {stats.topSearches.topSearches.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                    <th className="text-left pb-2">Query</th>
+                    <th className="text-right pb-2">Times</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {stats.topSearches.topSearches.map((s, i) => (
+                    <tr key={i} className="text-gray-700 dark:text-gray-300">
+                      <td className="py-2 font-medium">{s.query}</td>
+                      <td className="py-2 text-right font-bold text-amber-600">{s.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-400 text-sm">No search data yet.</p>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Top Zero-Result Searches">
         {stats.topZeroSearches.topZeroSearches.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -492,6 +522,7 @@ export default function DevdashClient() {
           <p className="text-gray-400 text-sm">No zero-result searches yet — fills as people search.</p>
         )}
       </SectionCard>
+      </div>
 
       {/* Row 2.5c: Demand vs Supply — high search volume areas with few/no real venues */}
       <SectionCard title="Demand vs Supply — Areas People Search But We Don't Have Venues">

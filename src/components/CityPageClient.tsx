@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { hasActiveHappyHour, resolveHH } from '@/lib/hh-state'
 import { getCityCloseMin } from '@/lib/bar-close-times'
+import { capitalizeCity } from '@/lib/city-utils'
 import type { Venue } from '@/lib/supabase'
 import ShareButton from '@/components/ShareButton'
 
@@ -61,10 +62,10 @@ interface Props {
  * If `now` is already past today's close, rolls to tomorrow's close.
  * Returns a browser-local Date.
  */
-function endOfPourListDay(venue: LeanVenueForHH, now: Date): Date {
+function endOfPourListDay(venue: LeanVenueForHH, now: Date, citySlug: string, stateCode: string): Date {
   const tz = venue.timezone ?? 'America/Los_Angeles'
-  // Portland is the only city in scope for this fix; getCityCloseMin is keyed on city+state
-  const closeMin = getCityCloseMin('Portland', 'OR')
+  // Use actual city/state from page props — getCityCloseMin has fallback chain for unknown cities
+  const closeMin = getCityCloseMin(capitalizeCity(citySlug), stateCode)
 
   const dParts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
@@ -312,7 +313,7 @@ export default function CityPageClient({
       if (hasActiveHappyHour(v, now)) return false
       const res = resolveHH(v, now)
       if (!res.opensAt) return false
-      const horizon = endOfPourListDay(v, now)
+      const horizon = endOfPourListDay(v, now, citySlug, state.toUpperCase())
       return res.opensAt <= horizon
     })
     .sort((a, b) => {

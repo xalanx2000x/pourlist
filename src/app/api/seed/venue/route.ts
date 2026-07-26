@@ -275,36 +275,39 @@ export async function GET(req: NextRequest) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export async function POST(req: NextRequest) {
-  if (!(await checkSeedAuth())) {
-    return NextResponse.json({ success: false, reason: 'unauthorized' }, { status: 401 })
-  }
-
-  let formData: FormData
   try {
-    formData = await req.formData()
-  } catch (err) {
-    console.error('[seed/venue] formData parse error:', err)
-    return NextResponse.json({ success: false, reason: 'bad_form' }, { status: 400 })
-  }
-
-  const mode = (formData.get('mode') as string | null) ?? ''
-  const venueId = (formData.get('venueId') as string | null) ?? null
-
-  try {
-    switch (mode) {
-      case 'new':       return await handleNew(formData)
-      case 'edit':      return await handleEdit(formData, venueId)
-      case 'geocode':   return await handleGeocode(formData, venueId)
-      case 'close':     return await handleClose(venueId)
-      case 'delete':    return await handleDelete(venueId)
-      default:
-        return NextResponse.json({ success: false, reason: 'unknown_mode' }, { status: 400 })
+    if (!(await checkSeedAuth())) {
+      return NextResponse.json({ success: false, reason: 'unauthorized' }, { status: 401 })
     }
+
+    let formData: FormData
+    try {
+      formData = await req.formData()
+    } catch (err) {
+      console.error('[seed/venue] formData parse error:', err)
+      return NextResponse.json({ success: false, reason: 'bad_form' }, { status: 400 })
+    }
+
+    const mode = (formData.get('mode') as string | null) ?? ''
+    const venueId = (formData.get('venueId') as string | null) ?? null
+
+    let result: NextResponse
+    switch (mode) {
+      case 'new':       result = await handleNew(formData); break
+      case 'edit':      result = await handleEdit(formData, venueId); break
+      case 'geocode':   result = await handleGeocode(formData, venueId); break
+      case 'close':     result = await handleClose(venueId); break
+      case 'delete':    result = await handleDelete(venueId); break
+      default:
+        result = NextResponse.json({ success: false, reason: 'unknown_mode' }, { status: 400 })
+    }
+    return result
   } catch (err) {
-    console.error(`[seed/venue] ${mode} handler error:`, err)
+    console.error('[seed/venue] unhandled error:', err)
     const message = err instanceof Error ? err.message : String(err)
+    const stack = err instanceof Error ? err.stack : undefined
     return NextResponse.json(
-      { success: false, reason: 'server_error', error: message },
+      { success: false, reason: 'server_error', error: message, stack },
       { status: 500 }
     )
   }

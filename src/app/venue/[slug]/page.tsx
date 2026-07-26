@@ -43,7 +43,7 @@ export async function generateMetadata({
   const schedule = getHhLabel(venue)
   const description = schedule
     ? `${name} happy hour: ${schedule}. ${venue.menu_text ?? ''}`.trim()
-    : `${name} — crowd-sourced happy hour directory for Portland, Oregon.`
+    : `${name} — crowd-sourced happy hour directory for ${venue.city}, ${venue.state}.`
 
   const slugStr = venue.slug ?? venueSlug(venue)
   const canonical = `${BASE_URL}/venue/${slugStr}`
@@ -85,8 +85,8 @@ function buildJsonLd(venue: NonNullable<Awaited<ReturnType<typeof getVenueBySlug
     fields.address = {
       '@type': 'PostalAddress',
       streetAddress: cleanAddress,
-      addressLocality: venue.city ?? 'Portland',
-      addressRegion: venue.state ?? 'OR',
+      addressLocality: venue.city,
+      addressRegion: venue.state,
       postalCode: venue.zip ?? '',
       addressCountry: 'US',
     }

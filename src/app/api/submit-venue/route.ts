@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     const body = Object.fromEntries(formData.entries())
 
     // DEBUG: which endpoint received this submission
-    console.log('[submit-venue] HIT', { seedVenueId: body.seedVenueId, venueName: body.venueName })
+    console.log('[submit-venue] HIT venueName=' + (body.venueName || 'n/a') + ' seedVenueId=' + (body.seedVenueId || 'n/a') + ' lat=' + (body.phoneLat || body.lat || 'n/a'))
 
     const {
       venueName,
@@ -535,18 +535,25 @@ export async function POST(req: NextRequest) {
     // that are currently null/empty. The display string (address) gets
     // the Mapbox place_name, and address_autofilled is set true.
     if (venueLat != null && venueLng != null) {
-      const geo = await reverseGeocodeStructured(venueLat, venueLng)
-      if (geo) {
-        if (venueInsert.address === '' || venueInsert.address == null) {
-          venueInsert.address = geo.place_name
+      try {
+        console.log('[submit-venue] calling reverseGeocodeStructured for', venueLat, venueLng)
+        const geo = await reverseGeocodeStructured(venueLat, venueLng)
+        console.log('[submit-venue] reverseGeocodeStructured result:', JSON.stringify(geo))
+        if (geo) {
+          if (venueInsert.address === '' || venueInsert.address == null) {
+            venueInsert.address = geo.place_name
+          }
+          venueInsert.street = geo.street
+          venueInsert.city = geo.city
+          venueInsert.state = geo.state
+          venueInsert.neighborhood = geo.neighborhood
+          venueInsert.country = geo.country
+          if (geo.zip) venueInsert.zip = geo.zip
+          venueInsert.address_autofilled = true
         }
-        venueInsert.street = geo.street
-        venueInsert.city = geo.city
-        venueInsert.state = geo.state
-        venueInsert.neighborhood = geo.neighborhood
-        venueInsert.country = geo.country
-        if (geo.zip) venueInsert.zip = geo.zip
-        venueInsert.address_autofilled = true
+      } catch (geoErr) {
+        console.error('[submit-venue] reverseGeocodeStructured failed:', geoErr)
+        // Continue without geo — venue still creatable, flagged for review
       }
     }
 
@@ -575,11 +582,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log('[submit-venue] inserting venue with payload:', JSON.stringify({ ...venueInsert, timezone: venueInsert.timezone ? '<tz>' : null }))
     const { data: newVenue, error: venueError } = await supabase
       .from('venues')
       .insert(venueInsert)
       .select('id')
       .single()
+    console.log('[submit-venue] insert result:', JSON.stringify({ error: venueError ? venueError.message : null, venueId: newVenue?.id }))
 
     if (venueError) {
       console.error('[submit-venue] venue insert error:', venueError)
@@ -598,10 +607,21 @@ export async function POST(req: NextRequest) {
     // Generate the new SEO-friendly URL slug (/{state}/{city}/{venueSlug}).
     // Gracefully degrades if the new_slug/needs_geo_review columns don't exist
     // yet (migration runs in a later phase — this won't error).
-    const { path: newSlug, needsGeoReview } = await resolveNewSlug(
-      { id: venueId, name: venueName, city: venueCity, state: venueState },
-      supabase
-    )
+    let newSlug: string | null = null
+    let needsGeoReview = false
+    try {
+      console.log('[submit-venue] calling resolveNewSlug for', venueName, venueCity, venueState)
+      const result = await resolveNewSlug(
+        { id: venueId, name: venueName, city: venueCity, state: venueState },
+        supabase
+      )
+      newSlug = result.path
+      needsGeoReview = result.needsGeoReview
+      console.log('[submit-venue] resolveNewSlug result:', newSlug, needsGeoReview)
+    } catch (slugErr) {
+      console.error('[submit-venue] resolveNewSlug failed:', slugErr)
+      // Slug generation failed — venue created, but without a slug. Not fatal.
+    }
 
     // Persist slug + geo-review flag.
     // When geo is incomplete, newSlug is null and the venue stays on old /venue/{slug} URL.
@@ -727,7 +747,7 @@ export async function POST(req: NextRequest) {
     console.error('[submit-venue] error:', err)
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json(
-      { error: `Server error: ${message}` },
+      { error: `[submit-venue SERVER ERROR] ${message}` },
       { status: 500 }
     )
   }

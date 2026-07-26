@@ -17,6 +17,7 @@ import { supabaseServer } from '@/lib/supabase-server'
 import { getQualifyingNeighborhoods } from '@/lib/neighborhoods'
 import CityPageClient from '@/components/CityPageClient'
 import { capitalizeCity } from '@/lib/city-utils'
+import { slugifyName } from '@/lib/slug'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,7 +93,7 @@ export default async function CityPage({ params }: Props) {
 
       qualifyingNeighborhoods={qualifying.map(n => ({
         name: n.neighborhood,
-        slug: n.neighborhood.toLowerCase().replace(/\s+/g, '-'),
+        slug: slugifyName(n.neighborhood),
         count: n.venueCount,
       }))}
       shareTitle={`${cityName} happy hours · PourList`}

@@ -278,6 +278,7 @@ export default async function UnifiedSlugPage({
   const { buildVenueTitle } = await import('@/lib/format-title')
   const { default: VenueLiveBadge } = await import('@/components/VenueLiveBadge')
   const { default: ShareButton } = await import('@/components/ShareButton')
+  const { default: ClaimVenueButton } = await import('@/components/ClaimVenueButton')
   const schedule = getHhLabel(venue)
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${slug}`}`
 
@@ -391,6 +392,7 @@ export default async function UnifiedSlugPage({
                       📍 View on map
                     </a>
                   )}
+                  <ClaimVenueButton venue={venue} />
                 </div>
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
@@ -406,6 +408,7 @@ export default async function UnifiedSlugPage({
                   </a>
                 </div>
               )}
+              <ClaimVenueButton venue={venue} />
             </div>
           </article>
         </main>

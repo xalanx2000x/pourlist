@@ -457,7 +457,7 @@ async function getSearchStats() {
 
 export async function GET() {
   try {
-    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, { topSearches, topZeroSearches }, demandVsSupply, geoReview, recentVenues] = await Promise.all([
+    const [funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, { topSearches, topZeroSearches }, claimRequests, demandVsSupply, geoReview, recentVenues] = await Promise.all([
       getFunnelStats(),
       getVolumeStats(),
       getCoverageStats(),
@@ -476,12 +476,13 @@ export async function GET() {
       getUsageOverTime(),
       getStaleVenues(),
       getTopSearches(),
+      getClaimRequests(),
       getDemandVsSupply(),
       getGeoReviewVenues(),
       getRecentVenues(),
     ])
 
-    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topSearches, topZeroSearches, demandVsSupply, geoReview, recentVenues })
+    return NextResponse.json({ funnel, volume, coverage, inventory, contributors, moderation, presence, topVenues, topCities, liveHhCount, userCounts, parseQuality, dataAging, growthTrends, searchStats, usageOverTime, staleVenues, topSearches, topZeroSearches, demandVsSupply, geoReview, recentVenues, claimRequests })
   } catch (err) {
     console.error('devdash stats error:', err)
     return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 })
@@ -998,4 +999,40 @@ async function getRecentVenues() {
   }))
 
   return { recentVenues: venues }
+}
+
+// Internal-only: claim request submissions for the dev dashboard.
+// Total count + 20 most recent, joined with venue name.
+async function getClaimRequests() {
+  const countRes = await supabase
+    .from('claim_requests')
+    .select('id', { count: 'exact', head: true })
+
+  const { data } = await supabase
+    .from('claim_requests')
+    .select('id, contact_name, phone, email, created_at, venues(name)')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  const total = countRes.count ?? 0
+
+  const requests = (data ?? []).map(r => {
+    // venues(name) returns as { name }[] or [] via join — flatten to single name
+    const venueName = Array.isArray(r.venues)
+      ? (r.venues[0] as { name?: string } | null)?.name ?? null
+      : (r.venues as { name?: string } | null)?.name ?? null
+    return {
+      id: r.id,
+      venueName,
+      contactName: r.contact_name,
+      phone: r.phone,
+      email: r.email,
+      createdAt: new Date(r.created_at).toLocaleDateString('en-US', {
+        timeZone: 'America/Los_Angeles',
+        year: 'numeric', month: 'short', day: 'numeric',
+      }),
+    }
+  })
+
+  return { claimRequests: requests, total }
 }

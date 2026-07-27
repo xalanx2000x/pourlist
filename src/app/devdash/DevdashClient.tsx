@@ -130,6 +130,18 @@ interface Stats {
       fallbackUrl: string
     }[]
   }
+  // Internal-only: venue claim / ownership inquiry submissions
+  claimRequests: {
+    claimRequests: {
+      id: string
+      venueName: string | null
+      contactName: string
+      phone: string
+      email: string
+      createdAt: string
+    }[]
+    total: number
+  }
 }
 
 function pct(n: number) {
@@ -439,6 +451,36 @@ export default function DevdashClient() {
           <span className="text-5xl font-bold text-amber-600">{stats.moderation.staleVenues}</span>
           <span className="text-gray-400 text-sm">{stats.moderation.staleVenues === 1 ? 'venue needs re-verification' : 'venues need re-verification'}</span>
         </div>
+      </SectionCard>
+
+      {/* Claim Requests — venue ownership / claiming inquiries */}
+      <SectionCard title={`Claim Requests (${stats.claimRequests.total})`}>
+        {stats.claimRequests.claimRequests.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase tracking-wider">
+                  <th className="text-left pb-2">Venue</th>
+                  <th className="text-left pb-2">Contact</th>
+                  <th className="text-left pb-2">Email</th>
+                  <th className="text-right pb-2">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {stats.claimRequests.claimRequests.map((r) => (
+                  <tr key={r.id} className="text-gray-700 dark:text-gray-300">
+                    <td className="py-2 pr-3 font-medium">{r.venueName ?? '(unknown venue)'}</td>
+                    <td className="py-2 pr-3 text-gray-600 dark:text-gray-400">{r.contactName}</td>
+                    <td className="py-2 pr-3 text-gray-500 text-xs">{r.email}</td>
+                    <td className="py-2 text-right text-gray-400 text-xs">{r.createdAt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">No claim requests yet.</p>
+        )}
       </SectionCard>
 
       {/* Row 2.5b: Top Searches (all) + Top Zero-Result Searches */}

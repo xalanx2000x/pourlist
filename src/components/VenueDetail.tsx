@@ -8,6 +8,7 @@ import { hasActiveHappyHour } from '@/lib/hh-state'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
 import ShareButton from './ShareButton'
+import ClaimVenueButton from './ClaimVenueButton'
 import { formatAddress, normalizeAddress } from '@/lib/format-address'
 import { isWithinPresence } from '@/lib/gpsCheck'
 
@@ -601,6 +602,11 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
         <p className="text-xs text-gray-400 text-center">
           Tap "Scan Happy Hour Menu" at the bottom to add or update menu info
         </p>
+
+        {/* Venue ownership footer */}
+        <div className="border-t border-gray-100 mt-4 pt-4">
+          <ClaimVenueButton venue={venue} />
+        </div>
       </div>
 
       {/* Full-screen photo viewer — all photos, navigable. Portal to document.body escapes any ancestor transform/filter. */}

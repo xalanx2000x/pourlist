@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Venue } from '@/lib/supabase'
 
@@ -19,11 +19,18 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
   const [success, setSuccess] = useState(false)
   const [alreadyReceived, setAlreadyReceived] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // Trap focus inside modal for accessibility
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     return () => { prev?.focus() }
+  }, [])
+
+  // Force scroll to top on mount — prevents browser scroll restoration from
+  // positioning the panel mid-scroll when opened from VenueDetail's scrolled context
+  useEffect(() => {
+    panelRef.current?.scrollTo({ top: 0 })
   }, [])
 
   async function handleSubmit(e: FormEvent) {
@@ -67,7 +74,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
       aria-modal="true"
       aria-labelledby="claim-modal-title"
     >
-      <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
+      <div ref={panelRef} className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 id="claim-modal-title" className="text-base font-semibold text-gray-900">

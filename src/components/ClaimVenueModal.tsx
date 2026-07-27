@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { Venue } from '@/lib/supabase'
 
 interface ClaimVenueModalProps {
@@ -58,7 +59,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
     if (e.target === e.currentTarget) onClose()
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       onClick={handleBackdropClick}
@@ -202,6 +203,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

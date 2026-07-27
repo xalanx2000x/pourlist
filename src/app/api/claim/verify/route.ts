@@ -45,5 +45,5 @@ export async function POST(req: NextRequest) {
   await setVenueAccessCookie(venueId, claimedUntil)
 
   const base = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  return NextResponse.redirect(new URL('/manage', base), 303)
+  return NextResponse.redirect(`${base.replace('\/$', '')}/manage`, 303)
 }

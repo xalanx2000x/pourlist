@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS claim_requests (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE claim_requests ENABLE ROW LEVEL SECURITY;
+
 -- Index for the spam-guard query (same venue, last 24h)
 CREATE INDEX IF NOT EXISTS idx_claim_requests_venue_created
   ON claim_requests(venue_id, created_at DESC);

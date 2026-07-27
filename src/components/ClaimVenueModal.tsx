@@ -66,16 +66,16 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
       aria-modal="true"
       aria-labelledby="claim-modal-title"
     >
-      <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 id="claim-modal-title" className="text-base font-semibold text-gray-900 dark:text-white">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 id="claim-modal-title" className="text-base font-semibold text-gray-900">
             Claim {venue.name}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none"
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
             aria-label="Close"
           >
             ×
@@ -86,25 +86,25 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
         <div className="px-5 py-5">
           {success ? (
             <div className="text-center py-4">
-              <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              <p className="text-base font-semibold text-gray-900 mb-1">
                 Got it!
               </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-gray-600">
                 We&apos;ll call your venue&apos;s listed number within 3 business days.
               </p>
             </div>
           ) : alreadyReceived ? (
             <div className="text-center py-4">
-              <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+              <p className="text-base font-semibold text-gray-900 mb-1">
                 We&apos;ve already got your request.
               </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-gray-600">
                 We&apos;ll be in touch.
               </p>
             </div>
           ) : (
             <>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              <p className="text-sm text-gray-600 mb-4">
                 Verified profile editing, photos, and daily specials posted to your page.{' '}
                 <span className="font-semibold">$49/year.</span>
               </p>
@@ -131,7 +131,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
                     required
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     placeholder="Your name"
                   />
                 </div>
@@ -146,7 +146,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
                     required
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     placeholder="(503) 555-0100"
                   />
                 </div>
@@ -161,7 +161,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
                     required
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     placeholder="you@example.com"
                   />
                 </div>
@@ -181,7 +181,7 @@ export default function ClaimVenueModal({ venue, onClose }: ClaimVenueModalProps
                     maxLength={280}
                     value={note}
                     onChange={e => setNote(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
                     placeholder="Anything else we should know?"
                   />
                 </div>

@@ -44,6 +44,8 @@ export default function VerificationClient() {
   const [claims, setClaims] = useState<ClaimRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  // ID of the most recently saved note — cleared after 2s
+  const [savedNoteId, setSavedNoteId] = useState<string | null>(null)
 
   const fetchClaims = useCallback(async () => {
     setLoading(true)
@@ -84,6 +86,8 @@ export default function VerificationClient() {
     })
     if (res.ok) {
       setClaims(prev => prev.map(c => c.id === id ? { ...c, adminNote } : c))
+      setSavedNoteId(id)
+      setTimeout(() => setSavedNoteId(prev => prev === id ? null : prev), 2000)
     }
   }
 
@@ -117,6 +121,7 @@ export default function VerificationClient() {
                 claim={claim}
                 onStatusChange={patchStatus}
                 onAdminNoteChange={patchAdminNote}
+                noteSaved={savedNoteId === claim.id}
               />
             ))}
           </div>
@@ -136,6 +141,7 @@ export default function VerificationClient() {
                   claim={claim}
                   onStatusChange={patchStatus}
                   onAdminNoteChange={patchAdminNote}
+                  noteSaved={savedNoteId === claim.id}
                 />
               ))}
             </div>
@@ -150,10 +156,12 @@ function ClaimRow({
   claim,
   onStatusChange,
   onAdminNoteChange,
+  noteSaved,
 }: {
   claim: ClaimRequest
   onStatusChange: (id: string, status: string) => void
   onAdminNoteChange: (id: string, note: string) => void
+  noteSaved: boolean
 }) {
   const age = daysAgo(claim.createdAt)
   const stale = claim.status === 'new' && age > 2
@@ -208,6 +216,9 @@ function ClaimRow({
           onBlur={e => onAdminNoteChange(claim.id, e.target.value)}
           className="w-full text-sm border border-neutral-200 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
+        {noteSaved && (
+          <p className="mt-1 text-xs text-green-600">Saved</p>
+        )}
       </div>
 
       {/* Footer: status + age */}

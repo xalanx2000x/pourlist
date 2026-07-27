@@ -433,37 +433,12 @@ export default function DevdashClient() {
         </SectionCard>
       </div>
 
-      {/* Row 2.5: Stale Venues — oldest HH data, most in need of re-verification */}
-      <SectionCard title="Stale Venues — HH Data Age">
-        {stats.staleVenues.staleVenues.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-400 uppercase tracking-wider">
-                  <th className="text-left pb-2">Venue</th>
-                  <th className="text-left pb-2">Location</th>
-                  <th className="text-left pb-2">Last Confirmed</th>
-                  <th className="text-right pb-2">Age</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {stats.staleVenues.staleVenues.map((v, i) => (
-                  <tr key={i} className="text-gray-700 dark:text-gray-300">
-                    <td className="py-2 font-medium">{v.name}</td>
-                    <td className="py-2 text-gray-500">{[v.city, v.state].filter(Boolean).join(', ')}</td>
-                    <td className="py-2">
-                      <span className="text-gray-600 dark:text-gray-400">{v.lastConfirmed ?? 'unknown'}</span>
-                      <span className="ml-2 text-xs text-gray-400">({v.kind === 're-verified' ? 're-verified' : 'added'})</span>
-                    </td>
-                    <td className="py-2 text-right font-bold text-amber-600">{v.ageLabel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm">No stale venues — all HH data is fresh.</p>
-        )}
+      {/* Stale Venues — count only */}
+      <SectionCard title="Stale Venues">
+        <div className="flex items-baseline gap-2">
+          <span className="text-5xl font-bold text-amber-600">{stats.moderation.staleVenues}</span>
+          <span className="text-gray-400 text-sm">{stats.moderation.staleVenues === 1 ? 'venue needs re-verification' : 'venues need re-verification'}</span>
+        </div>
       </SectionCard>
 
       {/* Row 2.5b: Top Searches (all) + Top Zero-Result Searches */}

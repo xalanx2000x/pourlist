@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
+export const runtime = 'nodejs'
+
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status })
 }

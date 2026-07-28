@@ -329,7 +329,7 @@ export default async function UnifiedSlugPage({
         <a
           href="/"
           aria-label="Open live map"
-          className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.jpg)]"
+          className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.png)]"
         />
         <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12 pointer-events-none">
           <article className="pointer-events-auto w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">

@@ -29,6 +29,7 @@ interface PhotoSet {
 
 export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailProps) {
   const isActiveHH = hasActiveHappyHour(venue)
+  const isClaimed = venue.claimed_until != null && new Date(venue.claimed_until) > new Date()
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
   const [flagError, setFlagError] = useState<string | null>(null)
@@ -336,12 +337,19 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           )}
         </div>
 
-        {/* Tagline / type badge */}
-        {(venue.tagline ?? venue.type) && (
-          <span className="inline-block text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full mb-4">
-            {venue.tagline ?? venue.type}
-          </span>
-        )}
+        {/* Tagline / type badge + owner badge */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {(venue.tagline ?? venue.type) && (
+            <span className="inline-block text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full">
+              {venue.tagline ?? venue.type}
+            </span>
+          )}
+          {isClaimed && (
+            <span className="inline-block text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full">
+              Page managed by venue
+            </span>
+          )}
+        </div>
 
         {/* Success message */}
         {successMessage && (
@@ -540,8 +548,10 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           </div>
         )}
 
-        {/* Scan Menu button — always visible when viewing a venue */}
-        <button
+        {/* Scan Menu button — hidden on claimed venues */}
+        {!isClaimed && (
+          <>
+          <button
           onClick={() => {
             // Gate: only fire if in range. The scanBtnState derivation handles
             // the four states; here we guard the fire action.
@@ -583,6 +593,8 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             Location access is needed to scan a venue&apos;s menu — please enable it in your browser settings.
           </p>
         )}
+        </>
+        )}
 
         {/* Google/Yelp links */}
         <div className="flex gap-3 mb-5">
@@ -604,15 +616,19 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           </a>
         </div>
 
-        {/* Scan call-to-action */}
-        <p className="text-xs text-gray-400 text-center">
-          Tap "Scan Happy Hour Menu" at the bottom to add or update menu info
-        </p>
+        {/* Scan call-to-action — hidden on claimed venues */}
+        {!isClaimed && (
+          <p className="text-xs text-gray-400 text-center">
+            Tap "Scan Happy Hour Menu" at the bottom to add or update menu info
+          </p>
+        )}
 
-        {/* Venue ownership footer */}
-        <div className="border-t border-gray-100 mt-4 pt-4">
-          <ClaimVenueButton venue={venue} />
-        </div>
+        {/* Venue ownership footer — hidden on claimed venues */}
+        {!isClaimed && (
+          <div className="border-t border-gray-100 mt-4 pt-4">
+            <ClaimVenueButton venue={venue} />
+          </div>
+        )}
       </div>
 
       {/* Full-screen photo viewer — all photos, navigable. Portal to document.body escapes any ancestor transform/filter. */}

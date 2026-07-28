@@ -69,6 +69,7 @@ export type Venue = {
   opening_min: number | null    // minutes since midnight venue opens (e.g. 840 = 2pm)
   hh_summary: string | null    // raw user input text fallback for HH display
   timezone: string | null       // IANA timezone, e.g. 'America/Los_Angeles'. Derived from lat/lng at insert/backfill time.
+  claimed_until: string | null   // ISO timestamp. Future = venue is claimed; null/past = unclaimed.
 }
 
 export type Photo = {

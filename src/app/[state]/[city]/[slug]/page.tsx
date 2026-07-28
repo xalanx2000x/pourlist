@@ -280,6 +280,7 @@ export default async function UnifiedSlugPage({
   const { default: ShareButton } = await import('@/components/ShareButton')
   const { default: ClaimVenueButton } = await import('@/components/ClaimVenueButton')
   const schedule = getHhLabel(venue)
+  const isClaimed = venue.claimed_until != null && new Date(venue.claimed_until) > new Date()
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${slug}`}`
 
   const schema: Record<string, unknown> = {
@@ -375,6 +376,11 @@ export default async function UnifiedSlugPage({
                   {venue.tagline ?? venue.type}
                 </span>
               )}
+              {isClaimed && (
+                <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full mb-6 ml-1">
+                  Page managed by venue
+                </span>
+              )}
               {indexable ? (
                 <div className="space-y-6">
                   {schedule && (
@@ -400,7 +406,7 @@ export default async function UnifiedSlugPage({
                       📍 View on map
                     </a>
                   )}
-                  <ClaimVenueButton venue={venue} />
+                  {!isClaimed && <ClaimVenueButton venue={venue} />}
                 </div>
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
@@ -408,15 +414,17 @@ export default async function UnifiedSlugPage({
                   <p className="text-gray-700 text-sm mb-5">
                     Snap a photo of the menu and you&apos;ll put <span className="font-medium">{venue.name}</span> on the map for everyone.
                   </p>
-                  <a
-                    href={`/?venue=${slug}`}
-                    className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
-                  >
-                    📷 Scan Menu
-                  </a>
+                  {!isClaimed && (
+                    <a
+                      href={`/?venue=${slug}`}
+                      className="inline-flex items-center justify-center gap-2 w-full sm:w-auto bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors shadow-sm"
+                    >
+                      📷 Scan Menu
+                    </a>
+                  )}
                 </div>
               )}
-              <ClaimVenueButton venue={venue} />
+              {!isClaimed && <ClaimVenueButton venue={venue} />}
             </div>
           </article>
         </main>

@@ -366,7 +366,7 @@ export default async function UnifiedSlugPage({
                   </>
                 )}
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{venue.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{venue.name}</h1>
               {formatAddress(venue) && (
                 <p className="text-gray-500 text-sm mb-2">{formatAddress(venue)}</p>
               )}

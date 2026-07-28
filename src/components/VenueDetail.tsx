@@ -292,9 +292,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             >
               {venue.name}
             </h2>
-            {venue.tagline && (
-              <p className="text-sm text-gray-500 mt-0.5">{venue.tagline}</p>
-            )}
+
             {isActiveHH && (
               <span className="text-xs bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-semibold mt-1">
                 HH Active
@@ -338,10 +336,10 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
           )}
         </div>
 
-        {/* Type badge */}
-        {venue.type && (
+        {/* Tagline / type badge */}
+        {(venue.tagline ?? venue.type) && (
           <span className="inline-block text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full mb-4">
-            {venue.type}
+            {venue.tagline ?? venue.type}
           </span>
         )}
 

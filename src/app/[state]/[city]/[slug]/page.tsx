@@ -367,11 +367,13 @@ export default async function UnifiedSlugPage({
                 )}
               </div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{venue.name}</h1>
-              {venue.tagline && (
-                <p className="text-sm text-gray-500 mb-4">{venue.tagline}</p>
-              )}
               {formatAddress(venue) && (
-                <p className="text-gray-500 text-sm mb-6">{formatAddress(venue)}</p>
+                <p className="text-gray-500 text-sm mb-2">{formatAddress(venue)}</p>
+              )}
+              {(venue.tagline ?? venue.type) && (
+                <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mb-6">
+                  {venue.tagline ?? venue.type}
+                </span>
               )}
               {indexable ? (
                 <div className="space-y-6">

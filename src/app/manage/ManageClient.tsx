@@ -1,10 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Types — match /api/manage/venue GET response
  * ────────────────────────────────────────────────────────────────────────── */
+
+interface PhotoSet {
+  id: string
+  photoUrls: string[]
+  createdAt: string
+}
 
 interface VenueReadonly {
   name: string
@@ -38,7 +44,10 @@ interface VenueEditable {
   hh_end_3: number | null
 }
 
-type VenueResponse = VenueReadonly & Partial<VenueEditable>
+type VenueResponse = VenueReadonly & Partial<VenueEditable> & {
+  photoSets?: PhotoSet[]
+  latestMenuImageUrl?: string | null
+}
 
 interface ApiError {
   reason?: string
@@ -230,6 +239,18 @@ function formatExpiry(iso: string | null): string {
   }
 }
 
+function formatUploadDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
+
 function windowsDiffer(
   a: WindowDef,
   b: WindowDef
@@ -257,6 +278,8 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
   const [authError, setAuthError] = useState(false)
   const [readonly, setReadonly] = useState<VenueReadonly | null>(null)
   const [initialEditable, setInitialEditable] = useState<VenueEditable | null>(null)
+  const [photoSets, setPhotoSets] = useState<PhotoSet[]>([])
+  const [latestMenuImageUrl, setLatestMenuImageUrl] = useState<string | null>(null)
 
   // Form state
   const [tagline, setTagline] = useState('')
@@ -271,9 +294,18 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
   const [showW2, setShowW2] = useState(false)
   const [showW3, setShowW3] = useState(false)
 
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [windowErrors, setWindowErrors] = useState<Record<number, string>>({})
+
+  // Sync photo state from a GET response
+  function syncPhotoState(data: VenueResponse) {
+    if (data.photoSets) setPhotoSets(data.photoSets)
+    if (data.latestMenuImageUrl !== undefined) setLatestMenuImageUrl(data.latestMenuImageUrl ?? null)
+  }
 
   // On mount: fetch current venue state
   useEffect(() => {
@@ -300,6 +332,9 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
             state: data.state ?? null,
             claimed_until: data.claimed_until ?? null,
           })
+
+          syncPhotoState(data)
+
           const editable: VenueEditable = {
             tagline: data.tagline ?? null,
             hh_summary: data.hh_summary ?? null,
@@ -384,6 +419,18 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
     // Clear any error for this window
     setWindowErrors(prev => { const n = { ...prev }; delete n[index]; return n })
   }, [])
+
+  function handlePhotoFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).slice(0, 4)
+    setSelectedFiles(files)
+    // Reset the input so the same file list can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function clearSelectedPhotos() {
+    setSelectedFiles([])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -480,25 +527,46 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
       changed.hh_end_3 = null
     }
 
+    const hasPhotos = selectedFiles.length > 0
+    const hasFields = Object.keys(changed).length > 0
+
     // Nothing changed
-    if (Object.keys(changed).length === 0) {
+    if (!hasPhotos && !hasFields) {
       setSaveMessage({ ok: true, text: 'No changes to save.' })
       setSaving(false)
       return
     }
 
     try {
-      const res = await fetch('/api/manage/venue', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(changed),
-      })
+      let res: Response
+
+      if (hasPhotos) {
+        // Use FormData — photos + field changes in one request
+        const formData = new FormData()
+        for (const file of selectedFiles) {
+          formData.append('photos', file)
+        }
+        for (const [key, value] of Object.entries(changed)) {
+          formData.append(key, String(value ?? ''))
+        }
+
+        res = await fetch('/api/manage/venue', {
+          method: 'PATCH',
+          body: formData,
+        })
+      } else {
+        // JSON only — no photos
+        res = await fetch('/api/manage/venue', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(changed),
+        })
+      }
+
       const data = await res.json()
 
       if (!res.ok) {
         if (data.reason === 'invalid_timeframe') {
-          // Try to attribute to the right window
-          // The API doesn't tell us which window, so we show it at the top
           setSaveMessage({ ok: false, text: 'Invalid happy hour window — check that times are possible for your city.' })
         } else {
           setSaveMessage({ ok: false, text: data.reason ?? 'save_failed' })
@@ -506,9 +574,11 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
         return
       }
 
+      // Clear selected photos on success
+      clearSelectedPhotos()
       setSaveMessage({ ok: true, text: 'Changes saved.' })
 
-      // Re-fetch to sync form with server truth
+      // Re-fetch to sync form + photo state with server truth
       const getRes = await fetch('/api/manage/venue')
       if (getRes.ok) {
         const fresh = await getRes.json() as VenueResponse
@@ -566,6 +636,8 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
           end: hasW3 ? minToHHMM(fresh.hh_end_3 ?? null) : '',
           useCloseTime: hasW3 ? fresh.hh_end_3 == null : false,
         })
+
+        syncPhotoState(fresh)
       }
     } catch (err) {
       setSaveMessage({
@@ -772,6 +844,102 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
                   Remove window 3
                 </button>
               )}
+            </div>
+          </fieldset>
+
+          {/* Photo upload */}
+          <fieldset>
+            <legend className="text-sm font-medium text-neutral-700 mb-3">Menu photos</legend>
+
+            {/* Existing photo sets */}
+            {photoSets.length > 0 && (
+              <div className="space-y-3 mb-4">
+                {photoSets.map((ps) => (
+                  <div key={ps.id} className="border border-neutral-200 rounded-xl p-3">
+                    <p className="text-xs text-neutral-500 mb-2">
+                      Uploaded {formatUploadDate(ps.createdAt)}
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      {ps.photoUrls.map((url, i) => (
+                        <div
+                          key={i}
+                          className="relative w-20 h-20 rounded-lg overflow-hidden border border-neutral-200 bg-neutral-100"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt={`Menu photo ${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {photoSets.length === 0 && !selectedFiles.length && (
+              <p className="text-xs text-neutral-400 mb-3">No photos uploaded yet.</p>
+            )}
+
+            {/* Pending selection */}
+            {selectedFiles.length > 0 && (
+              <div className="mb-3 border border-amber-300 bg-amber-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-amber-800">
+                    {selectedFiles.length} photo{selectedFiles.length !== 1 ? 's' : ''} ready to upload
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearSelectedPhotos}
+                    className="text-xs text-amber-700 hover:text-amber-900 underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {selectedFiles.map((file, i) => (
+                    <div
+                      key={i}
+                      className="relative w-20 h-20 rounded-lg overflow-hidden border border-amber-300 bg-white"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Selected ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* File input — styled as a button */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handlePhotoFileChange}
+                disabled={saving}
+                className="hidden"
+                id="photo-upload"
+              />
+              <label
+                htmlFor="photo-upload"
+                className={`inline-flex items-center gap-2 text-sm px-4 py-2 border border-neutral-300 rounded-xl cursor-pointer hover:border-neutral-400 transition-colors ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <svg className="w-4 h-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-neutral-700">
+                  {selectedFiles.length > 0 ? 'Choose different photos' : 'Add menu photos'}
+                </span>
+              </label>
+              <p className="text-xs text-neutral-400 mt-1">JPEG, PNG, or WebP · up to 4 photos per upload</p>
             </div>
           </fieldset>
 

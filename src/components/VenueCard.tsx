@@ -2,6 +2,7 @@
 
 import type { LeanVenue } from '@/lib/venues'
 import { hasActiveHappyHour, getHHState, getHHColor, resolveHH } from '@/lib/hh-state'
+import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 import { formatAddress } from '@/lib/format-address'
 
@@ -66,6 +67,7 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
           )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
+          <FavoriteButton venueId={venue.id} size="sm" />
           {/* Share — 44×44px tap target, stopPropagation handled inside */}
           <ShareButton venue={venue} />
           {hhState === 'active' && (

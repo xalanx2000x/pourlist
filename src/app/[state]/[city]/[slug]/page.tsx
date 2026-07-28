@@ -279,6 +279,7 @@ export default async function UnifiedSlugPage({
   const { default: VenueLiveBadge } = await import('@/components/VenueLiveBadge')
   const { default: ShareButton } = await import('@/components/ShareButton')
   const { default: ClaimVenueButton } = await import('@/components/ClaimVenueButton')
+  const { default: FavoriteButton } = await import('@/components/FavoriteButton')
   const schedule = getHhLabel(venue)
   const isClaimed = venue.claimed_until != null && new Date(venue.claimed_until) > new Date()
   const canonical = `${BASE_URL}${venue.new_slug ?? `/${state}/${city}/${slug}`}`
@@ -340,6 +341,7 @@ export default async function UnifiedSlugPage({
                 </a>
                 <div className="flex items-center gap-3">
                   <VenueLiveBadge venue={venue} />
+                  <FavoriteButton venueId={venue.id} size="md" />
                   <ShareButton
                     variant="labeled"
                     title={`${venue.name} · Happy hour on PourList`}

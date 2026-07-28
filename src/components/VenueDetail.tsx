@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { hasActiveHappyHour } from '@/lib/hh-state'
 import { getDeviceHash } from '@/lib/device'
 import { getHhLabel, formatWindow } from '@/lib/format-schedule'
+import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 import ClaimVenueButton from './ClaimVenueButton'
 import { formatAddress, normalizeAddress } from '@/lib/format-address'
@@ -305,6 +306,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
               </span>
             )}
             <div className="ml-auto flex items-center gap-1">
+              <FavoriteButton venueId={venue.id} size="md" />
               <ShareButton venue={venue} />
               <button
                 onClick={onClose}

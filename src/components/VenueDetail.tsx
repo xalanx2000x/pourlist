@@ -345,7 +345,7 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             </span>
           )}
           {isClaimed && (
-            <span className="inline-block text-xs bg-blue-600 text-amber-400 font-semibold px-2.5 py-1 rounded-full">
+            <span className="inline-block text-xs bg-white text-blue-600 font-semibold px-2.5 py-1 rounded-full border border-blue-400">
               Page managed by venue
             </span>
           )}

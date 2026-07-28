@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkVenueAccess } from '@/lib/venue-access'
 import { supabaseServer } from '@/lib/supabase-server'
 import { getCityCloseMin } from '@/lib/bar-close-times'
-import { uploadPhotos, commitPhotoSet } from '@/lib/photos'
+import { uploadPhotos, commitPhotoSet, storagePathFromUrl } from '@/lib/photos'
 
 export const dynamic = 'force-dynamic'
 
@@ -200,6 +200,106 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[manage/venue PATCH]', err)
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ reason: 'server_error', detail: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const venueId = await checkVenueAccess()
+    if (!venueId) {
+      return NextResponse.json({ reason: 'unauthorized' }, { status: 401 })
+    }
+
+    let body: { photoSetId?: string }
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ reason: 'invalid_json' }, { status: 400 })
+    }
+
+    const { photoSetId } = body
+    if (!photoSetId || typeof photoSetId !== 'string') {
+      return NextResponse.json({ reason: 'missing_photoSetId' }, { status: 400 })
+    }
+
+    // Fetch the photo set
+    const { data: photoSet, error: psFetchError } = await supabaseServer
+      .from('photo_sets')
+      .select('id, photo_urls')
+      .eq('id', photoSetId)
+      .single()
+
+    if (psFetchError || !photoSet) {
+      return NextResponse.json({ reason: 'photo_set_not_found' }, { status: 404 })
+    }
+
+    // Confirm it belongs to the authorized venue
+    if ((photoSet as unknown as { venue_id?: string }).venue_id !== venueId) {
+      return NextResponse.json({ reason: 'forbidden' }, { status: 403 })
+    }
+
+    // Extract storage paths and delete files
+    const urls = (photoSet.photo_urls ?? []) as string[]
+    if (urls.length > 0) {
+      const paths = urls
+        .map(url => storagePathFromUrl(url))
+        .filter(p => p.length > 0)
+      if (paths.length > 0) {
+        const { error: storageError } = await supabaseServer.storage
+          .from('venue-photos')
+          .remove(paths)
+        if (storageError) {
+          console.error('[manage/venue DELETE] storage delete error', storageError)
+        }
+      }
+    }
+
+    // Delete the photo_sets row
+    const { error: psDeleteError } = await supabaseServer
+      .from('photo_sets')
+      .delete()
+      .eq('id', photoSetId)
+
+    if (psDeleteError) {
+      console.error('[manage/venue DELETE] row delete error', psDeleteError)
+      return NextResponse.json({ reason: 'delete_failed' }, { status: 500 })
+    }
+
+    // Query remaining sets — most recent first
+    const { data: remainingSets, error: remainingError } = await supabaseServer
+      .from('photo_sets')
+      .select('id, photo_urls')
+      .eq('venue_id', venueId)
+      .order('created_at', { ascending: false })
+
+    if (remainingError) {
+      console.error('[manage/venue DELETE] remaining sets query error', remainingError)
+    }
+
+    const remainingCount = remainingSets?.length ?? 0
+    const newLatestUrl = remainingCount > 0
+      ? ((remainingSets![0].photo_urls ?? []) as string[])[0] ?? null
+      : null
+
+    // Update latest_menu_image_url
+    const { error: urlUpdateError } = await supabaseServer
+      .from('venues')
+      .update({ latest_menu_image_url: newLatestUrl })
+      .eq('id', venueId)
+
+    if (urlUpdateError) {
+      console.error('[manage/venue DELETE] latest_menu_image_url update error', urlUpdateError)
+    }
+
+    return NextResponse.json({
+      success: true,
+      latestMenuImageUrl: newLatestUrl,
+      remainingSets: remainingCount,
+    })
+  } catch (err) {
+    console.error('[manage/venue DELETE]', err)
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ reason: 'server_error', detail: message }, { status: 500 })
   }

@@ -296,6 +296,8 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [deletingSetId, setDeletingSetId] = useState<string | null>(null)
+  const [deleteConfirmSetId, setDeleteConfirmSetId] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ ok: boolean; text: string } | null>(null)
@@ -430,6 +432,39 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
   function clearSelectedPhotos() {
     setSelectedFiles([])
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  async function handleDeletePhotoSet(photoSetId: string) {
+    if (deletingSetId) return
+    setDeletingSetId(photoSetId)
+    setDeleteConfirmSetId(null)
+    try {
+      const res = await fetch('/api/manage/venue', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoSetId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSaveMessage({ ok: false, text: data.reason ?? 'delete_failed' })
+        return
+      }
+      // Re-fetch to sync photo state with server truth
+      const getRes = await fetch('/api/manage/venue')
+      if (getRes.ok) {
+        const fresh = await getRes.json() as VenueResponse
+        syncPhotoState(fresh)
+      }
+      setSaveMessage({ ok: true, text: 'Photo set deleted.' })
+    } catch (err) {
+      setSaveMessage({
+        ok: false,
+        text: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setDeletingSetId(null)
+      setDeleteConfirmSetId(null)
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -856,9 +891,41 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
               <div className="space-y-3 mb-4">
                 {photoSets.map((ps) => (
                   <div key={ps.id} className="border border-neutral-200 rounded-xl p-3">
-                    <p className="text-xs text-neutral-500 mb-2">
-                      Uploaded {formatUploadDate(ps.createdAt)}
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-neutral-500">
+                        Uploaded {formatUploadDate(ps.createdAt)}
+                      </p>
+                      {deleteConfirmSetId === ps.id ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-neutral-700">Delete this photo set?</span>
+                          <button
+                            type="button"
+                            disabled={deletingSetId !== null}
+                            onClick={() => handleDeletePhotoSet(ps.id)}
+                            className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                          >
+                            {deletingSetId === ps.id ? 'Deleting…' : 'Confirm'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deletingSetId !== null}
+                            onClick={() => { setDeleteConfirmSetId(null); setDeletingSetId(null) }}
+                            className="text-xs text-neutral-500 hover:text-neutral-700 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={deletingSetId !== null}
+                          onClick={() => setDeleteConfirmSetId(ps.id)}
+                          className="text-xs text-neutral-400 hover:text-neutral-600 disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                     <div className="flex gap-2 flex-wrap">
                       {ps.photoUrls.map((url, i) => (
                         <div

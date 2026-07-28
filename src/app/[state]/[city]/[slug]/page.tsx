@@ -380,13 +380,16 @@ export default async function UnifiedSlugPage({
                   {schedule && (
                     <div>
                       <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Happy Hour</h2>
-                      <p className="text-lg text-gray-900 dark:text-gray-100">{schedule}</p>
+                      <p className="text-lg text-gray-900">{schedule}</p>
+                      {venue.hh_summary && (
+                        <p className="text-sm text-gray-500 mt-1 leading-relaxed">{venue.hh_summary}</p>
+                      )}
                     </div>
                   )}
                   {venue.menu_text && (
                     <div>
                       <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Deals &amp; Menu</h2>
-                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{venue.menu_text}</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{venue.menu_text}</p>
                     </div>
                   )}
                   {venue.lat != null && venue.lng != null && (

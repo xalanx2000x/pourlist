@@ -61,6 +61,9 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
               {venue.tagline ?? venue.type}
             </span>
           )}
+          {venue.hh_summary && (
+            <p className="text-xs text-gray-400 mt-1 truncate">{venue.hh_summary}</p>
+          )}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1">
           {/* Share — 44×44px tap target, stopPropagation handled inside */}

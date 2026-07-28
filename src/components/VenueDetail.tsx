@@ -415,6 +415,11 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             {!venue.hh_type && venue.hh_time && (
               <p className="text-sm font-medium text-amber-900">{venue.hh_time}</p>
             )}
+
+            {/* Menu highlights */}
+            {venue.hh_summary && (
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">{venue.hh_summary}</p>
+            )}
           </div>
         )}
 

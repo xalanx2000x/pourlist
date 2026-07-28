@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ClaimRequest {
   id: string
@@ -22,6 +22,11 @@ interface ApiResponse {
   total: number
 }
 
+interface IssueResult {
+  url: string
+  expires: string
+}
+
 const STATUS_OPTIONS = [
   { value: 'new',       label: 'New' },
   { value: 'contacted', label: 'Contacted' },
@@ -40,11 +45,20 @@ function daysAgo(dateStr: string): number {
   return Math.floor((now - then) / (1000 * 60 * 60 * 24))
 }
 
+function formatExpiry(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
+
 export default function VerificationClient() {
   const [claims, setClaims] = useState<ClaimRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  // ID of the most recently saved note — cleared after 2s
   const [savedNoteId, setSavedNoteId] = useState<string | null>(null)
 
   const fetchClaims = useCallback(async () => {
@@ -91,8 +105,14 @@ export default function VerificationClient() {
     }
   }
 
-  // Split closed to bottom; keep new/contacted/verified in their returned order
-  const open  = claims.filter(c => c.status !== 'closed')
+  function handleIssueSuccess(requestId: string, result: IssueResult) {
+    // Update local status to verified and store the issued URL
+    setClaims(prev => prev.map(c =>
+      c.id === requestId ? { ...c, status: 'verified' } : c
+    ))
+  }
+
+  const open   = claims.filter(c => c.status !== 'closed')
   const closed = claims.filter(c => c.status === 'closed')
 
   return (
@@ -112,7 +132,6 @@ export default function VerificationClient() {
           <p className="text-sm text-neutral-400">No claim requests yet.</p>
         )}
 
-        {/* Open claims */}
         {open.length > 0 && (
           <div className="space-y-4 mb-8">
             {open.map(claim => (
@@ -122,12 +141,12 @@ export default function VerificationClient() {
                 onStatusChange={patchStatus}
                 onAdminNoteChange={patchAdminNote}
                 noteSaved={savedNoteId === claim.id}
+                onIssueSuccess={handleIssueSuccess}
               />
             ))}
           </div>
         )}
 
-        {/* Closed claims */}
         {closed.length > 0 && (
           <>
             <hr className="border-neutral-200 mb-4" />
@@ -142,6 +161,7 @@ export default function VerificationClient() {
                   onStatusChange={patchStatus}
                   onAdminNoteChange={patchAdminNote}
                   noteSaved={savedNoteId === claim.id}
+                  onIssueSuccess={handleIssueSuccess}
                 />
               ))}
             </div>
@@ -157,15 +177,92 @@ function ClaimRow({
   onStatusChange,
   onAdminNoteChange,
   noteSaved,
+  onIssueSuccess,
 }: {
   claim: ClaimRequest
   onStatusChange: (id: string, status: string) => void
   onAdminNoteChange: (id: string, note: string) => void
   noteSaved: boolean
+  onIssueSuccess: (requestId: string, result: IssueResult) => void
 }) {
   const age = daysAgo(claim.createdAt)
   const stale = claim.status === 'new' && age > 2
   const isClosed = claim.status === 'closed'
+
+  const [issueLoading, setIssueLoading] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [issuedUrl, setIssuedUrl] = useState<{ url: string; expires: string } | null>(null)
+  const [issueError, setIssueError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const canIssue = claim.status === 'new' || claim.status === 'contacted'
+  const canReissue = claim.status === 'verified'
+
+  async function handleIssue() {
+    setIssueLoading(true)
+    setIssueError(null)
+    try {
+      const res = await fetch('/api/verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: claim.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setIssueError((data as { reason?: string }).reason ?? 'Failed')
+        return
+      }
+      const result = data as { success: true; url: string; expires: string }
+      setIssuedUrl({ url: result.url, expires: result.expires })
+      onIssueSuccess(claim.id, { url: result.url, expires: result.expires })
+    } catch {
+      setIssueError('Network error')
+    } finally {
+      setIssueLoading(false)
+      setConfirming(false)
+    }
+  }
+
+  function requestConfirm() {
+    setConfirming(true)
+    if (confirmTimer.current) clearTimeout(confirmTimer.current)
+    confirmTimer.current = setTimeout(() => {
+      setConfirming(false)
+    }, 5000)
+  }
+
+  function cancelConfirm() {
+    setConfirming(false)
+    if (confirmTimer.current) clearTimeout(confirmTimer.current)
+  }
+
+  async function copyUrl() {
+    if (!issuedUrl) return
+    try {
+      await navigator.clipboard.writeText(issuedUrl.url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback: select the text
+    }
+  }
+
+  // Mask the token portion of the URL for display
+  function maskUrl(url: string): string {
+    try {
+      const u = new URL(url)
+      const pathParts = u.pathname.split('/')
+      // /claim/[token] — mask the last path segment
+      if (pathParts.length >= 3 && pathParts[pathParts.length - 2] === 'claim') {
+        pathParts[pathParts.length - 1] = '[REDACTED]'
+        u.pathname = pathParts.join('/')
+      }
+      return u.toString()
+    } catch {
+      return url.replace(/\/claim\/([^/]+)/, '/claim/[REDACTED]')
+    }
+  }
 
   return (
     <div className={`bg-white border rounded-xl p-5 ${isClosed ? 'border-neutral-200' : 'border-neutral-200'}`}>
@@ -205,6 +302,70 @@ function ClaimRow({
           <p className="mt-1 text-neutral-500 italic">&quot;{claim.note}&quot;</p>
         )}
       </div>
+
+      {/* Issue access section */}
+      {(canIssue || canReissue) && (
+        <div className="mb-4 border border-amber-200 bg-amber-50 rounded-xl p-4">
+          {!issuedUrl ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {!confirming ? (
+                <>
+                  <button
+                    onClick={requestConfirm}
+                    disabled={issueLoading}
+                    className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {issueLoading ? 'Issuing…' : canReissue ? 'Reissue access' : 'Issue access'}
+                  </button>
+                  {issueError && (
+                    <span className="text-sm text-red-600">{issueError}</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleIssue}
+                    disabled={issueLoading}
+                    className="px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {issueLoading ? 'Issuing…' : `Confirm — revoke prior links`}
+                  </button>
+                  <button
+                    onClick={cancelConfirm}
+                    className="px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <span className="text-xs text-neutral-500">
+                    for {claim.venueName} — any existing links will stop working
+                  </span>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-green-700">✓ Access link issued</span>
+                <span className="text-xs text-neutral-500">Expires {formatExpiry(issuedUrl.expires)}</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={maskUrl(issuedUrl.url)}
+                  className="flex-1 text-sm font-mono bg-white border border-neutral-300 rounded-lg px-3 py-2 text-neutral-700"
+                />
+                <button
+                  onClick={copyUrl}
+                  className="px-3 py-2 text-sm font-medium bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-lg transition-colors shrink-0"
+                >
+                  {copied ? 'Copied!' : 'Copy link'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Admin note */}
       <div className="mb-3">

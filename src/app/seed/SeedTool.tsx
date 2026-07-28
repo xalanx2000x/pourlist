@@ -450,6 +450,7 @@ export default function SeedTool({
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
   const [venueType, setVenueType] = useState('')
+  const [tagline, setTagline] = useState('')
   const [menuText, setMenuText] = useState('')
   const [hhSummary, setHhSummary] = useState('')
   const [hhTime, setHhTime] = useState('')
@@ -558,6 +559,7 @@ export default function SeedTool({
     setPhone(v.phone ?? '')
     setWebsite(v.website ?? '')
     setVenueType(v.type ?? '')
+    setTagline((v as { tagline?: string }).tagline ?? '')
     setMenuText(v.menu_text ?? '')
     setHhSummary(v.hh_summary ?? '')
     setHhTime(v.hh_time ?? '')
@@ -587,7 +589,7 @@ export default function SeedTool({
 
   function clearForm() {
     setName(''); setAddress(''); setLat(''); setLng(''); setCity(''); setStateCode(''); setNeighborhood(''); setZip(''); setCountry('')
-    setPhone(''); setWebsite(''); setVenueType(''); setMenuText(''); setHhSummary(''); setHhTime('')
+    setPhone(''); setWebsite(''); setVenueType(''); setTagline(''); setMenuText(''); setHhSummary(''); setHhTime(''),
     setW1Type(''); setW1Days(new Set()); setW1Start(''); setW1End(''); setW1UseClose(false)
     setW2Type(''); setW2Days(new Set()); setW2Start(''); setW2End(''); setW2UseClose(false)
     setW3Type(''); setW3Days(new Set()); setW3Start(''); setW3End(''); setW3UseClose(false)
@@ -646,6 +648,7 @@ export default function SeedTool({
       fd.set('phone', phone)
       fd.set('website', website)
       fd.set('type', venueType)
+      fd.set('tagline', tagline)
 
       fd.set('menuText', menuText)
       fd.set('hhSummary', hhSummary)
@@ -972,6 +975,19 @@ export default function SeedTool({
               <label className="block">
                 <span className="block text-xs font-medium text-neutral-700 mb-1">Type</span>
                 <input type="text" value={venueType} onChange={(e) => setVenueType(e.target.value)} placeholder="bar, restaurant…" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium text-neutral-700 mb-1">
+                  Tagline <span className="text-neutral-400">(24 chars max)</span>
+                </span>
+                <input
+                  type="text"
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  maxLength={24}
+                  placeholder="Cocktail Bar, Restaurant, etc."
+                  className="w-full px-2 py-1 text-sm border border-neutral-300 rounded"
+                />
               </label>
             </div>
           </fieldset>

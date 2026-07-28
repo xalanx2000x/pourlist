@@ -58,6 +58,7 @@ export type LeanVenue = {
   country: string | null
   zip: string | null
   address_autofilled: boolean
+  tagline?: string | null
   hh_type: string | null
   hh_days: string | null
   hh_exclude_days: string | null

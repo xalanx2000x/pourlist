@@ -40,6 +40,7 @@ export type Venue = {
   phone: string | null
   website: string | null
   type: string | null
+  tagline?: string | null
   status: 'unverified' | 'verified' | 'stale' | 'closed'
   is_seed_data: boolean
   contributor_trust: string

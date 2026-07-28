@@ -292,6 +292,9 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             >
               {venue.name}
             </h2>
+            {venue.tagline && (
+              <p className="text-sm text-gray-500 mt-0.5">{venue.tagline}</p>
+            )}
             {isActiveHH && (
               <span className="text-xs bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-semibold mt-1">
                 HH Active

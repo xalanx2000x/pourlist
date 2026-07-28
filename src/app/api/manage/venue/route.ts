@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabaseServer
       .from('venues')
       .select(
+        'tagline,' +
         'hh_summary, hh_time, opening_min, phone, website,' +
         'hh_type, hh_days, hh_exclude_days, hh_start, hh_end,' +
         'hh_type_2, hh_days_2, hh_exclude_days_2, hh_start_2, hh_end_2,' +
@@ -70,6 +71,7 @@ export async function PATCH(req: NextRequest) {
 
     // Destructure editable fields; ignore everything else
     const {
+      tagline,
       hh_summary,
       hh_time,
       opening_min,
@@ -91,6 +93,7 @@ export async function PATCH(req: NextRequest) {
       hh_start_3,
       hh_end_3,
     } = body as {
+      tagline?: string
       hh_summary?: string
       hh_time?: string
       opening_min?: number | string
@@ -114,7 +117,10 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Character limits
-    if (hh_summary !== undefined && hh_summary.length > 500) {
+    if (tagline !== undefined && tagline.length > 24) {
+      return NextResponse.json({ reason: 'tagline_too_long' }, { status: 400 })
+    }
+    if (hh_summary !== undefined && hh_summary.length > 120) {
       return NextResponse.json({ reason: 'hh_summary_too_long' }, { status: 400 })
     }
     if (phone !== undefined && phone.length > 200) {
@@ -189,6 +195,7 @@ export async function PATCH(req: NextRequest) {
     // Build update object — merge-safe, only present fields
     const update: Record<string, unknown> = {}
 
+    if (tagline !== undefined) update.tagline = tagline || null
     if (hh_summary !== undefined) update.hh_summary = hh_summary || null
     if (hh_time !== undefined) update.hh_time = hh_time || null
     if (phone !== undefined) update.phone = phone || null

@@ -50,6 +50,9 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
         )}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{venue.name}</h3>
+          {venue.tagline && (
+            <p className="text-xs text-gray-500 mt-0.5 truncate">{venue.tagline}</p>
+          )}
           {venue.hh_time && (
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full mt-0.5 inline-block">
               {venue.hh_time}

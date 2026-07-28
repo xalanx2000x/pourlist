@@ -397,6 +397,11 @@ async function handleNew(formData: FormData) {
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
   const website = ((formData.get('website') as string | null) ?? '').trim() || null
   const type = ((formData.get('type') as string | null) ?? '').trim() || null
+  const taglineRaw = ((formData.get('tagline') as string | null) ?? '').trim()
+  if (taglineRaw.length > 24) {
+    return NextResponse.json({ success: false, reason: 'tagline_too_long' }, { status: 400 })
+  }
+  const tagline = taglineRaw || null
 
   const venueInsert: Record<string, unknown> = {
     name: venueName,
@@ -418,6 +423,7 @@ async function handleNew(formData: FormData) {
     phone,
     website,
     type,
+    tagline,
     menu_text: ((formData.get('menuText') as string | null) ?? '').trim() || null,
     timezone,
     ...hhUpdate,
@@ -565,6 +571,11 @@ async function handleEdit(formData: FormData, venueId: string | null) {
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
   const website = ((formData.get('website') as string | null) ?? '').trim() || null
   const type = ((formData.get('type') as string | null) ?? '').trim() || null
+  const taglineRaw = ((formData.get('tagline') as string | null) ?? '').trim()
+  if (taglineRaw.length > 24) {
+    return NextResponse.json({ success: false, reason: 'tagline_too_long' }, { status: 400 })
+  }
+  const tagline = taglineRaw || null
   const menuText = ((formData.get('menuText') as string | null) ?? '').trim() || null
 
   const update: Record<string, unknown> = {
@@ -582,6 +593,7 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     phone,
     website,
     type,
+    tagline,
     menu_text: menuText,
     address_autofilled: false, // Tyler's text, not geocoder's
     // UPGRADE OSM → user-submitted: admin edit removes OSM designation.

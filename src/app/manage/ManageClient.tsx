@@ -15,6 +15,7 @@ interface VenueReadonly {
 }
 
 interface VenueEditable {
+  tagline: string | null
   hh_summary: string | null
   hh_time: string | null
   opening_min: number | null
@@ -258,6 +259,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
   const [initialEditable, setInitialEditable] = useState<VenueEditable | null>(null)
 
   // Form state
+  const [tagline, setTagline] = useState('')
   const [hhSummary, setHhSummary] = useState('')
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
@@ -299,6 +301,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
             claimed_until: data.claimed_until ?? null,
           })
           const editable: VenueEditable = {
+            tagline: data.tagline ?? null,
             hh_summary: data.hh_summary ?? null,
             hh_time: data.hh_time ?? null,
             opening_min: data.opening_min ?? null,
@@ -323,6 +326,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
           setInitialEditable(editable)
 
           // Populate form
+          setTagline(data.tagline ?? '')
           setHhSummary(data.hh_summary ?? '')
           setPhone(data.phone ?? '')
           setWebsite(data.website ?? '')
@@ -391,6 +395,9 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
     // Build changed-fields object
     const changed: Record<string, unknown> = {}
 
+    if (tagline !== (initialEditable.tagline ?? '')) {
+      changed.tagline = tagline || null
+    }
     if (hhSummary !== (initialEditable.hh_summary ?? '')) {
       changed.hh_summary = hhSummary || null
     }
@@ -506,6 +513,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
       if (getRes.ok) {
         const fresh = await getRes.json() as VenueResponse
         setInitialEditable({
+          tagline: fresh.tagline ?? null,
           hh_summary: fresh.hh_summary ?? null,
           hh_time: fresh.hh_time ?? null,
           opening_min: fresh.opening_min ?? null,
@@ -527,6 +535,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
           hh_start_3: fresh.hh_start_3 ?? null,
           hh_end_3: fresh.hh_end_3 ?? null,
         })
+        setTagline(fresh.tagline ?? '')
         setHhSummary(fresh.hh_summary ?? '')
         setPhone(fresh.phone ?? '')
         setWebsite(fresh.website ?? '')
@@ -620,6 +629,23 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
               {[readonly.address, readonly.city, readonly.state].filter(Boolean).join(', ')}
             </p>
           )}
+          <div className="mt-2">
+            <label htmlFor="tagline" className="block text-xs font-medium text-neutral-500 mb-1">Tagline</label>
+            <input
+              id="tagline"
+              type="text"
+              value={tagline}
+              onChange={(e) => setTagline(e.target.value)}
+              maxLength={24}
+              placeholder="Cocktail Bar, Restaurant, etc."
+              className="w-full px-3 py-1.5 text-sm border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <div className="flex justify-end mt-0.5">
+              <span className={`text-xs ${tagline.length > 20 ? 'text-amber-600' : 'text-neutral-400'}`}>
+                {tagline.length}/24
+              </span>
+            </div>
+          </div>
           {claimedUntil && (
             <p className="text-xs text-neutral-400 mt-2">
               Your access expires {formatExpiry(claimedUntil)}
@@ -630,23 +656,23 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
         {/* Form card */}
         <form onSubmit={handleSave} className="bg-white rounded-2xl border border-neutral-200 p-6 space-y-6">
 
-          {/* About */}
+          {/* Menu highlights */}
           <fieldset>
             <label htmlFor="hh_summary" className="block text-sm font-medium text-neutral-700 mb-1.5">
-              About this venue
+              Menu highlights
             </label>
             <textarea
               id="hh_summary"
               value={hhSummary}
               onChange={(e) => setHhSummary(e.target.value)}
-              maxLength={500}
-              rows={3}
-              placeholder="e.g. $5 wells, $4 drafts, daily 3–6pm"
+              maxLength={120}
+              rows={2}
+              placeholder="$10 Cocktails, $2 oysters, etc."
               className="w-full px-3 py-2 text-sm border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
             />
             <div className="flex justify-end mt-1">
-              <span className={`text-xs ${hhSummary.length > 450 ? 'text-amber-600' : 'text-neutral-400'}`}>
-                {hhSummary.length}/500
+              <span className={`text-xs ${hhSummary.length > 108 ? 'text-amber-600' : 'text-neutral-400'}`}>
+                {hhSummary.length}/120
               </span>
             </div>
           </fieldset>

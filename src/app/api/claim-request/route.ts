@@ -112,23 +112,23 @@ export async function POST(req: NextRequest) {
     venueName = nameRow?.[0]?.name ?? null
   }
 
-  // Fire-and-forget — never blocks the success response
-  const resendPromise = fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'onboarding@resend.dev',
-      to: 'tylerray@gmail.com',
-      subject: `New claim request: ${venueName ?? 'Unknown venue'}`,
-      text: `New claim request:\n\nVenue: ${venueName ?? 'Unknown venue'}\nContact: ${contact_name}\nPhone: ${phone}\nEmail: ${email}\n\nView in /verification: https://www.pourlist.app/verification`,
-    }),
-  })
-  resendPromise.catch((err) => {
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'onboarding@resend.dev',
+        to: 'tylerray@gmail.com',
+        subject: `New claim request: ${venueName ?? 'Unknown venue'}`,
+        text: `New claim request:\n\nVenue: ${venueName ?? 'Unknown venue'}\nContact: ${contact_name}\nPhone: ${phone}\nEmail: ${email}\n\nView in /verification: https://www.pourlist.app/verification`,
+      }),
+    })
+  } catch (err) {
     console.error('Resend notification failed:', err)
-  })
+  }
 
   return json({
     ok: true,

@@ -227,7 +227,7 @@ export async function DELETE(req: NextRequest) {
     // Fetch the photo set
     const { data: photoSet, error: psFetchError } = await supabaseServer
       .from('photo_sets')
-      .select('id, photo_urls')
+      .select('id, venue_id, photo_urls')
       .eq('id', photoSetId)
       .single()
 

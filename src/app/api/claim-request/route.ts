@@ -51,10 +51,10 @@ export async function POST(req: NextRequest) {
     return json({ reason: 'Note must be 280 characters or fewer' }, 400)
   }
 
-  // ── Venue exists check ───────────────────────────────────────────────────────
+  // ── Venue exists check + fetch name for notification email ──────────────────
   const { data: venue, error: venueError } = await supabaseServer
     .from('venues')
-    .select('id')
+    .select('id, name')
     .eq('id', venue_id)
     .single()
 
@@ -95,6 +95,40 @@ export async function POST(req: NextRequest) {
     console.error('claim_request insert error:', insertError)
     return json({ reason: 'Failed to submit request — please try again.' }, 500)
   }
+
+  // ── Notification email (fire-and-forget) ─────────────────────────────────────
+  // Fetch venue name if not already loaded
+  let venueName: string | null = null
+  if (venue && 'name' in venue) {
+    venueName = (venue as { name?: string }).name ?? null
+  }
+  if (!venueName) {
+    // Defer a background name lookup — don't block the user response
+    const { data: nameRow } = await supabaseServer
+      .from('venues')
+      .select('name')
+      .eq('id', venue_id)
+      .limit(1)
+    venueName = nameRow?.[0]?.name ?? null
+  }
+
+  // Fire-and-forget — never blocks the success response
+  const resendPromise = fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev',
+      to: 'tylerray@gmail.com',
+      subject: `New claim request: ${venueName ?? 'Unknown venue'}`,
+      text: `New claim request:\n\nVenue: ${venueName ?? 'Unknown venue'}\nContact: ${contact_name}\nPhone: ${phone}\nEmail: ${email}\n\nView in /verification: https://www.pourlist.app/verification`,
+    }),
+  })
+  resendPromise.catch((err) => {
+    console.error('Resend notification failed:', err)
+  })
 
   return json({
     ok: true,

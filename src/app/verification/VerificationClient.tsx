@@ -306,46 +306,48 @@ function ClaimRow({
       {/* Issue access section */}
       {(canIssue || canReissue) && (
         <div className="mb-4 border border-amber-200 bg-amber-50 rounded-xl p-4">
-          {!issuedUrl ? (
+          {!confirming ? (
             <div className="flex flex-wrap items-center gap-3">
-              {!confirming ? (
-                <>
-                  <button
-                    onClick={requestConfirm}
-                    disabled={issueLoading}
-                    className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {issueLoading ? 'Issuing…' : canReissue ? 'Reissue access' : 'Issue access'}
-                  </button>
-                  {issueError && (
-                    <span className="text-sm text-red-600">{issueError}</span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={handleIssue}
-                    disabled={issueLoading}
-                    className="px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
-                  >
-                    {issueLoading ? 'Issuing…' : `Confirm — revoke prior links`}
-                  </button>
-                  <button
-                    onClick={cancelConfirm}
-                    className="px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <span className="text-xs text-neutral-500">
-                    for {claim.venueName} — any existing links will stop working
-                  </span>
-                </>
+              <button
+                onClick={requestConfirm}
+                disabled={issueLoading}
+                className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {issueLoading ? 'Issuing…' : canReissue ? 'Reissue access' : 'Issue access'}
+              </button>
+              {issueError && (
+                <span className="text-sm text-red-600">{issueError}</span>
               )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleIssue}
+                disabled={issueLoading}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {issueLoading ? 'Issuing…' : canReissue
+                  ? `Reissue access for ${claim.venueName}? This revokes all prior links.`
+                  : `Confirm — revoke prior links`}
+              </button>
+              <button
+                onClick={cancelConfirm}
+                className="px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800 transition-colors"
+              >
+                Cancel
+              </button>
+              {canReissue && (
+                <span className="text-xs text-neutral-500">
+                  — any existing links will stop working
+                </span>
+              )}
+            </div>
+          )}
+
+          {issuedUrl && (
+            <div className="mt-3 space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-green-700">✓ Access link issued</span>
+                <span className="text-sm font-semibold text-green-700">✓ {canReissue ? 'New' : ''} Access link issued</span>
                 <span className="text-xs text-neutral-500">Expires {formatExpiry(issuedUrl.expires)}</span>
               </div>
               <div className="flex items-start gap-2">

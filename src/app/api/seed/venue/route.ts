@@ -7,24 +7,12 @@ import tzlookup from 'tz-lookup'
 import { substituteNeighborhood } from '@/lib/neighborhood-substitution'
 import { getCityCloseMin } from '@/lib/bar-close-times'
 import { checkSeedAuth } from '@/lib/seed-auth'
+import { uploadPhotos, commitPhotoSet, storagePathFromUrl, mimeToExt } from '@/lib/photos'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Helpers — copied verbatim from submit-venue/commit-menu. Do not refactor
- * into shared lib per Tyler's standing rule. Submission logic stays inline.
- * ──────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Derives the Supabase Storage path from a public URL.
- */
-function storagePathFromUrl(url: string): string {
-  const match = url.match(/\/venue-photos\/(.+)$/)
-  return match ? `venue-photos/${match[1]}` : ''
-}
 
 /**
  * Validates that a crossing-midnight window's end does not exceed the city's legal close.
@@ -50,21 +38,6 @@ function validateImpossibleWindow(
     return 'Invalid timeframe — please check the start and end times.'
   }
   return null
-}
-
-/**
- * Map a MIME type to a storage-safe extension. Used for both the filename
- * suffix and the upload contentType (which is set from the same `file.type`).
- *
- * Public routes hardcode `.jpg`/`image/jpeg`; /seed uses the real type to
- * avoid serving PNGs/WebPs with a JPEG mime on the wire.
- */
-function mimeToExt(mime: string): string {
-  if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpg'
-  if (mime === 'image/png') return 'png'
-  if (mime === 'image/webp') return 'webp'
-  if (mime === 'image/heic' || mime === 'image/heif') return 'heic'
-  return 'bin' // honest unknown — better than lying about the type
 }
 
 /**
@@ -126,98 +99,6 @@ function buildHhUpdate(hh: ReturnType<typeof readHhFromForm>) {
     hh_start_3: parseIntOrNull(hh.hh_start_3),
     hh_end_3: parseIntOrNull(hh.hh_end_3),
     opening_min: parseIntOrNull(hh.opening_min),
-  }
-}
-
-/**
- * Upload a list of photos to venue-photos storage. Each file's extension and
- * contentType are derived from file.type — no hardcoded image/jpeg.
- *
- * Returns the array of public URLs in upload order.
- */
-async function uploadPhotos(
-  venueId: string,
-  rawPhotos: (string | File)[]
-): Promise<{ urls: string[]; failed: boolean }> {
-  if (rawPhotos.length === 0) return { urls: [], failed: false }
-
-  const timestamp = Date.now()
-  const uploadedUrls: string[] = []
-  for (let i = 0; i < rawPhotos.length; i++) {
-    const raw = rawPhotos[i]
-    const fileName = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.jpg`
-    const filePath = `${venueId}/${timestamp}/${fileName}`
-
-    let buffer: Buffer
-    let ext = 'jpg'
-    let contentType = 'image/jpeg'
-    if (typeof raw === 'string') {
-      // base64 data URL — pull mime from the prefix when present
-      const m = raw.match(/^data:([^;]+);base64,/)
-      if (m) {
-        const mime = m[1]
-        ext = mimeToExt(mime)
-        contentType = mime
-      }
-      buffer = Buffer.from(raw.replace(/^data:[^;]+;base64,/, ''), 'base64')
-    } else {
-      const file = raw as File
-      ext = mimeToExt(file.type || 'image/jpeg')
-      contentType = file.type || 'image/jpeg'
-      // Filename extension: rewrite the random suffix above to use real ext.
-      const fileNameReal = `${timestamp}-${i}-${Math.random().toString(36).slice(2)}.${ext}`
-      const filePathReal = `${venueId}/${timestamp}/${fileNameReal}`
-      buffer = Buffer.from(await file.arrayBuffer())
-
-      const { error: uploadError } = await supabase.storage
-        .from('venue-photos')
-        .upload(filePathReal, buffer, { contentType, upsert: false })
-      if (uploadError) {
-        console.error('[seed] photo upload error:', uploadError)
-        return { urls: uploadedUrls, failed: true }
-      }
-      const { data: urlData } = supabase.storage.from('venue-photos').getPublicUrl(filePathReal)
-      uploadedUrls.push(urlData.publicUrl)
-      continue
-    }
-
-    const { error: uploadError } = await supabase.storage
-      .from('venue-photos')
-      .upload(filePath, buffer, { contentType, upsert: false })
-    if (uploadError) {
-      console.error('[seed] photo upload error:', uploadError)
-      return { urls: uploadedUrls, failed: true }
-    }
-    const { data: urlData } = supabase.storage.from('venue-photos').getPublicUrl(filePath)
-    uploadedUrls.push(urlData.publicUrl)
-  }
-  return { urls: uploadedUrls, failed: false }
-}
-
-/**
- * Persist a photo set + enforce max-4 retention policy.
- * Mirrors submit-venue/commit-menu exactly.
- */
-async function commitPhotoSet(venueId: string, urls: string[]): Promise<void> {
-  if (urls.length === 0) return
-  await supabase.from('photo_sets').insert({ venue_id: venueId, photo_urls: urls })
-
-  const { data: sets } = await supabase
-    .from('photo_sets')
-    .select('id, created_at, photo_urls')
-    .eq('venue_id', venueId)
-    .order('created_at', { ascending: false })
-
-  if (sets && sets.length > 4) {
-    const toDelete = sets.slice(4)
-    const storagePaths = toDelete
-      .flatMap(s => s.photo_urls as string[])
-      .map(url => storagePathFromUrl(url))
-      .filter(p => p.length > 0)
-    await supabase.from('photo_sets').delete().in('id', toDelete.map(s => s.id))
-    if (storagePaths.length > 0) {
-      await supabase.storage.from('venue-photos').remove([...new Set(storagePaths)])
-    }
   }
 }
 

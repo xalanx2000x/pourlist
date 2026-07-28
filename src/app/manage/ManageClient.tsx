@@ -921,7 +921,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                 multiple
                 onChange={handlePhotoFileChange}
                 disabled={saving}
@@ -939,7 +939,7 @@ export default function ManageClient({ venueId, claimedUntil }: ManageClientProp
                   {selectedFiles.length > 0 ? 'Choose different photos' : 'Add menu photos'}
                 </span>
               </label>
-              <p className="text-xs text-neutral-400 mt-1">JPEG, PNG, or WebP · up to 4 photos per upload</p>
+              <p className="text-xs text-neutral-400 mt-1">JPG, PNG, WebP, or HEIC · up to 4 photos per upload</p>
             </div>
           </fieldset>
 

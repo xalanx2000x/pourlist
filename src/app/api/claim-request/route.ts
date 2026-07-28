@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         from: 'onboarding@resend.dev',
-        to: 'tylerray@gmail.com',
+        to: 'xalanx2000x@gmail.com',
         subject: `New claim request: ${venueName ?? 'Unknown venue'}`,
         text: `New claim request:\n\nVenue: ${venueName ?? 'Unknown venue'}\nContact: ${contact_name}\nPhone: ${phone}\nEmail: ${email}\n\nView in /verification: https://www.pourlist.app/verification`,
       }),

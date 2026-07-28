@@ -146,9 +146,13 @@ export async function checkVenueAccess(): Promise<string | null> {
   if (!raw) return null
 
   const parts = raw.split('.')
-  if (parts.length !== 3) return null
+  if (parts.length < 3) return null
 
-  const [venueId, expiryStr, signature] = parts
+  // parts[0] = venueId, parts[1..n-2] = expiryStr (may have encoded : in it), parts[n-1] = signature
+  const venueId = parts[0]
+  const signature = parts[parts.length - 1]
+  // Re-join the middle parts as expiryStr, then decode so %3A → : etc.
+  const expiryStr = decodeURIComponent(parts.slice(1, -1).join('.'))
 
   // Re-compute HMAC over venueId + expiry and compare timing-safe
   const payload = `${venueId}.${expiryStr}`

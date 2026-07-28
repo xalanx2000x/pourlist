@@ -377,7 +377,7 @@ export default async function UnifiedSlugPage({
                 </span>
               )}
               {isClaimed && (
-                <span className="inline-block mt-1.5 text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full mb-6 ml-1">
+                <span className="inline-block mt-1.5 text-xs bg-blue-600 text-amber-400 font-semibold px-2.5 py-1 rounded-full mb-6 ml-1">
                   Page managed by venue
                 </span>
               )}

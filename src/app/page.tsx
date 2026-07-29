@@ -459,17 +459,10 @@ export default function Home() {
     if (center) {
       setSearchedLocation(center)
       setFlyToCenter(center)
-      // Approximate bounds at zoom 13 for the immediate fetch; the
-      // mapBounds useEffect will refine when the flyTo completes.
-      const latDelta = 0.0045
-      const lngDelta = latDelta / Math.cos(center.lat * Math.PI / 180)
-      loadVenues({
-        north: center.lat + latDelta,
-        south: center.lat - latDelta,
-        east: center.lng + lngDelta,
-        west: center.lng - lngDelta
-      })
     }
+    // Use the actual current viewport bounds — not a hardcoded tiny box.
+    // mapBounds is kept in sync with onBoundsChange on every map move.
+    if (mapBounds) loadVenues(mapBounds)
   }
 
   // My Location button — flies to user location. User then taps "Search this area"

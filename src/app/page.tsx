@@ -20,6 +20,7 @@ import { getDeviceHash } from '@/lib/device'
 import { trackVenueEvent } from '@/lib/track-venue-event'
 import { checkRateLimit } from '@/lib/rateLimit'
 import { getBrowserLocation, LocationUnavailableError } from '@/lib/gps'
+import { getFavorites } from '@/lib/favorites'
 import { parseHHSchedule } from '@/lib/parse-hh'
 import { haversineM } from '@/lib/geo'
 import { getHHState, resolveHH } from '@/lib/hh-state'
@@ -157,6 +158,18 @@ export default function Home() {
   // more venues in the viewport that didn't make the cut. Surfaced
   // as a "showing top N — zoom in" hint in the list header.
   const [capped, setCapped] = useState(false)
+  // Toggled by the Favorites filter chip. When active, sidebar/list shows only
+  // favorited venues. favVersion forces re-read of localStorage when a heart
+  // is tapped in VenueDetail (which lives outside this component tree).
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+  const [favVersion, setFavVersion] = useState(0)
+
+  // Listen for favorites-changed events dispatched by FavoriteButton.
+  useEffect(() => {
+    function onFavoritesChanged() { setFavVersion(v => v + 1) }
+    window.addEventListener('favorites-changed', onFavoritesChanged)
+    return () => window.removeEventListener('favorites-changed', onFavoritesChanged)
+  }, [])
 
   // Show onboarding automatically on first eligible visit only
   useEffect(() => {
@@ -1267,7 +1280,7 @@ export default function Home() {
     const anchorLng = anchor?.lng ?? 0
     const now = new Date()
     const TIER: Record<string, number> = { active: 0, hh_soon: 1, hh_today: 2, default: 3 }
-    return venues
+    const base = venues
       .filter(v => isVenueInBounds(v, currentBounds) && isListed(v))
       .map(v => {
         const state = getHHState(v, now)
@@ -1278,7 +1291,11 @@ export default function Home() {
         return { ...v, _tier: tier, _dist: dist }
       })
       .sort((a, b) => a._tier - b._tier || a._dist - b._dist)
-  }, [venues, currentBounds, searchedLocation, flyToCenter])
+
+    if (!showFavoritesOnly) return base
+    const favIds = new Set(getFavorites())
+    return base.filter(v => favIds.has(v.id))
+  }, [venues, currentBounds, searchedLocation, flyToCenter, showFavoritesOnly, favVersion])
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -1393,6 +1410,22 @@ export default function Home() {
             {/* List rendering: sidebar in map view (md+), full overlay in list view. */}
             {viewMode === 'map' ? (
               <div className="hidden md:block absolute right-0 top-0 bottom-0 w-80 bg-white border-l border-gray-200 overflow-y-auto">
+                {/* Favorites filter chip — sidebar */}
+                <div className="p-2 border-b border-gray-100">
+                  <button
+                    onClick={() => setShowFavoritesOnly(v => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm border transition-colors ${
+                      showFavoritesOnly
+                        ? 'bg-amber-100 border-amber-400 text-amber-700'
+                        : 'bg-white border-gray-300 text-gray-600'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M11.645 20.91l-.007-.003-.022-.012a15.2 15.2 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.2 15.2 0 01-.383.219l-.022.012-.007.004-.003.001z" />
+                    </svg>
+                    Favorites
+                  </button>
+                </div>
                 <VenueList
                   venues={visibleVenues}
                   mapBounds={currentBounds}
@@ -1404,6 +1437,22 @@ export default function Home() {
               </div>
             ) : (
               <div className="absolute inset-0 bg-white overflow-y-auto z-10">
+                {/* Favorites filter chip — list overlay */}
+                <div className="p-2 border-b border-gray-100 sticky top-0 bg-white z-10">
+                  <button
+                    onClick={() => setShowFavoritesOnly(v => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm border transition-colors ${
+                      showFavoritesOnly
+                        ? 'bg-amber-100 border-amber-400 text-amber-700'
+                        : 'bg-white border-gray-300 text-gray-600'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M11.645 20.91l-.007-.003-.022-.012a15.2 15.2 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.2 15.2 0 01-.383.219l-.022.012-.007.004-.003.001z" />
+                    </svg>
+                    Favorites
+                  </button>
+                </div>
                 <VenueList
                   venues={visibleVenues}
                   mapBounds={currentBounds}

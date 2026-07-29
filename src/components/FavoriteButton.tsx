@@ -20,6 +20,7 @@ export default function FavoriteButton({ venueId, size = 'md' }: FavoriteButtonP
   const handleClick = useCallback(async () => {
     const newState = toggleFavorite(venueId)
     setFavorited(newState)
+    window.dispatchEvent(new Event('favorites-changed'))
 
     // Fire-and-forget tracking event
     const deviceHash = await getDeviceHash()

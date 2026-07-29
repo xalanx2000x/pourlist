@@ -30,7 +30,7 @@ export default function VenueLiveBadge({ venue }: VenueLiveBadgeProps) {
   if (!active) return null
 
   return (
-    <span className="inline-flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
+    <span className="inline-flex items-center gap-1 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-px rounded-full font-semibold">
       HH Active
     </span>
   )

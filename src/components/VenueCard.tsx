@@ -46,9 +46,7 @@ export default function VenueCard({ venue, isSelected, onClick }: VenueCardProps
       style={{ borderLeftColor: isSelected ? undefined : hhColor }}
     >
       <div className="flex justify-between items-start gap-2 relative">
-        {venue.latest_menu_image_url && (
-          <span className="absolute top-0 right-0 text-sm text-gray-400 pointer-events-none">📷</span>
-        )}
+
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{venue.name}</h3>
           {venue.hh_time && (

@@ -36,7 +36,7 @@ export default function FavoriteButton({ venueId, size = 'md' }: FavoriteButtonP
     })
   }, [venueId])
 
-  const iconSize = size === 'sm' ? 'text-base' : 'text-lg'
+  const iconSize = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'
   const tapTarget = size === 'sm' ? 'w-8 h-8' : 'w-9 h-9'
 
   return (

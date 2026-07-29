@@ -152,7 +152,10 @@ export default function Home() {
   // "Search this area" button shown when user has panned far from last venue load
   const [showSearchThisArea, setShowSearchThisArea] = useState(false)
   // Function provided by <Map> to read current map center on demand
-  const [getMapCenter, setGetMapCenter] = useState<(() => { lat: number; lng: number } | undefined) | null>(null)
+  const [getMapCenter, setGetMapCenter] = useState<{
+    getCenter: () => { lat: number; lng: number } | undefined
+    getBounds: () => { north: number; south: number; east: number; west: number } | undefined
+  } | null>(null)
   const originalGpsLocation = { lat: 45.523, lng: -122.676 }
   // True when getVenuesInBounds hit the 150-row cap — i.e. there are
   // more venues in the viewport that didn't make the cut. Surfaced
@@ -455,14 +458,18 @@ export default function Home() {
   // "Search this area" button — fly to center and immediately load venues from it.
   function handleSearchHereClick() {
     setShowSearchThisArea(false)
-    const center = getMapCenter?.()
+    const center = getMapCenter?.getCenter?.()
     if (center) {
       setSearchedLocation(center)
       setFlyToCenter(center)
     }
-    // Use the actual current viewport bounds — not a hardcoded tiny box.
-    // mapBounds is kept in sync with onBoundsChange on every map move.
-    if (mapBounds) loadVenues(mapBounds)
+    // Read bounds directly from the map — avoids the async mapBounds state lag.
+    const bounds = getMapCenter?.getBounds?.()
+    if (bounds) {
+      setMapBounds(bounds)
+      setListBounds(bounds)
+      loadVenues(bounds)
+    }
   }
 
   // My Location button — flies to user location. User then taps "Search this area"
@@ -1356,7 +1363,7 @@ export default function Home() {
                 setMapBounds(bounds); setListBounds(bounds)
                 handleMapMove()
               }}
-              onMapReady={(fn) => setGetMapCenter(() => fn)}
+              onMapReady={(fns) => setGetMapCenter(fns)}
               zoomToUser={zoomToUserTick}
               onZoomChange={handleMapMove}
               onUserPan={handleUserPan}

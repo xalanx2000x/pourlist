@@ -40,7 +40,10 @@ interface MapProps {
   /** Minimum meters between last confirmed center and current center before onMapCenterChange fires. */
   centerShiftThreshold?: number
   /** Called once when the map is ready with the map instance — used by page.tsx for "Search here". */
-  onMapReady?: (getCenter: () => { lat: number; lng: number } | undefined) => void
+  onMapReady?: (fns: {
+    getCenter: () => { lat: number; lng: number } | undefined
+    getBounds: () => { north: number; south: number; east: number; west: number } | undefined
+  }) => void
   /** Fires after any zoom interaction ends (debounced 600ms — fires once per zoom gesture, not during). */
   onZoomChange?: () => void
   /** Fires on the first user-initiated map move (drag, pinch, scroll-zoom, etc.).
@@ -234,10 +237,18 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
     // Let the parent (page.tsx) grab a getCenter function so "Search this area"
     // can read the current map center without needing a ref to the map instance.
     if (onMapReady) {
-      onMapReady(() => {
-        if (!map.current) return undefined
-        const c = map.current.getCenter()
-        return { lat: c.lat, lng: c.lng }
+      onMapReady({
+        getCenter: () => {
+          if (!map.current) return undefined
+          const c = map.current.getCenter()
+          return { lat: c.lat, lng: c.lng }
+        },
+        getBounds: () => {
+          if (!map.current) return undefined
+          const b = map.current.getBounds()
+          if (!b) return undefined
+          return { north: b.getNorth(), south: b.getSouth(), east: b.getEast(), west: b.getWest() }
+        }
       })
     }
 

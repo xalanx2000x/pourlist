@@ -257,8 +257,8 @@ export default async function UnifiedSlugPage({
     const subheading = `${venues.length} spots — live and starting soon`
 
     return (
-      <div className="min-h-screen bg-white dark:bg-gray-950">
-        <header className="border-b border-gray-200 bg-white dark:bg-gray-900 px-4 py-4">
+      <div className="min-h-screen bg-white">
+        <header className="border-b border-gray-200 bg-white px-4 py-4">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <a
               href={`/${st}/${cityName.toLowerCase()}`}
@@ -350,7 +350,7 @@ export default async function UnifiedSlugPage({
           className="absolute inset-0 z-0 bg-amber-300 bg-[url(/portland-backdrop-portrait.png)] bg-cover bg-center bg-no-repeat md:bg-[url(/portland-backdrop.png)]"
         />
         <main className="relative z-10 min-h-screen flex justify-center p-6 md:p-12 pointer-events-none">
-          <article className="pointer-events-auto w-full max-w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
+          <article className="pointer-events-auto w-full max-w-[600px] bg-white rounded-2xl shadow-xl overflow-hidden">
             <header className="border-b border-gray-200 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">

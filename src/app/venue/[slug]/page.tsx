@@ -124,8 +124,8 @@ export default async function VenuePage({
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <div className="min-h-screen bg-white dark:bg-gray-950">
-        <header className="border-b border-gray-200 bg-white dark:bg-gray-900 px-4 py-4">
+      <div className="min-h-screen bg-white">
+        <header className="border-b border-gray-200 bg-white px-4 py-4">
           <div className="max-w-2xl mx-auto flex items-center justify-between">
             <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">
               ← PourList map
@@ -135,7 +135,7 @@ export default async function VenuePage({
         </header>
 
         <main className="max-w-2xl mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
             {venue.name}
           </h1>
 
@@ -150,7 +150,7 @@ export default async function VenuePage({
                   <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
                     Happy Hour
                   </h2>
-                  <p className="text-lg text-gray-900 dark:text-gray-100">{schedule}</p>
+                  <p className="text-lg text-gray-900">{schedule}</p>
                 </div>
               )}
               {venue.menu_text && (
@@ -158,7 +158,7 @@ export default async function VenuePage({
                   <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
                     Deals & Menu
                   </h2>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{venue.menu_text}</p>
+                  <p className="text-gray-700 whitespace-pre-wrap">{venue.menu_text}</p>
                 </div>
               )}
               {venue.lat != null && venue.lng != null && (

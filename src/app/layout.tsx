@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "The Pour List — Portland Happy Hours",
-  description: "Crowd-sourced happy hour directory for Portland, Oregon. Find the best drink deals in the Pearl District and beyond.",
+  title: "The Pour List — Happy Hours",
+  description: "Crowd-sourced happy hour directory. Find the best drink deals in cities across the US.",
   manifest: "/manifest.json",
 };
 

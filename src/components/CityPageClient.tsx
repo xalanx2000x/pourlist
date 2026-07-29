@@ -387,9 +387,18 @@ export default function CityPageClient({
       <a
         href="/"
         aria-label="Open live map"
-        className="absolute inset-0 z-0 bg-amber-300 bg-cover bg-center bg-no-repeat"
+        className="absolute inset-0 z-0 bg-amber-300 bg-cover bg-center bg-no-repeat hidden md:block"
         style={{
-          backgroundImage: `url(/${state === 'ny' ? 'nyc-backdrop.jpg' : 'portland-backdrop.jpg'})`,
+          backgroundImage: `url(/${state === 'ny' ? 'nyc-backdrop.jpg' : 'portland-backdrop.png'})`,
+        }}
+      />
+      {/* Portrait backdrop — phones only */}
+      <a
+        href="/"
+        aria-label="Open live map"
+        className="absolute inset-0 z-0 bg-amber-300 bg-cover bg-center bg-no-repeat md:hidden"
+        style={{
+          backgroundImage: `url(/${state === 'ny' ? 'nyc-backdrop.jpg' : 'portland-backdrop-portrait.png'})`,
         }}
       />
 

@@ -260,6 +260,7 @@ export default async function UnifiedSlugPage({
             state={st}
             citySlug={cityName.toLowerCase()}
             cityName={cityName}
+            neighborhood={neighborhood}
             allVenues={venues}
 
             qualifyingNeighborhoods={[]}

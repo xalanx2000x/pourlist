@@ -54,6 +54,8 @@ interface Props {
   shareText?: string
   /** Display city name (e.g. "Portland") — used in hero label. City page passes it; neighborhood pages pass it too. */
   cityName?: string
+  /** Neighborhood name (e.g. "Northwest District") — when provided, hero label reads "[NEIGHBORHOOD] · [CITY], [STATE]". City page does not pass this. */
+  neighborhood?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -286,6 +288,7 @@ export default function CityPageClient({
   shareTitle,
   shareText,
   cityName,
+  neighborhood,
 }: Props) {
   const [tick, setTick] = useState(0) // force re-render every minute
 
@@ -333,7 +336,9 @@ export default function CityPageClient({
   // heading is "{cityName} Happy Hours", so we can reuse cityName = heading.replace(/\s+Happy Hours$/i, '').
   const cityDisplay = cityName ?? heading.replace(/\s+Happy Hours$/i, '')
   const stateCode = state.toUpperCase()
-  const heroLabel = `${cityDisplay.toUpperCase()}, ${stateCode}`
+  const heroLabel = neighborhood
+    ? `${neighborhood.toUpperCase()} · ${cityDisplay.toUpperCase()}, ${stateCode}`
+    : `${cityDisplay.toUpperCase()}, ${stateCode}`
 
   // Hero inner content — purple dot when live, orange dot otherwise.
   // Content/copy preserved exactly from prior pass.

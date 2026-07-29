@@ -448,10 +448,10 @@ export default function Home() {
   }
 
   // User moved the map — show the "Search this area" button so they can
-  // reload venues from the new map center.
+  // reload venues from the new map center. Bounds are kept live by onBoundsChange
+  // (which fires in the same handler) so the fetch effect fires without needing
+  // an explicit "Search this area" tap.
   function handleMapMove() {
-    setMapBounds(null)
-    setListBounds(null)
     setShowSearchThisArea(true)
   }
 

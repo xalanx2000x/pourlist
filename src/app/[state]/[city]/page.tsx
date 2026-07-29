@@ -89,6 +89,7 @@ export default async function CityPage({ params }: Props) {
       subheading={stateName}
       state={stateLower}
       citySlug={city}
+      cityName={cityName}
       allVenues={venueList as unknown as Parameters<typeof CityPageClient>[0]['allVenues']}
 
       qualifyingNeighborhoods={qualifying.map(n => ({

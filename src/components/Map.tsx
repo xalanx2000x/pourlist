@@ -76,7 +76,7 @@ function buildGeoJSON(venues: LeanVenue[]): GeoJSON.FeatureCollection {
           name: venue.name,
           address: formatAddress(venue),
           status: venue.status || 'unverified',
-          hasHH: hasActiveHappyHour(venue),
+          hasActiveInCluster: hasActiveHappyHour(venue) ? 1 : 0,
           hhState: getHHState(venue)
         },
         geometry: {
@@ -307,8 +307,21 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       paint: {
         'circle-color': '#f59e0b',
         'circle-radius': ['step', ['get', 'point_count'], 20, 10, 25, 50, 30],
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff'
+        'circle-stroke-width': 3,
+        'circle-stroke-color': [
+          'case',
+          // Mixed: has some active but not all → purple ring
+          ['&&',
+            ['>', ['get', 'hasActiveInCluster'], 0],
+            ['<', ['get', 'hasActiveInCluster'], ['get', 'point_count']]
+          ],
+          getHHColor('active'),
+          // No active venues in cluster → white ring
+          ['==', ['get', 'hasActiveInCluster'], 0],
+          '#ffffff',
+          // All active → amber ring (blends with fill)
+          getHHColor('default')
+        ]
       }
     })
 

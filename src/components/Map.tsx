@@ -307,7 +307,13 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
       data: geojson,
       cluster: true,
       clusterMaxZoom: 14,
-      clusterRadius: 50
+      clusterRadius: 50,
+      clusterProperties: {
+        hasActiveInCluster: [
+          ['+', ['accumulated'], ['get', 'hasActiveInCluster']],
+          ['get', 'hasActiveInCluster']
+        ]
+      }
     })
 
     map.current.addLayer({
@@ -322,7 +328,7 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
         'circle-stroke-color': [
           'case',
           // Mixed: has some active but not all → purple ring
-          ['&&',
+          ['all',
             ['>', ['get', 'hasActiveInCluster'], 0],
             ['<', ['get', 'hasActiveInCluster'], ['get', 'point_count']]
           ],
@@ -330,8 +336,8 @@ export default function Map({ venues, selectedVenue, onVenueSelect, flyToUserLoc
           // No active venues in cluster → white ring
           ['==', ['get', 'hasActiveInCluster'], 0],
           '#ffffff',
-          // All active → amber ring (blends with fill)
-          getHHColor('default')
+          // All active → purple (same as mixed — a fully live cluster reads as live)
+          getHHColor('active')
         ]
       }
     })

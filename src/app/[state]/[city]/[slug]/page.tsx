@@ -35,6 +35,7 @@ const BASE_URL = 'https://pourlist.app'
 interface NeighborhoodPageData {
   kind: 'neighborhood'
   neighborhood: string
+  neighborhoodRaw: string | null
   venues: LeanVenueForHH[]
 
   qualifyingCount: number
@@ -63,9 +64,19 @@ async function getNeighborhoodPage(
   // Threshold gate: must have ≥NEIGHBORHOOD_PAGE_THRESHOLD qualifying venues
   if (allNeighborhoodVenues.length < NEIGHBORHOOD_PAGE_THRESHOLD) return null
 
+  // Pull neighborhood_raw for hero label display. fetchQualifyingVenues' SELECT
+  // doesn't include it (and we can't modify src/lib/), so a one-row lookup here.
+  // Falls back to null → caller uses `neighborhood` as fallback.
+  const { data: rawRow } = await supabaseServer
+    .from('venues')
+    .select('neighborhood_raw')
+    .eq('id', allNeighborhoodVenues[0].id)
+    .maybeSingle()
+
   return {
     kind: 'neighborhood',
     neighborhood: allNeighborhoodVenues[0]?.neighborhood ?? neighborhoodSlug,
+    neighborhoodRaw: rawRow?.neighborhood_raw ?? null,
     venues: allNeighborhoodVenues,
     qualifyingCount: allNeighborhoodVenues.length,
     state,
@@ -236,7 +247,7 @@ export default async function UnifiedSlugPage({
 
   // ── Neighborhood page ──────────────────────────────────────────────────────
   if (pageData.kind === 'neighborhood') {
-    const { neighborhood, venues, state: st, cityName } = pageData
+    const { neighborhood, neighborhoodRaw, venues, state: st, cityName } = pageData
     const stateUpper = st.toUpperCase()
     const heading = `${neighborhood} Happy Hours`
     const subheading = `${venues.length} spots — live and starting soon`
@@ -260,7 +271,7 @@ export default async function UnifiedSlugPage({
             state={st}
             citySlug={cityName.toLowerCase()}
             cityName={cityName}
-            neighborhood={neighborhood}
+            neighborhood={neighborhoodRaw ?? neighborhood}
             allVenues={venues}
 
             qualifyingNeighborhoods={[]}

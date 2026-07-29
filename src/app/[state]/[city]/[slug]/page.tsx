@@ -67,6 +67,10 @@ async function getNeighborhoodPage(
   // Pull neighborhood_raw for hero label display. fetchQualifyingVenues' SELECT
   // doesn't include it (and we can't modify src/lib/), so a one-row lookup here.
   // Falls back to null → caller uses `neighborhood` as fallback.
+  // Note: data must be normalized per neighborhood (e.g. all NW Portland venues
+  // share `neighborhood_raw = 'Northwest District'`) — random first row is fine
+  // when normalized; inconsistent `neighborhood_raw` values will surface wrong
+  // hero labels. 2026-07-29: normalized 3 stale NW Portland rows.
   const { data: rawRow } = await supabaseServer
     .from('venues')
     .select('neighborhood_raw')

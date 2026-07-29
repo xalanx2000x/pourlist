@@ -277,7 +277,6 @@ async function handleNew(formData: FormData) {
 
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
   const website = ((formData.get('website') as string | null) ?? '').trim() || null
-  const type = ((formData.get('type') as string | null) ?? '').trim() || null
   const taglineRaw = ((formData.get('tagline') as string | null) ?? '').trim()
   if (taglineRaw.length > 24) {
     return NextResponse.json({ success: false, reason: 'tagline_too_long' }, { status: 400 })
@@ -303,7 +302,6 @@ async function handleNew(formData: FormData) {
     street: geo?.street ?? null,
     phone,
     website,
-    type,
     tagline,
     menu_text: ((formData.get('menuText') as string | null) ?? '').trim() || null,
     timezone,
@@ -451,7 +449,6 @@ async function handleEdit(formData: FormData, venueId: string | null) {
 
   const phone = ((formData.get('phone') as string | null) ?? '').trim() || null
   const website = ((formData.get('website') as string | null) ?? '').trim() || null
-  const type = ((formData.get('type') as string | null) ?? '').trim() || null
   const taglineRaw = ((formData.get('tagline') as string | null) ?? '').trim()
   if (taglineRaw.length > 24) {
     return NextResponse.json({ success: false, reason: 'tagline_too_long' }, { status: 400 })
@@ -473,7 +470,6 @@ async function handleEdit(formData: FormData, venueId: string | null) {
     timezone,
     phone,
     website,
-    type,
     tagline,
     menu_text: menuText,
     address_autofilled: false, // Tyler's text, not geocoder's

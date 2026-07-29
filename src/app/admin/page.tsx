@@ -18,6 +18,7 @@ interface Venue {
   phone: string | null
   website: string | null
   type: string | null
+  tagline?: string | null
   status: string
   contributor_trust: string
   last_verified: string | null
@@ -157,9 +158,9 @@ export default function AdminPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-gray-900 truncate">{venue.name}</h3>
                       <p className="text-sm text-gray-500 mt-0.5">{venue.address || 'No address'}</p>
-                      {venue.type && (
+                      {(venue.tagline ?? venue.type) && (
                         <span className="inline-block text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full mt-1">
-                          {venue.type}
+                          {venue.tagline ?? venue.type}
                         </span>
                       )}
                       <p className="text-xs text-gray-400 mt-2">

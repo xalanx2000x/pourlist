@@ -449,7 +449,6 @@ export default function SeedTool({
   const [country, setCountry] = useState<string>('')
   const [phone, setPhone] = useState('')
   const [website, setWebsite] = useState('')
-  const [venueType, setVenueType] = useState('')
   const [tagline, setTagline] = useState('')
   const [menuText, setMenuText] = useState('')
   const [hhSummary, setHhSummary] = useState('')
@@ -558,7 +557,6 @@ export default function SeedTool({
     setCountry(v.country ?? '')
     setPhone(v.phone ?? '')
     setWebsite(v.website ?? '')
-    setVenueType(v.type ?? '')
     setTagline((v as { tagline?: string }).tagline ?? '')
     setMenuText(v.menu_text ?? '')
     setHhSummary(v.hh_summary ?? '')
@@ -589,7 +587,7 @@ export default function SeedTool({
 
   function clearForm() {
     setName(''); setAddress(''); setLat(''); setLng(''); setCity(''); setStateCode(''); setNeighborhood(''); setZip(''); setCountry('')
-    setPhone(''); setWebsite(''); setVenueType(''); setTagline(''); setMenuText(''); setHhSummary(''); setHhTime(''),
+    setPhone(''); setWebsite(''); setTagline(''); setMenuText(''); setHhSummary(''); setHhTime(''),
     setW1Type(''); setW1Days(new Set()); setW1Start(''); setW1End(''); setW1UseClose(false)
     setW2Type(''); setW2Days(new Set()); setW2Start(''); setW2End(''); setW2UseClose(false)
     setW3Type(''); setW3Days(new Set()); setW3Start(''); setW3End(''); setW3UseClose(false)
@@ -647,7 +645,6 @@ export default function SeedTool({
       if (lng) fd.set('lng', lng)
       fd.set('phone', phone)
       fd.set('website', website)
-      fd.set('type', venueType)
       fd.set('tagline', tagline)
 
       fd.set('menuText', menuText)
@@ -971,10 +968,6 @@ export default function SeedTool({
               <label className="block">
                 <span className="block text-xs font-medium text-neutral-700 mb-1">Website</span>
                 <input type="text" value={website} onChange={(e) => setWebsite(e.target.value)} className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-medium text-neutral-700 mb-1">Type</span>
-                <input type="text" value={venueType} onChange={(e) => setVenueType(e.target.value)} placeholder="bar, restaurant…" className="w-full px-2 py-1 text-sm border border-neutral-300 rounded" />
               </label>
               <label className="block">
                 <span className="block text-xs font-medium text-neutral-700 mb-1">

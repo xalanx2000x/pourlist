@@ -337,7 +337,7 @@ export default async function UnifiedSlugPage({
             <header className="border-b border-gray-200 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <a href="/" className="text-amber-600 hover:text-amber-700 font-semibold text-sm">
-                  ← PourList map
+                  ← Pour List map
                 </a>
                 <div className="flex items-center gap-3">
                   <VenueLiveBadge venue={venue} />
@@ -426,7 +426,6 @@ export default async function UnifiedSlugPage({
                   )}
                 </div>
               )}
-              {!isClaimed && <ClaimVenueButton venue={venue} />}
             </div>
           </article>
         </main>

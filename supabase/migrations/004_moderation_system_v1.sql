@@ -47,7 +47,7 @@ BEGIN
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       venue_id UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
       device_hash TEXT NOT NULL,
-      reason TEXT NOT NULL CHECK (reason IN ('closed', 'wrong')),
+      reason TEXT NOT NULL CHECK (reason IN ('closed', 'wrong', 'no_hh')),
       lat DOUBLE PRECISION NOT NULL,
       lng DOUBLE PRECISION NOT NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -157,7 +157,7 @@ BEGIN
   END IF;
 
   SELECT EXISTS(SELECT 1 FROM flags
-    WHERE venue_id = p_venue_id AND device_hash = p_device_hash
+    WHERE device_hash = p_device_hash
       AND active = TRUE AND DATE(created_at) = p_today)
   INTO v_already_flagged;
   IF v_already_flagged THEN
@@ -356,7 +356,7 @@ CREATE OR REPLACE FUNCTION clear_flags_on_menu_commit(p_venue_id UUID)
 RETURNS INT AS $$
 DECLARE v_cleared INT;
 BEGIN
-  DELETE FROM flags WHERE venue_id = p_venue_id AND active = TRUE;
+  UPDATE flags SET active = FALSE WHERE venue_id = p_venue_id AND active = TRUE;
   GET DIAGNOSTICS v_cleared = ROW_COUNT;
   UPDATE venues SET status = 'verified', last_verified = NOW() WHERE id = p_venue_id;
   RETURN v_cleared;

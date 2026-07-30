@@ -26,9 +26,9 @@ DECLARE
   v_weighted_sum INT; v_new_status TEXT;
 BEGIN
   -- ── Daily-limit guard (applies to ALL flag attempts) ─────────────────
-  -- Reject if this device already flagged this venue today.
+  -- Reject if this device already flagged ANY venue today (global daily limit).
   IF EXISTS(SELECT 1 FROM flags
-    WHERE venue_id = p_venue_id AND device_hash = p_device_hash
+    WHERE device_hash = p_device_hash
       AND active = TRUE AND DATE(created_at) = CURRENT_DATE) THEN
     RETURN QUERY SELECT FALSE, 'daily_limit'::TEXT, NULL; RETURN;
   END IF;
@@ -38,6 +38,13 @@ BEGIN
   -- One "no HH" report is sufficient signal to close the pin.
   -- User venues are protected: they go through the weighted threshold below.
   IF p_reason = 'no_hh' AND EXISTS(SELECT 1 FROM venues WHERE id = p_venue_id AND is_seed_data = TRUE) THEN
+    -- Already flagged by this device today → reject (global daily limit).
+    IF EXISTS(SELECT 1 FROM flags
+      WHERE device_hash = p_device_hash
+        AND active = TRUE AND DATE(created_at) = CURRENT_DATE) THEN
+      RETURN QUERY SELECT FALSE, 'daily_limit'::TEXT, NULL; RETURN;
+    END IF;
+
     INSERT INTO flags (venue_id, device_hash, reason, lat, lng, active)
     VALUES (p_venue_id, p_device_hash, p_reason, p_lat, p_lng, TRUE);
 

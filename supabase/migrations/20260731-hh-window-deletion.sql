@@ -20,85 +20,74 @@ ALTER TABLE flags ADD COLUMN window_slot SMALLINT
 -- ≥1 submission can delete one specific HH window. Recorded as a
 -- flag row with window_slot set. GPS presence stays in the API route.
 CREATE OR REPLACE FUNCTION delete_hh_window(
-  p_venue_id UUID, p_device_hash TEXT, p_window_slot SMALLINT,
-  p_lat DOUBLE PRECISION, p_lng DOUBLE PRECISION
+ p_venue_id UUID, p_device_hash TEXT, p_window_slot SMALLINT,
+ p_lat DOUBLE PRECISION, p_lng DOUBLE PRECISION
 )
 RETURNS TABLE(success BOOLEAN, message TEXT, new_status TEXT) AS $$
 DECLARE
-  v_slot_type TEXT;
-  v_slot_start INT;
-  v_new_status TEXT;
+ v_slot_type TEXT;
+ v_new_status TEXT;
 BEGIN
-  -- 1. Global daily-limit guard — mirrors submit_flag top guard.
-  IF EXISTS(SELECT 1 FROM flags
-    WHERE device_hash = p_device_hash
-      AND active = TRUE AND DATE(created_at) = CURRENT_DATE) THEN
-    RETURN QUERY SELECT FALSE, 'daily_limit'::TEXT, NULL; RETURN;
-  END IF;
-
-  -- 2. Submission-count guard.
-  IF get_device_submission_count(p_device_hash) < 1 THEN
-    RETURN QUERY SELECT FALSE, 'no_submissions'::TEXT, NULL; RETURN;
-  END IF;
-
-  -- 3. Read current slot to validate presence.
-  IF p_window_slot = 1 THEN
-    SELECT hh_type, hh_start INTO v_slot_type, v_slot_start
-    FROM venues WHERE id = p_venue_id;
-  ELSIF p_window_slot = 2 THEN
-    SELECT hh_type_2, hh_start_2 INTO v_slot_type, v_slot_start
-    FROM venues WHERE id = p_venue_id;
-  ELSIF p_window_slot = 3 THEN
-    SELECT hh_type_3, hh_start_3 INTO v_slot_type, v_slot_start
-    FROM venues WHERE id = p_venue_id;
-  END IF;
-
-  IF v_slot_type IS NULL OR v_slot_start IS NULL THEN
-    RETURN QUERY SELECT FALSE, 'empty_slot'::TEXT, NULL; RETURN;
-  END IF;
-
-  -- 4. Audit flag row + venue_flag_events (matches submit_flag).
-  INSERT INTO flags (venue_id, device_hash, reason, lat, lng, active, window_slot)
-  VALUES (p_venue_id, p_device_hash, 'wrong', p_lat, p_lng, TRUE, p_window_slot);
-
-  BEGIN
-    INSERT INTO venue_flag_events (venue_id, device_hash, action)
-    VALUES (p_venue_id, p_device_hash, 'flag');
-  EXCEPTION WHEN unique_violation THEN
-    RETURN QUERY SELECT FALSE, 'already_flagged'::TEXT, NULL; RETURN;
-  END;
-
-  -- 5. Null ALL columns for the slot (full-slot nulling rule).
-  UPDATE venues SET
-    hh_type          = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_type          END,
-    hh_days          = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_days          END,
-    hh_exclude_days  = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_exclude_days  END,
-    hh_start         = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_start         END,
-    hh_end           = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_end           END,
-    hh_type_2        = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_type_2        END,
-    hh_days_2        = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_days_2        END,
-    hh_exclude_days_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_exclude_days_2 END,
-    hh_start_2       = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_start_2       END,
-    hh_end_2         = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_end_2         END,
-    hh_type_3        = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_type_3        END,
-    hh_days_3        = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_days_3        END,
-    hh_exclude_days_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_exclude_days_3 END,
-    hh_start_3       = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_start_3       END,
-    hh_end_3         = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_end_3         END
-  WHERE id = p_venue_id;
-
-  -- 6. If every HH column + hh_time are now null → status = 'stale'.
-  IF (SELECT hh_type   FROM venues WHERE id = p_venue_id) IS NULL
-     AND (SELECT hh_type_2 FROM venues WHERE id = p_venue_id) IS NULL
-     AND (SELECT hh_type_3 FROM venues WHERE id = p_venue_id) IS NULL
-     AND (SELECT hh_time   FROM venues WHERE id = p_venue_id) IS NULL THEN
-    UPDATE venues SET status = 'stale' WHERE id = p_venue_id;
-    v_new_status := 'stale';
-  ELSE
-    v_new_status := NULL;
-  END IF;
-
-  RETURN QUERY SELECT TRUE, 'window_deleted'::TEXT, v_new_status;
+ -- ── 1. Global daily-limit guard (mirrors submit_flag top guard) ──
+ IF EXISTS(SELECT 1 FROM flags
+ WHERE device_hash = p_device_hash
+ AND active = TRUE AND DATE(created_at) = CURRENT_DATE) THEN
+ RETURN QUERY SELECT FALSE, 'daily_limit'::TEXT, NULL; RETURN;
+ END IF;
+ -- ── 2. Submission-count guard ────────────────────────────────────
+ IF get_device_submission_count(p_device_hash) < 1 THEN
+ RETURN QUERY SELECT FALSE, 'no_submissions'::TEXT, NULL; RETURN;
+ END IF;
+ -- ── 3. Validate the slot is populated (type only — all_day and
+ -- late_night windows legitimately have NULL start times) ────
+ SELECT CASE p_window_slot
+ WHEN 1 THEN hh_type
+ WHEN 2 THEN hh_type_2
+ WHEN 3 THEN hh_type_3
+ END INTO v_slot_type
+ FROM venues WHERE id = p_venue_id;
+ IF v_slot_type IS NULL THEN
+ RETURN QUERY SELECT FALSE, 'empty_slot'::TEXT, NULL; RETURN;
+ END IF;
+ -- ── 4. Collision check FIRST (venue_flag_events), then audit row.
+ -- A rejected request must write nothing. ────────────────────
+ BEGIN
+ INSERT INTO venue_flag_events (venue_id, device_hash, action)
+ VALUES (p_venue_id, p_device_hash, 'flag');
+ EXCEPTION WHEN unique_violation THEN
+ RETURN QUERY SELECT FALSE, 'already_flagged'::TEXT, NULL; RETURN;
+ END;
+ INSERT INTO flags (venue_id, device_hash, reason, lat, lng, active, window_slot)
+ VALUES (p_venue_id, p_device_hash, 'wrong', p_lat, p_lng, TRUE, p_window_slot);
+ -- ── 5. Null ALL columns for the slot (full-slot nulling rule) ───
+ UPDATE venues SET
+ hh_type = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_type END,
+ hh_days = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_days END,
+ hh_exclude_days = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_exclude_days END,
+ hh_start = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_start END,
+ hh_end = CASE WHEN p_window_slot = 1 THEN NULL ELSE hh_end END,
+ hh_type_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_type_2 END,
+ hh_days_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_days_2 END,
+ hh_exclude_days_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_exclude_days_2 END,
+ hh_start_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_start_2 END,
+ hh_end_2 = CASE WHEN p_window_slot = 2 THEN NULL ELSE hh_end_2 END,
+ hh_type_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_type_3 END,
+ hh_days_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_days_3 END,
+ hh_exclude_days_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_exclude_days_3 END,
+ hh_start_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_start_3 END,
+ hh_end_3 = CASE WHEN p_window_slot = 3 THEN NULL ELSE hh_end_3 END
+ WHERE id = p_venue_id;
+ -- ── 6. Status rule: no HH signal left anywhere → stale ──────────
+ SELECT CASE
+ WHEN hh_type IS NULL AND hh_type_2 IS NULL AND hh_type_3 IS NULL
+ AND hh_time IS NULL
+ THEN 'stale' ELSE NULL
+ END INTO v_new_status
+ FROM venues WHERE id = p_venue_id;
+ IF v_new_status = 'stale' THEN
+ UPDATE venues SET status = 'stale' WHERE id = p_venue_id;
+ END IF;
+ RETURN QUERY SELECT TRUE, 'window_deleted'::TEXT, v_new_status;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -34,6 +34,12 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
 
   const [flagState, setFlagState] = useState<ActionState>('idle')
   const [flagError, setFlagError] = useState<string | null>(null)
+  // Per-window delete state: which slots have been deleted in this session (optimistic hide),
+  // which slot is currently loading, and per-slot error message.
+  // Keyed by slot number (1/2/3), not by visible-row index.
+  const [deletedWindowSlots, setDeletedWindowSlots] = useState<Set<number>>(new Set())
+  const [deletingWindowSlot, setDeletingWindowSlot] = useState<number | null>(null)
+  const [deleteWindowError, setDeleteWindowError] = useState<string | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -223,6 +229,56 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
     }
   }, [venue.id, userLocation])
 
+  /**
+   * Delete a single HH window from this venue. Threshold-1 destructive action:
+   * any presence-verified user with ≥1 submission can mark one specific HH
+   * window as no longer offered. The slot number is the SLOT INDEX (1/2/3)
+   * from the venue's columns, not the visible-row index — the .map index i
+   * matches this because the array is built in slot order.
+   */
+  const handleDeleteWindow = useCallback(async (slotNumber: number) => {
+    if (!userLocation) {
+      setDeleteWindowError('Need your location to report — enable GPS')
+      setDeletingWindowSlot(null)
+      return
+    }
+    setDeletingWindowSlot(slotNumber)
+    setDeleteWindowError(null)
+
+    try {
+      const res = await fetch('/api/delete-hh-window', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          venueId: venue.id,
+          deviceHash: getDeviceHash(),
+          windowSlot: slotNumber,
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          ...(userLocation.accuracy != null && { accuracy: userLocation.accuracy })
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setDeleteWindowError(data.error || 'Failed to remove schedule')
+        setDeletingWindowSlot(null)
+        return
+      }
+      // Optimistically hide the row for this slot.
+      setDeletedWindowSlots(prev => {
+        const next = new Set(prev)
+        next.add(slotNumber)
+        return next
+      })
+      setSuccessMessage('Schedule removed — thanks for keeping it accurate')
+      setTimeout(() => setSuccessMessage(null), 3000)
+      setDeletingWindowSlot(null)
+    } catch {
+      setDeleteWindowError('Network error — try again')
+      setDeletingWindowSlot(null)
+    }
+  }, [venue.id, userLocation])
+
   function openPhotoViewer(photoIndex: number) {
     setViewerPhotoIndex(photoIndex)
     setPhotoViewerOpen(true)
@@ -400,8 +456,11 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
                   endMin: venue.hh_end_3,
                 },
               ].map((w, i) => {
+                const slotNumber = i + 1
                 const label = formatWindow(w.type, w.daysStr, w.startMin, w.endMin, w.excludeStr)
                 if (!label) return null
+                if (deletedWindowSlots.has(slotNumber)) return null
+                const isDeletingThis = deletingWindowSlot === slotNumber
                 return (
                   <div key={i} className="flex items-start gap-2.5">
                     {/* Window type icon */}
@@ -416,6 +475,20 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
                          w.type === 'late_night' ? 'Late night' : 'Happy hour'}
                       </p>
                     </div>
+                    {/* Per-window delete affordance — small, gray, discreet.
+                        Subtle enough not to compete with the schedule text. */}
+                    <button
+                      onClick={() => {
+                        if (typeof window !== 'undefined' && !window.confirm('Remove this schedule? This reports it as no longer offered.')) return
+                        handleDeleteWindow(slotNumber)
+                      }}
+                      disabled={isDeletingThis || deletingWindowSlot != null || !userLocation}
+                      className="mt-0.5 text-xs text-gray-300 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded"
+                      title={!userLocation ? 'Enable location to report' : 'Remove this schedule'}
+                      aria-label="Remove this schedule"
+                    >
+                      {isDeletingThis ? '…' : '✕'}
+                    </button>
                   </div>
                 )
               })}
@@ -458,6 +531,13 @@ export default function VenueDetail({ venue, onClose, onScanMenu }: VenueDetailP
             {flagError && (
               <span className="text-xs text-red-500 ml-2">{flagError}</span>
             )}
+          </div>
+        )}
+
+        {/* Per-window delete error — shown right under the schedule list */}
+        {deleteWindowError && (
+          <div className="mb-3 -mt-1">
+            <span className="text-xs text-red-500">{deleteWindowError}</span>
           </div>
         )}
 

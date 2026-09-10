@@ -19,6 +19,7 @@ interface Stats {
     photosToday: number
     uniqueDevicesToday: number
     uniqueDevicesThisWeek: number
+    venueViewsLast30d: { day: string; count: number }[]
   }
   coverage: {
     totalVenues: number
@@ -296,6 +297,11 @@ export default function DevdashClient() {
           label="Total Devices (All Time)"
           value={fmt(stats.userCounts.allTimeDevices)}
           sub={`${fmt(stats.userCounts.activeDevicesThisWeek)} this week`}
+        />
+        <KpiCard
+          label="Venue Views (Last 30d)"
+          value={fmt(stats.volume.venueViewsLast30d.reduce((s, d) => s + d.count, 0))}
+          sub={`${stats.volume.venueViewsLast30d.length} active days`}
         />
         <KpiCard
           label="HH Data Age — Fresh (<3mo)"
@@ -678,6 +684,30 @@ export default function DevdashClient() {
                   )
                 })}
               </div>
+            </div>
+
+            {/* Venue Views / day — last 30 days */}
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Venue Views / Day (Last 30d)</p>
+              {stats.volume.venueViewsLast30d.length > 0 ? (
+                <div className="flex items-end gap-0.5 h-20">
+                  {stats.volume.venueViewsLast30d.map((d, i) => {
+                    const max = Math.max(...stats.volume.venueViewsLast30d.map(x => x.count), 1)
+                    return (
+                      <div key={i} className="flex flex-col items-center gap-0.5 flex-1">
+                        <span className="text-xs font-medium text-gray-600">{d.count}</span>
+                        <div
+                          className="w-full bg-indigo-400 rounded-t"
+                          style={{ height: `${Math.max((d.count / max) * 60, d.count > 0 ? 4 : 0)}px` }}
+                        />
+                        <span className="text-xs text-gray-400">{d.day.slice(5)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm">No venue views in the last 30 days.</p>
+              )}
             </div>
           </div>
         ) : (

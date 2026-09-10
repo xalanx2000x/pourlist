@@ -130,6 +130,7 @@ async function getFunnelStats() {
 async function getVolumeStats() {
   const today = todayStart()
   const week = weekStart()
+  const thirtyDaysAgo = daysAgo(30)
 
   const [
     scansTodayRes,
@@ -139,6 +140,7 @@ async function getVolumeStats() {
     photosTodayRes,
     devicesTodayRes,
     devicesWeekRes,
+    venueViewRowsRes,
   ] = await Promise.all([
     supabase.from('events').select('id', { count: 'exact', head: true }).eq('event_name', 'scan_start').gte('created_at', today),
     supabase.from('events').select('id', { count: 'exact', head: true }).eq('event_name', 'scan_start').gte('created_at', week),
@@ -147,6 +149,7 @@ async function getVolumeStats() {
     supabase.from('photos').select('id', { count: 'exact', head: true }).gte('created_at', today),
     supabase.from('events').select('device_hash').eq('event_name', 'scan_start').gte('created_at', today).limit(5000),
     supabase.from('events').select('device_hash').eq('event_name', 'scan_start').gte('created_at', week).limit(5000),
+    supabase.from('events').select('created_at').eq('event_name', 'venue_view').gte('created_at', thirtyDaysAgo),
   ])
 
   const uniqueDevicesTodaySet = new Set(
@@ -160,6 +163,16 @@ async function getVolumeStats() {
       .filter(Boolean)
   )
 
+  // Daily venue view counts — last 30 days
+  const viewCountsByDay: Record<string, number> = {}
+  ;(venueViewRowsRes.data ?? []).forEach((r: { created_at: string }) => {
+    const day = r.created_at.slice(0, 10)
+    viewCountsByDay[day] = (viewCountsByDay[day] || 0) + 1
+  })
+  const venueViewsLast30d = Object.entries(viewCountsByDay)
+    .sort()
+    .map(([day, count]) => ({ day, count }))
+
   return {
     scansToday: scansTodayRes.count ?? 0,
     scansThisWeek: scansWeekRes.count ?? 0,
@@ -168,6 +181,7 @@ async function getVolumeStats() {
     photosToday: photosTodayRes.count ?? 0,
     uniqueDevicesToday: uniqueDevicesTodaySet.size,
     uniqueDevicesThisWeek: uniqueDevicesWeekSet.size,
+    venueViewsLast30d,
   }
 }
 
